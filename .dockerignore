@@ -1,0 +1,48 @@
+# Environnement Python local
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Assets statiques lourds (logos, images) — montés via volume en prod
+static/logos/
+
+# Logs et cache locaux
+logs/
+*.log
+cache/
+
+# Données temporaires et exports
+*.csv
+dump.csv
+temp_assets.csv
+enriched_assets.csv
+
+# Tests et outils de dev
+tests/
+scratch/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Docker
+.dockerignore
+docker-compose*.yml
+
+# Alembic (migrations gérées séparément)
+alembic/versions/
+
+# Données isin
+data/isin_data/

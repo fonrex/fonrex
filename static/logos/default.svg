@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Default company logo">
+  <rect width="128" height="128" rx="24" fill="#111827"/>
+  <path d="M30 84h68v10H30z" fill="#94a3b8"/>
+  <path d="M36 76V52l18 14 20-28 18 38H80l-8-17-16 22-10-8v3z" fill="#38bdf8"/>
+  <circle cx="96" cy="34" r="8" fill="#f8fafc"/>
+</svg>

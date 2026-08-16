@@ -1,0 +1,86 @@
+services:
+  # PostgreSQL service for the database
+  db:
+    image: timescale/timescaledb-ha:pg16
+    container_name: fonrex-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=fonrex
+      - POSTGRES_PASSWORD=fonrex_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/postgres-init.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fonrex -d fonrex"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Redis service for cache
+  redis:
+    image: redis:7-alpine
+    container_name: fonrex-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # FonRex API service
+  fonrex-api:
+    build: .
+    container_name: fonrex-api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://fonrex:fonrex_password@db:5432/fonrex
+      - CACHE_TTL=300
+      - WEB_CONCURRENCY=1
+      - SECRET_KEY=your-secret-key-change-in-production
+      # Disable proxies for MorningStar provider
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - NO_PROXY=localhost,127.0.0.1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Alembic migration service (one-shot)
+  # Usage: docker-compose --profile migrate up fonrex-migrate
+  fonrex-migrate:
+    build: .
+    container_name: fonrex-migrate
+    command: alembic upgrade head
+    environment:
+      - DATABASE_URL=postgresql://fonrex:fonrex_password@db:5432/fonrex
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - migrate
+
+volumes:
+  redis_data:
+  postgres_data:

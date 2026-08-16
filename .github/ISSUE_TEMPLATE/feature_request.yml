@@ -1,0 +1,24 @@
+name: Feature Request
+description: Suggest a new idea for Fonrex.
+title: "[FEAT] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Any idea is welcome to help Fonrex grow!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to Solve
+      description: Is your request related to a current problem or limitation?
+      placeholder: It is always frustrating when I have to...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Clearly describe what you would like Fonrex to do.
+    validations:
+      required: true

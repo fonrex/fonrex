@@ -1,0 +1,33 @@
+name: "PR Title Check"
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+
+jobs:
+  main:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Only allow these prefixes (you can add others like 'docs', 'chore', 'refactor')
+          types: |
+            feat
+            fix
+            docs
+            chore
+            refactor
+            perf
+            test
+          # Make the scope optional (e.g., feat(api): or just feat:)
+          requireScope: false
+          # Prevent uppercase letters at the beginning of the subject (e.g., "feat: Add" -> "feat: add")
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject must not start with an uppercase letter.

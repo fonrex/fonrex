@@ -1,0 +1,32 @@
+name: Automate Tag & Release
+
+on:
+  push:
+    branches:
+      - main # The script triggers only when code lands on main (e.g. after a PR merge)
+
+jobs:
+  tag-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Allows the bot to create tags and releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history for version calculation
+
+      - name: Bump version and create Tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch # If no 'feat' or 'fix' is detected, defaults to patch
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.tag_version.outputs.new_tag }}
+          name: Release ${{ steps.tag_version.outputs.new_tag }}
+          body: ${{ steps.tag_version.outputs.changelog }} # Automatically generates the release notes!

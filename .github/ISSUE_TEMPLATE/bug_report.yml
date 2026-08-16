@@ -1,0 +1,51 @@
+name: Bug Report
+description: Report an issue to help us improve Fonrex.
+title: "[BUG] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report this bug!
+        Before starting, please check if a similar issue does not already exist.
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Clearly explain what is not working.
+      placeholder: When I call the endpoint /api/v1/..., I receive a 500 error.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this behavior on our side?
+      value: |
+        1. Start Fonrex with Docker
+        2. Make a GET request on...
+        3. See the error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should normally happen?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Fonrex Version
+      description: What version are you using? (e.g., v1.0.1, main, or the Docker image tag)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Messages
+      description: Copy and paste the relevant logs. Do not include sensitive API keys!
+      render: shell
+    validations:
+      required: false

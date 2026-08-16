@@ -509,9 +509,7 @@ See [docs/adding-providers.md](docs/adding-providers.md) for details.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
-
-The Cloud Relay service is governed by separate [Terms of Service](https://fonrex.io/terms).
+AGPL-3.0 License — see [LICENSE](LICENSE) and [DISCLAIMER](DISCLAIMER.md).
 
 ---
 

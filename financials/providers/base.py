@@ -1,7 +1,7 @@
 """
-BaseFinancialProvider — classe abstraite commune à tous les providers Fonrex.
+BaseFinancialProvider — abstract base class common to all Fonrex providers.
 
-Standardise : headers HTTP, retry/backoff, rate limiting, logging, helpers.
+Standardizes: HTTP headers, retry/backoff, rate limiting, logging, helpers.
 """
 
 from __future__ import annotations
@@ -20,19 +20,19 @@ logger = logging.getLogger(__name__)
 
 class BaseFinancialProvider(ABC):
     """
-    Classe de base pour tous les providers financiers Fonrex.
+    Base class for all Fonrex financial providers.
 
-    Fonctionnalités communes :
-    - Rotation du User-Agent à chaque requête
-    - Retry automatique avec backoff exponentiel (3 tentatives par défaut)
-    - Timeout configurable par provider
-    - Rate limiting via asyncio.Semaphore (optionnel — définir _semaphore au niveau classe)
-    - Logging structuré (provider, url, latence, statut)
-    - Helpers de conversion (_safe_float, _safe_int)
+    Common features:
+    - User-Agent rotation on each request
+    - Automatic retry with exponential backoff (3 attempts by default)
+    - Configurable timeout per provider
+    - Rate limiting via asyncio.Semaphore (optional — set _semaphore at class level)
+    - Structured logging (provider, url, latency, status)
+    - Type conversion helpers (_safe_float, _safe_int)
 
-    Usage minimal :
-        class MonProvider(BaseFinancialProvider):
-            name = "MonProvider"
+    Minimal usage:
+        class MyProvider(BaseFinancialProvider):
+            name = "MyProvider"
             timeout = 8.0
 
             async def fetch(self, ticker=None, isin=None, **kwargs):
@@ -43,12 +43,12 @@ class BaseFinancialProvider(ABC):
     name: str = "BaseProvider"
     timeout: float = 8.0
     max_retries: int = 3
-    retry_delay: float = 1.0  # secondes, multiplié par 2^attempt
-    _semaphore: Optional[asyncio.Semaphore] = None  # partagé entre instances du même provider
+    retry_delay: float = 1.0  # seconds, multiplied by 2^attempt
+    _semaphore: Optional[asyncio.Semaphore] = None  # shared between instances of the same provider
 
-    # Codes HTTP qui déclenchent un retry
+    # HTTP status codes that trigger a retry
     _RETRY_STATUSES = {429, 500, 502, 503, 504}
-    # Codes HTTP définitifs — pas de retry
+    # Terminal HTTP status codes — no retry
     _TERMINAL_STATUSES = {400, 401, 403, 404, 410}
 
     USER_AGENTS = [
@@ -73,8 +73,8 @@ class BaseFinancialProvider(ABC):
         **kwargs,
     ) -> Optional[Any]:
         """
-        Point d'entrée principal du provider.
-        Par défaut, tente d'appeler get_financials pour la rétrocompatibilité.
+        Main provider entry point.
+        By default, attempts to call get_financials for backward compatibility.
         """
         if type(self).get_financials != BaseFinancialProvider.get_financials:
             return await self.get_financials(ticker or isin)
@@ -83,7 +83,7 @@ class BaseFinancialProvider(ABC):
         )
 
     async def get_financials(self, ticker: str) -> Optional[Any]:
-        """Alias de fetch() — conservé pour la rétrocompatibilité."""
+        """Alias for fetch() — retained for backward compatibility."""
         if type(self).fetch != BaseFinancialProvider.fetch:
             return await self.fetch(ticker=ticker)
         raise NotImplementedError(
@@ -100,21 +100,21 @@ class BaseFinancialProvider(ABC):
         follow_redirects: bool = True,
     ) -> Optional[str]:
         """
-        Effectue une requête GET avec retry et backoff exponentiel.
+        Executes a GET request with retry and exponential backoff.
 
-        Politique de retry :
-        - Retry sur : réseau KO, timeout, status 429/5xx
-        - Pas de retry sur : 400, 401, 403, 404, 410 (erreurs client définitives)
+        Retry policy:
+        - Retry on: network failure, timeout, status 429/5xx
+        - No retry on: 400, 401, 403, 404, 410 (terminal client errors)
 
         Returns:
-            Contenu texte (HTML/JSON) ou None si toutes les tentatives échouent.
+            Text content (HTML/JSON) or None if all attempts fail.
         """
         merged_headers = self._get_headers(headers)
         has_custom_ua = bool(headers and "User-Agent" in headers)
         last_exc: Optional[Exception] = None
 
         for attempt in range(self.max_retries):
-            # Tourner le User-Agent à chaque tentative sauf si un User-Agent spécifique est fourni
+            # Rotate User-Agent on each attempt unless a specific User-Agent is provided
             if not has_custom_ua:
                 merged_headers["User-Agent"] = random.choice(self.USER_AGENTS)
             t0 = time.perf_counter()
@@ -132,7 +132,7 @@ class BaseFinancialProvider(ABC):
             except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError) as exc:
                 latency = int((time.perf_counter() - t0) * 1000)
                 logger.warning(
-                    "[%s] Attempt %d/%d — réseau KO (%dms): %s",
+                    "[%s] Attempt %d/%d — network error (%dms): %s",
                     self.name,
                     attempt + 1,
                     self.max_retries,
@@ -143,7 +143,7 @@ class BaseFinancialProvider(ABC):
                 await asyncio.sleep(self.retry_delay * (2**attempt))
                 continue
             except Exception as exc:
-                logger.error("[%s] Erreur inattendue _get(%s): %s", self.name, url, exc)
+                logger.error("[%s] Unexpected error _get(%s): %s", self.name, url, exc)
                 return None
 
             latency = int((time.perf_counter() - t0) * 1000)
@@ -154,7 +154,7 @@ class BaseFinancialProvider(ABC):
 
             if response.status_code in self._TERMINAL_STATUSES:
                 logger.warning(
-                    "[%s] GET %s → %d (terminal, pas de retry)",
+                    "[%s] GET %s → %d (terminal, no retry)",
                     self.name,
                     url,
                     response.status_code,
@@ -163,7 +163,7 @@ class BaseFinancialProvider(ABC):
 
             if response.status_code in self._RETRY_STATUSES:
                 wait = self.retry_delay * (2**attempt)
-                # Respecter l'en-tête Retry-After si présent
+                # Respect Retry-After header if present
                 retry_after = response.headers.get("Retry-After")
                 if retry_after:
                     try:
@@ -171,7 +171,7 @@ class BaseFinancialProvider(ABC):
                     except ValueError:
                         pass
                 logger.warning(
-                    "[%s] GET %s → %d, retry dans %.1fs (attempt %d/%d)",
+                    "[%s] GET %s → %d, retry in %.1fs (attempt %d/%d)",
                     self.name,
                     url,
                     response.status_code,
@@ -182,9 +182,9 @@ class BaseFinancialProvider(ABC):
                 await asyncio.sleep(wait)
                 continue
 
-            # Autres codes (201, 301 non suivi, etc.)
+            # Other status codes (201, un-followed 301, etc.)
             logger.warning(
-                "[%s] GET %s → %d (%dms), abandon.",
+                "[%s] GET %s → %d (%dms), giving up.",
                 self.name,
                 url,
                 response.status_code,
@@ -194,7 +194,7 @@ class BaseFinancialProvider(ABC):
 
         if last_exc:
             logger.error(
-                "[%s] _get(%s) — toutes les tentatives ont échoué: %s",
+                "[%s] _get(%s) — all attempts failed: %s",
                 self.name,
                 url,
                 last_exc,
@@ -208,7 +208,7 @@ class BaseFinancialProvider(ABC):
         params: Optional[dict],
         follow_redirects: bool,
     ) -> httpx.Response:
-        """Exécute la requête HTTP réelle (isolée pour faciliter les tests)."""
+        """Executes the actual HTTP request (isolated for easier testing)."""
         async with httpx.AsyncClient(
             timeout=self.timeout,
             follow_redirects=follow_redirects,
@@ -222,10 +222,10 @@ class BaseFinancialProvider(ABC):
         params: Optional[dict] = None,
     ) -> Optional[dict]:
         """
-        Variante de _get() qui parse automatiquement la réponse JSON.
+        Variant of _get() that automatically parses JSON response.
 
         Returns:
-            dict/list parsé ou None si la requête ou le parsing échoue.
+            Parsed dict/list or None if request or parsing fails.
         """
         import json as _json
 
@@ -235,7 +235,7 @@ class BaseFinancialProvider(ABC):
         try:
             return _json.loads(text)
         except (_json.JSONDecodeError, ValueError) as exc:
-            logger.warning("[%s] _get_json(%s) — JSON invalide: %s", self.name, url, exc)
+            logger.warning("[%s] _get_json(%s) — invalid JSON: %s", self.name, url, exc)
             return None
 
     async def _post_json(
@@ -245,10 +245,10 @@ class BaseFinancialProvider(ABC):
         headers: Optional[dict] = None,
     ) -> Optional[Any]:
         """
-        Effectue une requête POST JSON avec retry.
+        Executes a JSON POST request with retry.
 
         Returns:
-            Réponse JSON parsée ou None.
+            Parsed JSON response or None.
         """
         import json as _json
 
@@ -289,7 +289,7 @@ class BaseFinancialProvider(ABC):
                 await asyncio.sleep(self.retry_delay * (2**attempt))
                 continue
             except Exception as exc:
-                logger.error("[%s] Erreur _post_json(%s): %s", self.name, url, exc)
+                logger.error("[%s] Error _post_json(%s): %s", self.name, url, exc)
                 return None
 
             if resp.status_code == 200:
@@ -312,8 +312,8 @@ class BaseFinancialProvider(ABC):
 
     def _get_headers(self, extra: Optional[dict] = None) -> dict:
         """
-        Retourne les headers HTTP de base avec User-Agent aléatoire.
-        Les headers dans `extra` ont la priorité.
+        Returns base HTTP headers with random User-Agent.
+        Headers in `extra` take precedence.
         """
         base = {
             "User-Agent": random.choice(self.USER_AGENTS),
@@ -332,7 +332,7 @@ class BaseFinancialProvider(ABC):
     # ── Type conversion helpers ───────────────────────────────────────────────
 
     def _safe_float(self, value: Any, default: Optional[float] = None) -> Optional[float]:
-        """Convertit une valeur en float de façon défensive."""
+        """Defensively converts a value to float."""
         if value is None:
             return default
         try:
@@ -343,7 +343,7 @@ class BaseFinancialProvider(ABC):
                 .replace("%", "")
                 .replace("€", "")
                 .replace("$", "")
-                .replace("\u202f", "")  # espace insécable fine
+                .replace("\u202f", "")  # narrow non-breaking space
                 .strip()
             )
             if cleaned in ("", "N/A", "n/a", "-", "—", "–"):
@@ -353,7 +353,7 @@ class BaseFinancialProvider(ABC):
             return default
 
     def _safe_int(self, value: Any, default: Optional[int] = None) -> Optional[int]:
-        """Convertit une valeur en int de façon défensive."""
+        """Defensively converts a value to int."""
         f = self._safe_float(value)
         if f is None:
             return default

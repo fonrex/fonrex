@@ -1,7 +1,7 @@
 """
-Tests du SECEdgarProvider.
+SECEdgarProvider unit tests.
 
-Mocks complets — aucune requête réseau réelle.
+Full mocks — no actual network requests.
 """
 
 import unittest
@@ -77,13 +77,13 @@ FORM4_XML = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 class TestSECEdgarCIKResolution(unittest.IsolatedAsyncioTestCase):
-    """Tests de résolution du CIK."""
+    """CIK resolution tests."""
 
     def setUp(self):
         self.provider = SECEdgarProvider()
 
     async def test_resolve_cik_via_static_aapl(self):
-        """Doit trouver le CIK de AAPL dans le JSON statique."""
+        """Should find AAPL CIK in static JSON."""
         with patch.object(
             self.provider, "_get_json", new_callable=AsyncMock, return_value=COMPANY_TICKERS_JSON
         ):
@@ -91,7 +91,7 @@ class TestSECEdgarCIKResolution(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cik, "0000320193")
 
     async def test_resolve_cik_strips_exchange_suffix(self):
-        """Le suffixe .PA doit être retiré avant la recherche."""
+        """The .PA suffix must be removed before search."""
         with patch.object(
             self.provider, "_get_json", new_callable=AsyncMock, return_value=COMPANY_TICKERS_JSON
         ):
@@ -99,7 +99,7 @@ class TestSECEdgarCIKResolution(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cik, "0000789019")
 
     async def test_resolve_cik_not_found_returns_none(self):
-        """Un ticker EU sans CIK doit retourner None."""
+        """An EU ticker without CIK must return None."""
         with patch.object(
             self.provider, "_get_json", new_callable=AsyncMock, return_value=COMPANY_TICKERS_JSON
         ):
@@ -107,20 +107,20 @@ class TestSECEdgarCIKResolution(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(cik)
 
     async def test_resolve_cik_api_failure_returns_none(self):
-        """Si l'API échoue, retourner None sans lever d'exception."""
+        """If API fails, return None without raising an exception."""
         with patch.object(self.provider, "_get_json", new_callable=AsyncMock, return_value=None):
             cik = await self.provider._resolve_cik_via_static("AAPL")
         self.assertIsNone(cik)
 
 
 class TestSECEdgarFetch(unittest.IsolatedAsyncioTestCase):
-    """Tests du fetch complet."""
+    """Full fetch tests."""
 
     def setUp(self):
         self.provider = SECEdgarProvider()
 
     async def test_fetch_eu_ticker_returns_empty_result(self):
-        """Un ticker EU sans CIK → InsiderTransactionsResult vide, pas d'erreur."""
+        """An EU ticker without CIK → empty InsiderTransactionsResult, no error."""
         with patch.object(self.provider, "_resolve_cik", new_callable=AsyncMock, return_value=None):
             result = await self.provider.fetch(ticker="AIR.PA")
         self.assertIsInstance(result, InsiderTransactionsResult)
@@ -129,7 +129,7 @@ class TestSECEdgarFetch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.total_count, 0)
 
     async def test_fetch_us_ticker_with_transactions(self):
-        """AAPL avec CIK connu → transactions parsées."""
+        """AAPL with known CIK → parsed transactions."""
 
         async def mock_get_json(url, **kwargs):
             if "company_tickers" in url:
@@ -158,7 +158,7 @@ class TestSECEdgarFetch(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(result.total_count, 0)
 
     async def test_fetch_parses_transaction_correctly(self):
-        """Les champs de la transaction doivent être correctement parsés."""
+        """Transaction fields must be parsed correctly."""
 
         async def mock_get_json(url, **kwargs):
             if "company_tickers" in url:
@@ -191,10 +191,10 @@ class TestSECEdgarFetch(unittest.IsolatedAsyncioTestCase):
 
 
 class TestSECEdgarRateLimit(unittest.IsolatedAsyncioTestCase):
-    """Vérifie que le semaphore est bien défini au niveau classe."""
+    """Verifies that semaphore is properly defined at class level."""
 
     def test_semaphore_is_class_level(self):
-        """Le semaphore doit être partagé entre toutes les instances."""
+        """Semaphore must be shared across all instances."""
         p1 = SECEdgarProvider()
         p2 = SECEdgarProvider()
         self.assertIs(type(p1)._semaphore, type(p2)._semaphore)
@@ -202,7 +202,7 @@ class TestSECEdgarRateLimit(unittest.IsolatedAsyncioTestCase):
 
 
 class TestSECEdgarXMLParsing(unittest.TestCase):
-    """Tests unitaires du parser XML Form 4."""
+    """Form 4 XML parser unit tests."""
 
     def setUp(self):
         self.provider = SECEdgarProvider()
@@ -218,7 +218,7 @@ class TestSECEdgarXMLParsing(unittest.TestCase):
         self.assertEqual(txn.shares, 50000)
 
     def test_parse_form4_xml_invalid_xml(self):
-        """Un XML invalide ne doit pas lever d'exception."""
+        """Invalid XML must not raise an exception."""
         txns = self.provider._parse_form4_xml(
             "<invalid>xml<unclosed>", date(2026, 1, 1), "https://test.com/"
         )
@@ -226,13 +226,13 @@ class TestSECEdgarXMLParsing(unittest.TestCase):
 
 
 class TestSECEdgarCircuitBreakerAndUA(unittest.IsolatedAsyncioTestCase):
-    """Tests du circuit breaker et du User-Agent."""
+    """Circuit breaker and User-Agent tests."""
 
     def setUp(self):
         self.provider = SECEdgarProvider()
 
     async def test_consecutive_http_failures_breaks_early(self):
-        """Si _get retourne None (échec HTTP) 3 fois consécutives, la boucle s'arrête."""
+        """If _get returns None (HTTP failure) 3 consecutive times, loop terminates."""
         mock_submissions = {
             "name": "Test Company",
             "filings": {
@@ -248,7 +248,7 @@ class TestSECEdgarCircuitBreakerAndUA(unittest.IsolatedAsyncioTestCase):
             return mock_submissions
 
         async def mock_get(url, **kwargs):
-            return None  # Toujours en échec HTTP
+            return None  # Always HTTP failure
 
         with (
             patch.object(self.provider, "_get_json", side_effect=mock_get_json),
@@ -257,11 +257,11 @@ class TestSECEdgarCircuitBreakerAndUA(unittest.IsolatedAsyncioTestCase):
             txns = await self.provider._fetch_form4_transactions("320193", limit=10)
 
         self.assertEqual(txns, [])
-        # Doit s'arrêter après exactement 3 échecs consécutifs au lieu de tenter les 10 filings
+        # Should stop after exactly 3 consecutive failures instead of attempting 10 filings
         self.assertEqual(mock_get_call.call_count, 3)
 
     async def test_custom_user_agent_preserved_in_base_provider(self):
-        """Le User-Agent spécifique SEC doit être préservé par _get sans être écrasé."""
+        """Specific SEC User-Agent must be preserved by _get without being overwritten."""
         from unittest.mock import MagicMock
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -270,11 +270,12 @@ class TestSECEdgarCircuitBreakerAndUA(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.provider, "_execute_get", new_callable=AsyncMock, return_value=mock_response) as mock_exec:
             res = await self.provider._get("https://www.sec.gov/test", headers=self.provider._sec_headers())
             self.assertEqual(res, "OK")
-            # Vérifier que le User-Agent transmis est bien celui du SECEdgarProvider
+            # Verify that the passed User-Agent is the SECEdgarProvider one
             called_headers = mock_exec.call_args[0][1]
             self.assertEqual(called_headers["User-Agent"], "Fonrex contact@fonrex.io")
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

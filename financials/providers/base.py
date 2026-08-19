@@ -110,11 +110,13 @@ class BaseFinancialProvider(ABC):
             Contenu texte (HTML/JSON) ou None si toutes les tentatives échouent.
         """
         merged_headers = self._get_headers(headers)
+        has_custom_ua = bool(headers and "User-Agent" in headers)
         last_exc: Optional[Exception] = None
 
         for attempt in range(self.max_retries):
-            # Tourner le User-Agent à chaque tentative
-            merged_headers["User-Agent"] = random.choice(self.USER_AGENTS)
+            # Tourner le User-Agent à chaque tentative sauf si un User-Agent spécifique est fourni
+            if not has_custom_ua:
+                merged_headers["User-Agent"] = random.choice(self.USER_AGENTS)
             t0 = time.perf_counter()
 
             try:
@@ -251,10 +253,12 @@ class BaseFinancialProvider(ABC):
         import json as _json
 
         merged_headers = self._get_headers(headers)
+        has_custom_ua = bool(headers and "User-Agent" in headers)
         merged_headers["Content-Type"] = "application/json"
 
         for attempt in range(self.max_retries):
-            merged_headers["User-Agent"] = random.choice(self.USER_AGENTS)
+            if not has_custom_ua:
+                merged_headers["User-Agent"] = random.choice(self.USER_AGENTS)
             t0 = time.perf_counter()
             try:
                 if self._semaphore:

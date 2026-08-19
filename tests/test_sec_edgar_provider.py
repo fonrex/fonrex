@@ -225,5 +225,56 @@ class TestSECEdgarXMLParsing(unittest.TestCase):
         self.assertEqual(txns, [])
 
 
+class TestSECEdgarCircuitBreakerAndUA(unittest.IsolatedAsyncioTestCase):
+    """Tests du circuit breaker et du User-Agent."""
+
+    def setUp(self):
+        self.provider = SECEdgarProvider()
+
+    async def test_consecutive_http_failures_breaks_early(self):
+        """Si _get retourne None (échec HTTP) 3 fois consécutives, la boucle s'arrête."""
+        mock_submissions = {
+            "name": "Test Company",
+            "filings": {
+                "recent": {
+                    "form": ["4"] * 10,
+                    "filingDate": ["2026-01-01"] * 10,
+                    "accessionNumber": [f"0000320193-26-00000{i}" for i in range(10)],
+                }
+            },
+        }
+
+        async def mock_get_json(url, **kwargs):
+            return mock_submissions
+
+        async def mock_get(url, **kwargs):
+            return None  # Toujours en échec HTTP
+
+        with (
+            patch.object(self.provider, "_get_json", side_effect=mock_get_json),
+            patch.object(self.provider, "_get", side_effect=mock_get) as mock_get_call,
+        ):
+            txns = await self.provider._fetch_form4_transactions("320193", limit=10)
+
+        self.assertEqual(txns, [])
+        # Doit s'arrêter après exactement 3 échecs consécutifs au lieu de tenter les 10 filings
+        self.assertEqual(mock_get_call.call_count, 3)
+
+    async def test_custom_user_agent_preserved_in_base_provider(self):
+        """Le User-Agent spécifique SEC doit être préservé par _get sans être écrasé."""
+        from unittest.mock import MagicMock
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "OK"
+
+        with patch.object(self.provider, "_execute_get", new_callable=AsyncMock, return_value=mock_response) as mock_exec:
+            res = await self.provider._get("https://www.sec.gov/test", headers=self.provider._sec_headers())
+            self.assertEqual(res, "OK")
+            # Vérifier que le User-Agent transmis est bien celui du SECEdgarProvider
+            called_headers = mock_exec.call_args[0][1]
+            self.assertEqual(called_headers["User-Agent"], "Fonrex contact@fonrex.io")
+
+
 if __name__ == "__main__":
     unittest.main()
+

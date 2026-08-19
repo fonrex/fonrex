@@ -172,11 +172,19 @@ class SECEdgarProvider(BaseFinancialProvider):
             forms = recent.get("form", [])
             filing_dates = recent.get("filingDate", [])
             accessions = recent.get("accessionNumber", [])
-            form4_indices = [i for i, f in enumerate(forms) if f == "4"][: limit * 3]
+            max_filings = min(limit * 2, 15)
+            form4_indices = [i for i, f in enumerate(forms) if f == "4"][:max_filings]
             transactions: List[InsiderTransaction] = []
             cik_num = str(int(cik))
+            consecutive_failures = 0
             for idx in form4_indices:
                 if len(transactions) >= limit:
+                    break
+                if consecutive_failures >= 3:
+                    logger.warning(
+                        "[SECEdgar] Interruption de _fetch_form4_transactions après %d échecs HTTP consécutifs",
+                        consecutive_failures,
+                    )
                     break
                 try:
                     filing_date_str = filing_dates[idx] if idx < len(filing_dates) else None
@@ -191,8 +199,13 @@ class SECEdgarProvider(BaseFinancialProvider):
                     txns = await self._parse_form4_filing(
                         cik_num, accession_nd, filing_date, filing_url
                     )
-                    transactions.extend(txns)
+                    if txns is None:
+                        consecutive_failures += 1
+                    else:
+                        consecutive_failures = 0
+                        transactions.extend(txns)
                 except Exception as exc:
+                    consecutive_failures += 1
                     logger.warning("[SECEdgar] idx=%d parsing error: %s", idx, exc)
             return transactions[:limit]
         except Exception as exc:
@@ -201,14 +214,14 @@ class SECEdgarProvider(BaseFinancialProvider):
 
     async def _parse_form4_filing(
         self, cik_num: str, accession_nd: str, filing_date: date, filing_url: str
-    ) -> List[InsiderTransaction]:
+    ) -> Optional[List[InsiderTransaction]]:
         index_url = (
             f"https://www.sec.gov/Archives/edgar/data/"
             f"{cik_num}/{accession_nd}/{accession_nd}-index.htm"
         )
         index_html = await self._get(index_url, headers=self._sec_headers())
-        if not index_html:
-            return []
+        if index_html is None:
+            return None
         xml_match = re.search(
             r'href="(/Archives/edgar/data/[^"]+\.xml)"', index_html, re.IGNORECASE
         )
@@ -216,8 +229,8 @@ class SECEdgarProvider(BaseFinancialProvider):
             return []
         xml_url = "https://www.sec.gov" + xml_match.group(1)
         xml_text = await self._get(xml_url, headers=self._sec_headers())
-        if not xml_text:
-            return []
+        if xml_text is None:
+            return None
         return self._parse_form4_xml(xml_text, filing_date, filing_url)
 
     def _parse_form4_xml(

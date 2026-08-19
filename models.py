@@ -756,8 +756,10 @@ class ProviderHealthLog(Base):
     )
 
     # Composite PK required by TimescaleDB (partitioning column in the PK)
-    id = Column(Integer, autoincrement=True, nullable=False)
-    checked_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    checked_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     provider_name = Column(String(50), nullable=False)
     ticker = Column(String(20), nullable=True)
     field = Column(String(50), nullable=False)

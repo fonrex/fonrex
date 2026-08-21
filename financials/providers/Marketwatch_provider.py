@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 from selectolax.parser import HTMLParser
 
-from financials.models import FinancialMetrics
+from financials.models import FinancialMetrics, NewsArticle, Competitor
 from financials.numbers import parse_number
 from financials.providers.base import BaseProvider, ProviderSession
 
@@ -194,7 +194,12 @@ class MarketwatchProvider(BaseProvider):
             try:
                 search_result = await self._search_result(client, ticker)
                 if not search_result:
-                    return None
+                    url_ticker = ticker.split(":")[-1].lower()
+                    search_result = {
+                        "ticker": ticker,
+                        "url_ticker": url_ticker,
+                        "provider_url": self.BASE_URL.format(ticker=url_ticker)
+                    }
 
                 metrics = self._metrics_from_search_result(search_result, ticker)
 

@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import random
 import re
 from typing import Any, Callable, Optional
@@ -220,9 +219,9 @@ class BarronsProvider(BaseProvider):
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
         async with self._session() as client:
             try:
-                search_result = await self._search_result(client, ticker)
-                if not search_result:
-                    return None
+                # Basic normalization
+                url_ticker = ticker.split(":")[-1].lower()
+                url = self.BASE_URL.format(ticker=url_ticker)
 
                 metrics = self._metrics_from_search_result(search_result, ticker)
 

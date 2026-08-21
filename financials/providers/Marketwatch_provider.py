@@ -6,7 +6,7 @@ from typing import Optional
 import httpx
 from selectolax.parser import HTMLParser
 
-from financials.models import FinancialMetrics, NewsArticle, Competitor
+from financials.models import Competitor, FinancialMetrics, NewsArticle
 from financials.providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)

@@ -52,6 +52,7 @@ class WallStreetJournalProvider(BaseProvider):
                 if html_people:
                     insider_data = self._parse_insider_transactions(html_people)
                     metrics.insider_transactions = insider_data
+                    metrics.holders = self._parse_ownership(html_people)
 
                 return metrics
             except Exception as e:
@@ -262,6 +263,43 @@ class WallStreetJournalProvider(BaseProvider):
                         }
                     )
 
+        return data
+
+    def _parse_ownership(self, parser: HTMLParser) -> dict:
+        """Parse Mutual Funds and Institutions ownership tables."""
+        data = {"funds": [], "institutions": []}
+        
+        for module in parser.css("div.cr_module"):
+            title_node = module.css_first("h3.cr_module_title")
+            if not title_node:
+                continue
+            title = title_node.text(strip=True).lower()
+            
+            cat = None
+            if "mutual fund" in title:
+                cat = "funds"
+            elif "institution" in title:
+                cat = "institutions"
+            
+            if cat:
+                table = module.css_first("table")
+                if table:
+                    th_nodes = table.css("th")
+                    headers = [th.text(strip=True).lower() for th in th_nodes]
+                    for row in table.css("tbody tr"):
+                        cols = [td.text(strip=True) for td in row.css("td")]
+                        row_data = dict(zip(headers, cols))
+                        
+                        holder = row_data.get("owner") or row_data.get("name")
+                        if holder:
+                            data[cat].append({
+                                "Holder": holder,
+                                "Date Reported": row_data.get("as of date") or row_data.get("date reported") or row_data.get("date") or row_data.get("filing date"),
+                                "% Out": row_data.get("% shares out") or row_data.get("% out") or row_data.get("% of shares") or row_data.get("% of tso") or row_data.get("pct. of shares"),
+                                "Shares": row_data.get("shares held") or row_data.get("shares"),
+                                "Change": row_data.get("change in shares") or row_data.get("change"),
+                                "Value": row_data.get("value") or row_data.get("value ($)") or row_data.get("% of assets"),
+                            })
         return data
 
     def _find_value_by_label(self, parser: HTMLParser, labels: list) -> Optional[float]:

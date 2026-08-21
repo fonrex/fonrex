@@ -45,7 +45,7 @@ class FinancialsFormatter:
             "AnalystRatings": FinancialsFormatter._build_analyst_ratings(
                 results.get("analyst_ratings"), yf_info
             ),
-            "Holders": FinancialsFormatter._build_holders(yf_info),
+            "Holders": FinancialsFormatter._build_holders(yf_info, results),
             "InsiderTransactions": FinancialsFormatter._build_insider_transactions(results),
             "ESGScores": FinancialsFormatter._build_esg_scores(results.get("esg_scores"), results),
             "Earnings": FinancialsFormatter._build_earnings(
@@ -244,9 +244,20 @@ class FinancialsFormatter:
         }
 
     @staticmethod
-    def _build_holders(yf: Dict) -> Dict:
+    def _build_holders(yf: Dict, results: Dict) -> Dict:
         # Comme précédemment, indexé par "0", "1", ...
         holders_raw = yf.get("holders", {})
+        
+        # Fallback sur WallStreetJournal
+        if not holders_raw or (not holders_raw.get("institutions") and not holders_raw.get("funds")):
+            wsj = results.get("wallstreetjournal") or results.get("WallStreetJournal") or results.get("wallStreetJournal")
+            if hasattr(wsj, "model_dump"):
+                wsj = wsj.model_dump()
+            elif hasattr(wsj, "dict"):
+                wsj = wsj.dict()
+            if isinstance(wsj, dict) and "holders" in wsj and isinstance(wsj["holders"], dict):
+                holders_raw = wsj["holders"]
+
         res = {"Institutions": {}, "Funds": {}}
         for cat in ["institutions", "funds"]:
             raw_list = holders_raw.get(cat, [])
@@ -254,12 +265,12 @@ class FinancialsFormatter:
                 continue
             for i, item in enumerate(raw_list):
                 res[cat.capitalize()][str(i)] = {
-                    "name": item.get("Holder"),
-                    "date": str(item.get("Date Reported")),
-                    "totalShares": item.get("% Out"),
-                    "currentShares": item.get("Shares"),
-                    "change": item.get("Change"),
-                    "value": item.get("Value"),
+                    "name": item.get("Holder") or item.get("name"),
+                    "date": str(item.get("Date Reported") or item.get("date") or ""),
+                    "totalShares": item.get("% Out") or item.get("totalShares"),
+                    "currentShares": item.get("Shares") or item.get("currentShares"),
+                    "change": item.get("Change") or item.get("change"),
+                    "value": item.get("Value") or item.get("value"),
                 }
         return res
 
@@ -283,7 +294,7 @@ class FinancialsFormatter:
             return txns
 
         # 2. Fallback sur WallStreetJournal (International)
-        wsj = results.get("wallstreetjournal") or results.get("WallStreetJournal")
+        wsj = results.get("wallstreetjournal") or results.get("WallStreetJournal") or results.get("wallStreetJournal")
 
         # Handle Pydantic objects
         if hasattr(wsj, "model_dump"):

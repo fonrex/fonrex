@@ -53,3 +53,5 @@ class FinancialMetrics(StandardFinancials):
     # Metadata
     provider_url: Optional[str] = Field(None, description="URL de la source")
     ticker: Optional[str] = Field(None, description="Symbole boursier (Format Provider)")
+    insider_transactions: Optional[dict] = Field(None, description="Insider Trading (ex: SEC/WSJ)")
+    holders: Optional[dict] = Field(None, description="Ownership (Funds and Institutions)")

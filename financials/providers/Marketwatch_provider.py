@@ -6,7 +6,7 @@ from typing import Optional
 import httpx
 from selectolax.parser import HTMLParser
 
-from financials.models import FinancialMetrics
+from financials.models import FinancialMetrics, NewsArticle, Competitor
 from financials.providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,12 @@ class MarketwatchProvider(BaseProvider):
             try:
                 search_result = await self._search_result(client, ticker)
                 if not search_result:
-                    return None
+                    url_ticker = ticker.split(":")[-1].lower()
+                    search_result = {
+                        "ticker": ticker,
+                        "url_ticker": url_ticker,
+                        "provider_url": self.BASE_URL.format(ticker=url_ticker)
+                    }
 
                 metrics = self._metrics_from_search_result(search_result, ticker)
 
@@ -60,8 +65,10 @@ class MarketwatchProvider(BaseProvider):
             "style": "full",
             "maxRows": "5",
             "name_startsWith": ticker,
-            "entitlementToken": self.TOKEN,
         }
+        if self.TOKEN:
+            params["entitlementToken"] = self.TOKEN
+            
         try:
             response = await client.get(self.SEARCH_API, params=params)
             if response.status_code == 200:
@@ -163,7 +170,102 @@ class MarketwatchProvider(BaseProvider):
         metrics.pe_ratio = self._find_value_by_label(parser, ["P/E Ratio", "P/E"])
         metrics.dividend_yield = self._find_value_by_label(parser, ["Yield", "Dividend Yield"])
         metrics.eps = self._find_value_by_label(parser, ["EPS"])
+        
+        metrics.news = self._parse_news(parser)
+        metrics.competitors = self._parse_competitors(parser)
         return metrics
+
+    def _parse_competitors(self, parser: HTMLParser) -> list[Competitor]:
+        competitors = []
+        # Competitors rows can be found using the links that have mod=mw_quote_competitors
+        # They are usually in a table inside a div with class "element--competitors" or similar
+        for a in parser.css('a[href*="mod=mw_quote_competitors"]'):
+            # The link itself usually contains the competitor name or ticker
+            # The structure is usually a tr with td for name/ticker, chg %, market cap
+            row = a.parent
+            for _ in range(3):
+                if row and row.tag == 'tr':
+                    break
+                row = row.parent if row else None
+                
+            if row and row.tag == 'tr':
+                name_node = row.css_first(".company__name")
+                ticker_node = row.css_first(".company__ticker")
+                
+                name = name_node.text(strip=True) if name_node else ""
+                ticker = ticker_node.text(strip=True) if ticker_node else ""
+                
+                # if there is no specific class, fallback to parsing tds
+                if not name:
+                    tds = row.css("td")
+                    if len(tds) >= 3:
+                        name = tds[0].text(strip=True)
+                        change = tds[1].text(strip=True)
+                        market_cap = tds[2].text(strip=True)
+                        
+                        # Sometimes Name and Ticker are together in the first td
+                        # The ticker might be inside a small or span
+                        ticker_el = tds[0].css_first("small, .ticker")
+                        if ticker_el:
+                            ticker = ticker_el.text(strip=True)
+                            # remove ticker from name
+                            name = name.replace(ticker, "").strip()
+                            
+                        # Ensure we don't add duplicates
+                        if ticker and not any(c.ticker == ticker for c in competitors):
+                            competitors.append(Competitor(
+                                name=name,
+                                ticker=ticker,
+                                change_percent=change,
+                                market_cap=market_cap
+                            ))
+                            
+        return competitors
+
+    def _parse_news(self, parser: HTMLParser) -> list[NewsArticle]:
+        news_articles = []
+        
+        # Select containers for "News From Dow Jones" and "OTHER SOURCES"
+        containers = parser.css("mw-scrollable-news-v2")
+        
+        for container in containers:
+            # Common article class on MarketWatch
+            articles = container.css(".element--article") or container.css(".article__content")
+            
+            for article in articles:
+                link_node = article.css_first("a.link")
+                if not link_node:
+                    continue
+                    
+                title = link_node.text(strip=True)
+                url = link_node.attributes.get("href", "")
+                if url and not url.startswith("http"):
+                    url = "https://www.marketwatch.com" + url
+                    
+                date_node = article.css_first(".article__timestamp, .timestamp")
+                date = date_node.text(strip=True) if date_node else None
+                
+                source_node = article.css_first(".article__author, .provider")
+                source = source_node.text(strip=True) if source_node else None
+                
+                image = None
+                img_node = article.css_first(".figure__image img, img")
+                if img_node:
+                    image = img_node.attributes.get("data-srcset") or img_node.attributes.get("src")
+                    # data-srcset often has multiple urls separated by commas, get the first one or simply use src
+                    if image and "," in image:
+                        image = image.split(",")[0].split(" ")[0].strip()
+
+                if title and url:
+                    news_articles.append(NewsArticle(
+                        title=title,
+                        url=url,
+                        date=date,
+                        source=source,
+                        image=image
+                    ))
+                    
+        return news_articles
 
     def _find_value_by_label(self, parser: HTMLParser, labels: list) -> Optional[float]:
         import re

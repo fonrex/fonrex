@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 from selectolax.parser import HTMLParser
 
-from financials.models import FinancialMetrics, NewsArticle, Competitor
+from financials.models import Competitor, FinancialMetrics, NewsArticle
 from financials.numbers import parse_number
 from financials.providers.base import BaseProvider, ProviderSession
 

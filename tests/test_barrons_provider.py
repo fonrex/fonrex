@@ -1,8 +1,7 @@
 import unittest
 
-from selectolax.parser import HTMLParser
-
 from financials.providers.Barrons_provider import BarronsProvider
+from selectolax.parser import HTMLParser
 
 class BarronsProviderTest(unittest.TestCase):
     def setUp(self):

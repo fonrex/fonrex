@@ -475,7 +475,7 @@ GitHub Actions runs this exact same quality check for every pull request and pus
 ## Roadmap
 
 - [x] Provider health monitoring (ValidationLayer + CanaryMonitor)
-- [ ] Zipline bundle (backtesting integration)
+- [x] Zipline bundle (backtesting integration) — see [docs/zipline-bundle.md](docs/zipline-bundle.md)
 - [ ] Sentiment analysis on news articles
 - [ ] Portfolio tracking endpoints
 - [ ] Browser extension (Fonrex DevTools)

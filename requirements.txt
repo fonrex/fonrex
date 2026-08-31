@@ -35,3 +35,7 @@ tradingview-scraper>=0.2.0
 fakeredis[aioredis]>=2.21.0
 pytest-asyncio>=0.23.0
 apscheduler>=3.10.0
+
+# Optional: install zipline-reloaded>=3.0 to enable the FonRex Zipline data
+# bundle. Kept out of this file to avoid pulling bcolz/empyrical/tables into
+# the FastAPI runtime container. See docs/zipline-bundle.md.

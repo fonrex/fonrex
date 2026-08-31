@@ -1,6 +1,6 @@
 # Technical Architecture FonRex
 
-Last update: 2026-07-13 (legacy cleanup: `eod/`, `record/`, `fundamental/providers/`, `data_service.py`, `init_db.py`, `seed_assets.py`; ISIN-deduplicated import revamp; migration 009; `clean_isin_duplicates` script; NewsService addition with 7 news providers, `news_articles` table, migration 010; structuring formatting modules and exchange mappings; addition of financial valuation module and DCF/WACC calculations, Phase 11; addition of provider monitoring system with ValidationLayer, CanaryMonitor, alerts and 7 health endpoints, `provider_health_log`/`provider_health_daily`/`provider_alerts` tables, migration 011, Phase 12).
+Last update: 2026-08-31 (legacy cleanup: `eod/`, `record/`, `fundamental/providers/`, `data_service.py`, `init_db.py`, `seed_assets.py`; ISIN-deduplicated import revamp; migration 009; `clean_isin_duplicates` script; NewsService addition with 7 news providers, `news_articles` table, migration 010; structuring formatting modules and exchange mappings; addition of financial valuation module and DCF/WACC calculations, Phase 11; addition of provider monitoring system with ValidationLayer, CanaryMonitor, alerts and 7 health endpoints, `provider_health_log`/`provider_health_daily`/`provider_alerts` tables, migration 011, Phase 12; addition of the Zipline bundle backtesting integration in `zipline_bundle/`, Phase 13).
 
 This document describes the architecture actually observed in the source code. FonRex Pro is a FastAPI API that aggregates market data, fundamentals, asset metadata, and financial news. The system combines PostgreSQL/TimescaleDB, Redis, yfinance, asynchronous web providers, an ISIN-based CSV import, a multi-source news aggregation engine, and an automated provider health monitoring system.
 
@@ -186,6 +186,11 @@ At application startup, `main.py` initializes:
 | `historical/providers.py` | yfinance and TradingView connectors for retrieving historical bars. |
 | `historical/normalization.py` | Pure OHLCV validation, deduplication, and normalization rules. |
 | `schemas/monitoring.py` | Pydantic v2 schemas for monitoring: `ProviderStatus`, `ProviderHealthSummary`, `CanaryCheckResult`, `ValidationResult`, `AlertSchema`, `DailyStatSchema`, `HealthStatus`, `AlertSeverity`, `AlertType` enums. |
+| `zipline_bundle/__init__.py` | Public API of the Zipline data bundle (`FonRexBundle`, `fonrex_equities`, `register_fonrex_bundle`, `FonRexBundleDataSource`). |
+| `zipline_bundle/data_source.py` | Zipline-free SQLAlchemy extraction layer for `prices_eod`: listing ranking, session-aligned OHLCV frames, deterministic `sid` allocation. |
+| `zipline_bundle/bundle.py` | Zipline `ingest` callable orchestrating `AssetDBWriter`, `BcolzDailyBarWriter`, and `SQLiteAdjustmentWriter` from the data source output. |
+| `zipline_bundle/extension.py` | Sample `~/.zipline/extension.py` that registers the `fonrex` bundle from environment variables. |
+| `zipline_bundle/cli.py` | `python -m zipline_bundle preview|ingest` helper for pipelines that cannot edit `~/.zipline/extension.py`. |
 
 ## Data Model
 
@@ -1203,6 +1208,7 @@ Test coverage (38 files):
 - `tests/test_news_service.py`: 31 tests covering the 7 providers (fetch, parsing, silent exceptions), URL+UTM+trailing slash deduplication and title similarity (`difflib`), Redis cache (hit/miss), resilience (one provider crashes → others continue), PostgreSQL upsert, language filter, and URL normalization.
 - `tests/test_dcf_service.py`: 10 unit tests validating detailed WACC calculation (CAPM, cost of debt, 5%-20% bounds), FCF, EPS, and DDM projection and discount models, robust consensus calculation, safeguards against division by zero or negative denominators (when growth exceeds WACC), and sensitivity matrices shape.
 - `tests/test_monitoring.py`: 44 unit tests covering the `ValidationLayer` (range checks on exact bounds, outlier consensus, filtered median, `validate_results` integration with outlier/out-of-range rejection, never-raises, dict/Pydantic field extraction), the `CanaryMonitor` (EU-only compatibility, canary checks ok/out-of-range/null/boundary, daily stats aggregation, Redis update via `fakeredis`), Pydantic schemas (`ProviderStatus`, `ProviderHealthSummary`, `DailyStatSchema`, `HealthStatsResponse`), and router endpoints (`TestClient`: 503 without config, canary trigger, Redis read via `httpx.AsyncClient`).
+- `tests/test_zipline_bundle.py`: 11 unit tests exercising the Zipline bundle without requiring `zipline-reloaded` — SQLite in-memory `prices_eod`, primary listing ranking, ticker whitelist filter, session alignment via a `sessions_in_range` stub, `adj_close` precedence over `close`, NaN volume normalisation, empty-input fall-through, and orchestration of fake `AssetDBWriter` / `BcolzDailyBarWriter` / `SQLiteAdjustmentWriter` writers by `FonRexBundle.ingest`.
 
 ## Alembic Migrations
 
@@ -1220,6 +1226,81 @@ Test coverage (38 files):
 | 010 | `010_news_articles.py` | Creation of `news_articles` table (FK → `assets.id`, unique `url`, 3 indexes); attempt at 90 days TimescaleDB retention policy (silently ignored if standard table) |
 | 011 | `011_provider_health.py` | Creation of `provider_health_log` (composite PK `(id, checked_at)`, TimescaleDB hypertable conversion, 30 days retention, 2 indexes), `provider_health_daily` (unique `(provider_name, date)`, 1 index), `provider_alerts` (2 indexes on `(provider_name, is_resolved)` and `(severity, is_resolved)`) |
 | 012 | `012_alembic_schema_authority.py` | Alembic takeover of hypertables, compression, and weekly/monthly continuous aggregates historically created by the PostgreSQL bootstrap. |
+
+## Zipline Bundle (Backtesting Integration)
+
+The `zipline_bundle/` package exposes FonRex historical data to the [`zipline-reloaded`](https://github.com/stefan-jansen/zipline-reloaded) backtesting engine without exporting intermediary CSV files or shipping a parallel dataset.
+
+### Runtime Boundary
+
+- The FastAPI runtime **never** imports `zipline`. `zipline-reloaded` is an optional developer dependency documented in [docs/zipline-bundle.md](docs/zipline-bundle.md) and is not listed in `requirements.txt` to keep the API container free of `bcolz`, `empyrical`, `tables`, and other heavy transitive dependencies.
+- `zipline_bundle.data_source` is Zipline-free by design: it only depends on `pandas` and `sqlalchemy` (both already required by FonRex), which allows the CI to exercise the extraction pipeline in isolation.
+
+### Ingestion Flow
+
+```mermaid
+flowchart LR
+    subgraph "Zipline CLI"
+        CLI["zipline ingest -b fonrex"]
+        Ext["~/.zipline/extension.py"]
+    end
+    subgraph FonRex
+        Data["FonRexBundleDataSource\n(SQLAlchemy sync)"]
+        Bundle["FonRexBundle.ingest"]
+    end
+    subgraph "Zipline Writers"
+        Assets["AssetDBWriter\nassets.sqlite"]
+        Bars["BcolzDailyBarWriter\ndaily_equities.bcolz"]
+        Adj["SQLiteAdjustmentWriter\nadjustments.sqlite"]
+    end
+    subgraph "FonRex Storage"
+        DB[(PostgreSQL / TimescaleDB\nprices_eod)]
+    end
+
+    CLI --> Ext --> Bundle
+    Bundle --> Data
+    Data --> DB
+    Bundle --> Assets
+    Bundle --> Bars
+    Bundle --> Adj
+```
+
+### Design Decisions
+
+- **Reads `prices_eod` at daily resolution only.** The Zipline daily bar writer accepts one bar per session; minute-level data (`prices_intraday`) is not exposed for now.
+- **Deterministic `sid` allocation.** Listings are ranked by `is_primary` then `is_active` then `asset_listings.id`, and `sid` values are assigned in the order symbols are yielded (0..n-1). Two consecutive ingests over the same window produce identical `sid` mappings.
+- **`adj_close` wins over `close`.** When a row exposes `adj_close`, the bundle propagates it as the Zipline `close` so backtests run on split/dividend-adjusted prices out of the box, matching the historical behaviour of the yfinance ingestion path.
+- **Session alignment.** The bundle intersects rows with `calendar.sessions_in_range(start, end)` before handing them to `BcolzDailyBarWriter`, which otherwise rejects timestamps outside the trading calendar. When the calendar API is unavailable (older Zipline versions), the alignment step is skipped gracefully.
+- **Empty adjustments.** FonRex does not track corporate actions as first-class rows yet: the bundle passes empty splits/dividends DataFrames to `SQLiteAdjustmentWriter` so the schema initialises correctly, and relies on `adj_close` for adjusted pricing. Extending the bundle is a matter of filling those DataFrames from a future `corporate_actions` table.
+
+### Public API
+
+```python
+from zipline_bundle import (
+    FonRexBundle,              # ingest callable class
+    FonRexBundleDataSource,    # SQL extraction (test-friendly)
+    fonrex_equities,           # factory returning a Zipline-compatible ingest
+    register_fonrex_bundle,    # convenience wrapper around zipline.data.bundles.register
+    TickerMetadata,
+    TickerBars,
+)
+```
+
+### CLI
+
+Two subcommands are exposed as `python -m zipline_bundle`:
+
+- `preview --start <date> --end <date>` — prints the tickers, sid allocation, and row counts the bundle would generate. Does not require Zipline to be installed.
+- `ingest --start <date> --end <date> [--tickers ...] [--calendar ...]` — registers the bundle in-process and triggers `zipline.data.bundles.ingest`. Requires `zipline-reloaded`.
+
+### Configuration Reference
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgresql://fonrex:fonrex@localhost:5432/fonrex` | SQLAlchemy URL. `postgresql+asyncpg://` URLs are auto-normalised to the sync driver. |
+| `FONREX_BUNDLE_NAME` | `fonrex` | Bundle name registered with Zipline. |
+| `FONREX_BUNDLE_TICKERS` | *(empty)* | Comma-separated whitelist. Empty means "every asset with EOD rows in the window". |
+| `FONREX_BUNDLE_CALENDAR` | `NYSE` | Zipline trading calendar name. Use `XPAR`, `XETR`, `XLON`, `XSWX` etc. for non-US markets. |
 
 ## Vigilance Points
 

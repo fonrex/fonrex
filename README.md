@@ -77,6 +77,9 @@ curl "http://localhost:5000/technical/AIR.PA?indicator=rsi&period=14"
 # DCF valuation
 curl "http://localhost:5000/dcf/AIR.PA"
 
+# Macro-economic rates
+curl "http://localhost:5000/macro/rates"
+
 # Latest news
 curl "http://localhost:5000/news/AIR.PA"
 
@@ -118,7 +121,7 @@ ws.onmessage = (e) => {
 | **Specialized** | JustETF (UCITS ETFs), SEC Edgar (insider transactions), OpenFIGI, Index Constituents |
 
 **Deep fundamentals stored in 8 dedicated tables:**
-- `fundamentals_highlights` — 50+ metrics (P/E, ROE, ROA, EV/EBITDA, beta, short interest...)
+- `fundamentals_highlights` — 50+ metrics (P/E, ROE, ROA, EV/EBITDA, beta, solvency ratios, short interest...)
 - `financial_statements` — income, balance sheet, cash flow (annual + quarterly)
 - `earnings_history` — EPS actual vs estimate, surprise %
 - `earnings_trend` — analyst consensus (0q, +1q, 0y, +1y)
@@ -150,7 +153,7 @@ GET /technical/AIR.PA/chart?indicators=sma_20,bbands_20
 ```
 
 ### DCF Valuation (3 models)
-Intrinsic value calculated entirely from data already in your database — no external API required.
+Intrinsic value calculated using fundamentals and dynamic macro-economic data (FRED API with local cache).
 
 | Model | When used | Formula |
 |---|---|---|
@@ -289,6 +292,7 @@ Multi-currency is handled correctly: one row in `assets`, one row per listing in
 | POST | `/health/canary/run` | Trigger canary check (background) | — |
 | GET | `/health/canary/history` | Historical canary results | — |
 | GET | `/health/stats` | Global validation quality statistics | — |
+| GET | `/macro/rates` | Current macro-economic rates (FRED API) | 6h |
 
 ---
 
@@ -370,6 +374,8 @@ etf_details               — TER, AUM, replication, performance
 etf_holdings              — top holdings with weights
 outstanding_shares_history
 news_articles             — 90d retention, dedup on URL
+
+macro_rates_cache         — FRED macro-economic series cache
 
 provider_health_log       — TimescaleDB hypertable (30d retention, canary + realtime checks)
 provider_health_daily     — daily aggregate per provider

@@ -1,6 +1,6 @@
 # Technical Architecture FonRex
 
-Last update: 2026-08-31 (legacy cleanup: `eod/`, `record/`, `fundamental/providers/`, `data_service.py`, `init_db.py`, `seed_assets.py`; ISIN-deduplicated import revamp; migration 009; `clean_isin_duplicates` script; NewsService addition with 7 news providers, `news_articles` table, migration 010; structuring formatting modules and exchange mappings; addition of financial valuation module and DCF/WACC calculations, Phase 11; addition of provider monitoring system with ValidationLayer, CanaryMonitor, alerts and 7 health endpoints, `provider_health_log`/`provider_health_daily`/`provider_alerts` tables, migration 011, Phase 12; addition of the Zipline bundle backtesting integration in `zipline_bundle/`, Phase 13).
+Last update: 2026-09-08 (legacy cleanup: `eod/`, `record/`, `fundamental/providers/`, `data_service.py`, `init_db.py`, `seed_assets.py`; ISIN-deduplicated import revamp; migration 009; `clean_isin_duplicates` script; NewsService addition with 7 news providers, `news_articles` table, migration 010; structuring formatting modules and exchange mappings; addition of financial valuation module and DCF/WACC calculations, Phase 11; addition of provider monitoring system with ValidationLayer, CanaryMonitor, alerts and 7 health endpoints, `provider_health_log`/`provider_health_daily`/`provider_alerts` tables, migration 011, Phase 12; addition of the Zipline bundle backtesting integration in `zipline_bundle/`, Phase 13; solvency ratio calculations and FRED macro-economic service for DCF, migration 013).
 
 This document describes the architecture actually observed in the source code. FonRex Pro is a FastAPI API that aggregates market data, fundamentals, asset metadata, and financial news. The system combines PostgreSQL/TimescaleDB, Redis, yfinance, asynchronous web providers, an ISIN-based CSV import, a multi-source news aggregation engine, and an automated provider health monitoring system.
 
@@ -101,6 +101,7 @@ At application startup, `main.py` initializes:
 - An asynchronous Redis client for specific endpoints.
 - `FinancialsAggregator` for `/fundamental` routes.
 - `NewsService` for `/news` routes, initialized with the shared async SQLAlchemy session factory and async Redis client.
+- `FREDService` for macro-economic series extraction (e.g. risk-free rate).
 - `ValidationLayer` for real-time validation of values returned by providers, initialized with a dedicated `async_sessionmaker`.
 - `CanaryMonitor` for daily provider health checks, initialized with the same `async_sessionmaker` and Redis client.
 - `AsyncIOScheduler` (APScheduler) to schedule the daily canary check execution (default 06:00 UTC, configurable via `CANARY_RUN_HOUR`).
@@ -173,7 +174,10 @@ At application startup, `main.py` initializes:
 | `news/providers/investing_news.py` | Investing.com news: anti-Cloudflare headers, 403 detection, `-news` slug. |
 | `news/providers/marketwatch_news.py` | MarketWatch news: `countrycode` query param for EU tickers, `<time dateTime>`. |
 | `news/providers/msn_finance_news.py` | MSN Finance news: internal JSON endpoint + HTML fallback. |
+| `macro/__init__.py` | Macro package exposing the FRED service. |
+| `macro/fred_service.py` | Service to retrieve and cache macroeconomic series (like Risk-Free Rate) from FRED API, with a fallback to the database. |
 | `schemas/news.py` | Pydantic v2 schemas for the news system: `RawNewsItem`, `NewsArticleSchema`, `NewsResponse`, `NewsFeedResponse`, `NewsLanguage` / `NewsSentiment` enums. |
+| `schemas/macro.py` | Pydantic v2 schemas for macroeconomic rates response. |
 | `monitoring/__init__.py` | Monitoring package exposing `ValidationLayer` and `CanaryMonitor`. |
 | `monitoring/models.py` | Pydantic-independent business models for canary results and statuses. |
 | `monitoring/ports.py` | Persistence contracts required by validation and canary controls. |
@@ -183,6 +187,7 @@ At application startup, `main.py` initializes:
 | `monitoring/canary_monitor.py` | Daily orchestration of canary controls, aggregates, and alerts via ports. |
 | `database/monitoring.py` | SQLAlchemy monitoring adapter: price history, logs, aggregates, and alerts. |
 | `routers/monitoring.py` | 7 REST monitoring endpoints (`/health/*`) whose dependencies are resolved from `app.state`. |
+| `routers/macro.py` | HTTP routes for macro-economic data (FRED rates). |
 | `historical/providers.py` | yfinance and TradingView connectors for retrieving historical bars. |
 | `historical/normalization.py` | Pure OHLCV validation, deduplication, and normalization rules. |
 | `schemas/monitoring.py` | Pydantic v2 schemas for monitoring: `ProviderStatus`, `ProviderHealthSummary`, `CanaryCheckResult`, `ValidationResult`, `AlertSchema`, `DailyStatSchema`, `HealthStatus`, `AlertSeverity`, `AlertType` enums. |
@@ -227,6 +232,16 @@ erDiagram
     ASSETS ||--o{ PRICES_INTRADAY : "has intraday prices"
     ASSETS ||--o| REALTIME_SUBSCRIPTIONS : "has a realtime subscription"
     ASSETS ||--o{ NEWS_ARTICLES : "has news"
+
+    MACRO_RATES_CACHE {
+        int id PK
+        string series_id
+        string label
+        numeric value
+        string unit
+        date observation_date
+        timestamp fetched_at
+    }
 
     PROVIDER_HEALTH_LOG {
         int id PK
@@ -371,6 +386,12 @@ erDiagram
         numeric dividend_yield
         numeric beta
         bigint shares_outstanding
+        numeric debt_to_equity_ratio
+        numeric debt_to_assets_ratio
+        numeric net_debt_to_ebitda
+        numeric interest_coverage_ratio
+        numeric actual_cost_of_debt
+        string cost_of_debt_source
     }
 
     FINANCIAL_STATEMENTS {
@@ -586,6 +607,7 @@ This logic notably fixes cases where `TSLA` could refer to Tesla Inc. or an ETP/
 | POST | `/health/canary/run` | Manual canary check trigger (background, by provider or global) |
 | GET | `/health/canary/history` | Canary results history (filterable by provider, ticker, period) |
 | GET | `/health/stats` | Global data quality statistics (7 days, validity rate, reliable providers) |
+| GET | `/macro/rates` | Retrieve current macro-economic rates (like the risk-free rate) |
 
 ### `/fundamental` Endpoint
 
@@ -884,6 +906,7 @@ Two Redis uses coexist:
 | `insider_transactions` | 43 200 s (12 h) | SEC declarations |
 | `dcf` | 21 600 s (6 h) | Default or comparative DCF valuation results |
 | `dcf_sensitivity` | 21 600 s (6 h) | WACC vs Terminal Growth sensitivity matrix |
+| `macro_rates` | 21 600 s (6 h) | FRED macro rates |
 
 - Async Redis client in `main.py` for specific endpoints, notably history, realtime streaming (Pub/Sub + quote snapshot), and news cache.
 
@@ -1005,8 +1028,9 @@ flowchart TD
     DB --> ET["EarningsTrend : growth consensus"]
     DB --> AR["AnalystRatings : analyst target"]
     
-    Service --> WACC["On-the-fly WACC Calculation"]
-    WACC --> Ke["Cost of equity: CAPM = Rf + Beta * ERP"]
+    Service --> FRED["FREDService: Dynamic Risk-Free Rate"]
+    FRED --> WACC["On-the-fly WACC Calculation"]
+    WACC --> Ke["Cost of equity: CAPM = Dynamic Rf + Beta * ERP"]
     WACC --> Kd["Cost of debt: Interest / Debt"]
     WACC --> Weight["Weightings: MarketCap vs Debt"]
     WACC --> Clamp["Regulatory clamping: 5% to 20%"]
@@ -1035,6 +1059,10 @@ flowchart TD
 3. **Dividend Discount Model (DDM)**: 
    - Gordon discount model on projected dividends.
    - Requires actual dividend distribution by the company; if no dividend is distributed, the model raises an error or is excluded from the overall comparison (with a warning).
+
+### FRED Macro-Economic Service
+
+The `FREDService` fetches macroeconomic series dynamically, such as the 10-Year Treasury Constant Maturity Rate (`DGS10`) used as the Risk-Free Rate in WACC calculations. It uses a database cache (`macro_rates_cache`) to avoid rate limits and falls back to it in case of API failure.
 
 ### Weighting and Consensus
 
@@ -1226,6 +1254,7 @@ Test coverage (38 files):
 | 010 | `010_news_articles.py` | Creation of `news_articles` table (FK → `assets.id`, unique `url`, 3 indexes); attempt at 90 days TimescaleDB retention policy (silently ignored if standard table) |
 | 011 | `011_provider_health.py` | Creation of `provider_health_log` (composite PK `(id, checked_at)`, TimescaleDB hypertable conversion, 30 days retention, 2 indexes), `provider_health_daily` (unique `(provider_name, date)`, 1 index), `provider_alerts` (2 indexes on `(provider_name, is_resolved)` and `(severity, is_resolved)`) |
 | 012 | `012_alembic_schema_authority.py` | Alembic takeover of hypertables, compression, and weekly/monthly continuous aggregates historically created by the PostgreSQL bootstrap. |
+| 013 | `013_solvency_ratios.py` | Addition of solvency ratios (`debt_to_equity_ratio`, etc.) and cost of debt to `fundamentals_highlights`; creation of `macro_rates_cache` table. |
 
 ## Zipline Bundle (Backtesting Integration)
 

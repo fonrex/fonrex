@@ -52,7 +52,7 @@ test: ## Run unit and integration tests with pytest
 	@echo -e "$(GREEN)✅ Tests completed$(NC)"
 
 test-cov: ## Run tests with coverage reporting
-	PYTHONPATH=. $(PYTHON) -m pytest --cov=. --cov-branch --cov-report=term-missing --cov-report=xml --cov-report=json:coverage.json
+	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest --cov=. --cov-branch --cov-report=term-missing --cov-report=xml --cov-report=json:coverage.json
 	$(PYTHON) scripts/check_coverage_distribution.py coverage.json
 
 lint: ## Lint Python source code with Ruff

@@ -66,16 +66,15 @@ class FREDService:
             except Exception as e:
                 logger.warning("Erreur lecture cache Redis %s: %s", redis_key, e)
 
-        # 2. Try FRED API
-        rate = None
-        if self.api_key:
-            rate = await self._fetch_fred_series(series_id, label)
-        else:
-            logger.warning("FRED_API_KEY manquante, impossible de mettre à jour %s depuis l'API.", series_id)
+        # 2. Try PostgreSQL (last known value)
+        rate = await run_sync(self._get_latest_from_db, series_id)
 
-        # 3. Fallback to PostgreSQL (last known value)
+        # 3. Try FRED API
         if not rate:
-            rate = await run_sync(self._get_latest_from_db, series_id)
+            if self.api_key:
+                rate = await self._fetch_fred_series(series_id, label)
+            else:
+                logger.warning("FRED_API_KEY manquante, impossible de mettre à jour %s depuis l'API.", series_id)
 
         # Cache in Redis for the next requests
         if rate and self.redis_client:

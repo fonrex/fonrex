@@ -842,6 +842,7 @@ class YFinanceEnricher:
                 session.close()
         except Exception as e:
             logger.error("Erreur _fetch_solvency_ratios asset_id=%s: %s", asset_id, e)
+            raise
 
     def _weighted_average_cost_of_debt(self, statements: list) -> tuple[Decimal | None, str]:
         """Calcule le coût de la dette pondéré sur 3 ans maximum (50% / 30% / 20%)."""

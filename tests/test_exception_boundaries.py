@@ -22,7 +22,7 @@ def _broad_handlers(path: Path) -> list[int]:
 def test_no_bare_except_in_application_code():
     offenders = {}
     for path in ROOT.rglob("*.py"):
-        if "venv" in path.parts or "tests" in path.parts:
+        if "venv" in path.parts or ".venv" in path.parts or "tests" in path.parts:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         lines = [

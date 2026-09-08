@@ -8,7 +8,7 @@ ROOT = Path(__file__).parents[1]
 
 def _application_files():
     for path in ROOT.rglob("*.py"):
-        if {"venv", "tests", "scratch"}.intersection(path.parts):
+        if {"venv", ".venv", "tests", "scratch"}.intersection(path.parts):
             continue
         yield path
 

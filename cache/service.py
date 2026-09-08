@@ -51,6 +51,8 @@ class CacheService:
         # Valuation DCF (Phase 11)
         "dcf": 21600,  # 6h — DCF par ticker
         "dcf_sensitivity": 21600,  # 6h — matrice sensibilité
+        # Macro Rates (Phase 13)
+        "macro_rates": 21600,  # 6h — taux FRED
     }
 
     def __init__(self, redis_url=None, ttl=300, ttl_by_type=None):

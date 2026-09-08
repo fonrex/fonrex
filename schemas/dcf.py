@@ -10,6 +10,8 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from schemas.macro import SolvencyRatios
+
 
 class WACCInput(BaseModel):
     """Paramètres d'entrée personnalisés pour le calcul du WACC."""
@@ -61,6 +63,12 @@ class WACCResult(BaseModel):
     weight_equity: Decimal
     weight_debt: Decimal
     beta_used: Decimal
+    cost_of_debt_source: Optional[str] = Field(
+        None, description="Source du Kd (client_override, calculated, sector_estimate)"
+    )
+    risk_free_rate_source: Optional[str] = Field(
+        None, description="Source du Rf (client_override, fred_live, fred_cached, env_fallback)"
+    )
 
 
 class DCFModelResult(BaseModel):
@@ -85,6 +93,9 @@ class DCFResult(BaseModel):
     shares_outstanding: Optional[int] = None
     wacc: WACCResult
     models: Dict[str, DCFModelResult]
+    solvency: Optional[SolvencyRatios] = Field(
+        None, description="Ratios de solvabilité et données d'endettement sous-jacentes"
+    )
     consensus_value: Optional[Decimal] = None
     consensus_upside_pct: Optional[Decimal] = None
     analyst_target: Optional[Decimal] = None

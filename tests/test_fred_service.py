@@ -1,10 +1,8 @@
-import json
 from datetime import date
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import httpx
 
 from macro.fred_service import FREDService
 from schemas.macro import MacroRate

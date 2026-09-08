@@ -9,8 +9,9 @@ Modifications :
     2. Ajouter 2 colonnes de coût de la dette réel
     3. Créer la table macro_rates_cache pour les taux FRED
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = '013'
 down_revision = '012'

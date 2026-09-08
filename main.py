@@ -20,6 +20,7 @@ from documentation import get_api_documentation
 from financials.router import router as financials_router
 from financials.service import FinancialsAggregator
 from historical.ingestion_service import HistoricalIngestionService
+from macro.fred_service import FREDService
 from monitoring.canary_monitor import CanaryMonitor
 from monitoring.validation_layer import ValidationLayer
 from news.news_service import NewsService
@@ -29,15 +30,14 @@ from routers.admin import router as admin_router
 from routers.assets import router as assets_router
 from routers.fundamentals import router as fundamentals_router
 from routers.historical import router as historical_router
+from routers.macro import router as macro_router
 from routers.monitoring import router as monitoring_router
 from routers.news import router as news_router
 from routers.realtime import router as realtime_router
 from routers.specialized import router as specialized_router
 from routers.technical import router as technical_router
 from routers.valuation import router as valuation_router
-from routers.macro import router as macro_router
 from valuation.dcf_service import DCFService
-from macro.fred_service import FREDService
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from models import Asset, FinancialStatement, FundamentalsHighlights
+from models import FinancialStatement, FundamentalsHighlights
 from schemas.dcf import WACCInput
 from valuation.dcf_service import DCFService
 

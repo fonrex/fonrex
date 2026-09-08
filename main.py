@@ -20,6 +20,7 @@ from documentation import get_api_documentation
 from financials.router import router as financials_router
 from financials.service import FinancialsAggregator
 from historical.ingestion_service import HistoricalIngestionService
+from macro.fred_service import FREDService
 from monitoring.canary_monitor import CanaryMonitor
 from monitoring.validation_layer import ValidationLayer
 from news.news_service import NewsService
@@ -29,6 +30,7 @@ from routers.admin import router as admin_router
 from routers.assets import router as assets_router
 from routers.fundamentals import router as fundamentals_router
 from routers.historical import router as historical_router
+from routers.macro import router as macro_router
 from routers.monitoring import router as monitoring_router
 from routers.news import router as news_router
 from routers.realtime import router as realtime_router
@@ -68,6 +70,7 @@ app.include_router(assets_router)
 app.include_router(fundamentals_router)
 app.include_router(specialized_router)
 app.include_router(realtime_router)
+app.include_router(macro_router)
 
 app.include_router(monitoring_router)
 
@@ -206,9 +209,10 @@ def configure_application_state(application: FastAPI):
         "realtime_worker",
         "news_service",
         "dcf_service",
-        "validation_layer",
         "canary_monitor",
         "canary_scheduler",
+        "fred_service",
+        "validation_layer",
     ):
         setattr(application.state, state_name, None)
 
@@ -275,7 +279,14 @@ async def startup_event(application: FastAPI):
         logger.warning("⚠️ NewsService not started: %s", exc)
 
     try:
-        state.dcf_service = DCFService(state.db_service, state.redis_client)
+        state.fred_service = FREDService(state.db_service, state.redis_client)
+        logger.info("📊 FREDService started")
+    except Exception as exc:
+        state.fred_service = None
+        logger.warning("⚠️ FREDService not started: %s", exc)
+
+    try:
+        state.dcf_service = DCFService(state.db_service, state.redis_client, state.fred_service)
         logger.info("📈 DCFService started")
     except Exception as exc:
         state.dcf_service = None
@@ -354,10 +365,11 @@ async def shutdown_event(application: FastAPI):
         "financials_service",
         "cache_service",
         "redis_client",
-        "query_service",
         "db_service",
+        "query_service",
         "async_session_factory",
         "async_db_resources",
+        "fred_service",
     ):
         setattr(state, state_name, None)
     state.db_available = None

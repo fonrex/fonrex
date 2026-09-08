@@ -130,6 +130,17 @@ class YFinanceEnricher:
             "errors": [str(r) for r in results if isinstance(r, Exception)],
         }
 
+        # Calculer les ratios de solvabilité si les statements et highlights ont réussi
+        if summary["highlights"] and summary["statements"]:
+            try:
+                await run_sync(self._fetch_solvency_ratios, asset_id)
+                summary["solvency"] = True
+            except Exception as e:
+                summary["solvency"] = False
+                summary["errors"].append(str(e))
+        else:
+            summary["solvency"] = False
+
         if summary["errors"]:
             logger.warning(
                 "Enrichissement yfinance %s (asset_id=%s) — erreurs: %s",
@@ -763,3 +774,98 @@ class YFinanceEnricher:
                 session.close()
         except Exception as e:
             logger.error("Erreur _fetch_gics asset_id=%s: %s", asset_id, e)
+
+    # ------------------------------------------------------------------
+    # Solvency Ratios & Cost of Debt (Phase 13)
+    # ------------------------------------------------------------------
+
+    def _fetch_solvency_ratios(self, asset_id: int) -> None:
+        """Calcule les ratios de solvabilité et le coût de la dette à partir des données en base."""
+        try:
+            from models import FinancialStatement, FundamentalsHighlights
+            
+            session = self.db_service.get_session()
+            try:
+                # 1. Récupérer les états financiers annuels triés par date décroissante
+                statements = (
+                    session.query(FinancialStatement)
+                    .filter_by(asset_id=asset_id, period_type="annual")
+                    .order_by(FinancialStatement.period_end.desc())
+                    .limit(3)
+                    .all()
+                )
+                
+                if not statements:
+                    return
+
+                latest = statements[0]
+                
+                highlights = session.query(FundamentalsHighlights).filter_by(asset_id=asset_id).first()
+                if not highlights:
+                    return
+
+                # Extraction sécurisée des valeurs
+                total_debt = _to_decimal(latest.total_debt) or Decimal("0")
+                total_equity = _to_decimal(latest.total_equity) or Decimal("0")
+                total_assets = _to_decimal(latest.total_assets) or Decimal("0")
+                cash = _to_decimal(latest.cash_and_equivalents) or Decimal("0")
+                ebitda = _to_decimal(latest.ebitda) or _to_decimal(highlights.ebitda_ttm) or Decimal("0")
+                interest_expense = abs(_to_decimal(latest.interest_expense) or Decimal("0"))
+                ebit = _to_decimal(latest.operating_income) or Decimal("0")
+
+                # Calcul des ratios (protection division par zéro)
+                # Debt to Equity
+                if total_equity > 0:
+                    highlights.debt_to_equity_ratio = total_debt / total_equity
+                
+                # Debt to Assets
+                if total_assets > 0:
+                    highlights.debt_to_assets_ratio = total_debt / total_assets
+                    
+                # Net Debt to EBITDA
+                net_debt = total_debt - cash
+                if ebitda > 0:
+                    highlights.net_debt_to_ebitda = net_debt / ebitda
+                
+                # Interest Coverage Ratio
+                if interest_expense > 0:
+                    highlights.interest_coverage_ratio = ebit / interest_expense
+
+                # Coût de la dette réel (moyenne pondérée sur 3 ans)
+                actual_cod, source = self._weighted_average_cost_of_debt(statements)
+                highlights.actual_cost_of_debt = actual_cod
+                highlights.cost_of_debt_source = source
+
+                session.commit()
+                logger.debug("Solvency ratios mis à jour pour asset_id=%s", asset_id)
+            finally:
+                session.close()
+        except Exception as e:
+            logger.error("Erreur _fetch_solvency_ratios asset_id=%s: %s", asset_id, e)
+            raise
+
+    def _weighted_average_cost_of_debt(self, statements: list) -> tuple[Decimal | None, str]:
+        """Calcule le coût de la dette pondéré sur 3 ans maximum (50% / 30% / 20%)."""
+        if not statements:
+            return None, "sector_estimate"
+
+        weights = [Decimal("0.5"), Decimal("0.3"), Decimal("0.2")]
+        total_weight = Decimal("0")
+        weighted_cost = Decimal("0")
+
+        for i, stmt in enumerate(statements[:3]):
+            interest = abs(_to_decimal(stmt.interest_expense) or Decimal("0"))
+            debt = _to_decimal(stmt.total_debt) or Decimal("0")
+            
+            if debt > 0 and interest > 0:
+                cost = interest / debt
+                # Clamp cost between 0.5% and 25%
+                cost = max(Decimal("0.005"), min(Decimal("0.25"), cost))
+                weighted_cost += cost * weights[i]
+                total_weight += weights[i]
+        
+        if total_weight > 0:
+            final_cost = weighted_cost / total_weight
+            return final_cost.quantize(Decimal("0.000001")), "calculated"
+        
+        return None, "sector_estimate"

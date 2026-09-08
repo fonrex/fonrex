@@ -36,9 +36,10 @@ logger = logging.getLogger(__name__)
 class DCFService:
     """Financial valuation service using Discounted Cash Flow (DCF) methodology."""
 
-    def __init__(self, db_service, redis_client=None):
+    def __init__(self, db_service, redis_client=None, fred_service=None):
         self.db_service = db_service
         self.redis = redis_client
+        self.fred = fred_service
 
     def _dec(self, val) -> Decimal:
         """Safely converts a value to Decimal, returning 0 if None."""
@@ -56,9 +57,14 @@ class DCFService:
 
     async def compute_dcf(self, ticker: str, request: DCFRequest) -> DCFResult:
         """Run the synchronous SQLAlchemy valuation workflow off the event loop."""
-        return await run_sync(self._compute_dcf_sync, ticker, request)
+        rf_fred, rf_source = None, None
+        if self.fred:
+            rf_fred, rf_source = await self.fred.get_risk_free_rate()
+        return await run_sync(self._compute_dcf_sync, ticker, request, rf_fred, rf_source)
 
-    def _compute_dcf_sync(self, ticker: str, request: DCFRequest) -> DCFResult:
+    def _compute_dcf_sync(self, ticker: str, request: DCFRequest, 
+                          rf_fred: Optional[Decimal] = None, 
+                          rf_source: Optional[str] = None) -> DCFResult:
         """
         Computes the DCF valuation for a given ticker.
         """
@@ -135,7 +141,7 @@ class DCFService:
                 raise ValueError(f"Invalid or missing shares outstanding for {ticker}.")
 
             # 4. Compute WACC
-            wacc_res = self._compute_wacc(highlights, statements, request.wacc_params)
+            wacc_res = self._compute_wacc(highlights, statements, request.wacc_params, rf_fred, rf_source)
 
             # 5. Compute requested models
             model_results: Dict[str, DCFModelResult] = {}
@@ -203,6 +209,17 @@ class DCFService:
                 self._dec(ratings.target_mean) if ratings and ratings.target_mean else None
             )
 
+            # Solvency Ratios
+            from schemas.macro import SolvencyRatios
+            solvency = SolvencyRatios(
+                debt_to_equity_ratio=highlights.debt_to_equity_ratio,
+                debt_to_assets_ratio=highlights.debt_to_assets_ratio,
+                net_debt_to_ebitda=highlights.net_debt_to_ebitda,
+                interest_coverage_ratio=highlights.interest_coverage_ratio,
+                actual_cost_of_debt=highlights.actual_cost_of_debt,
+                cost_of_debt_source=highlights.cost_of_debt_source,
+            )
+
             # Build the response
             return DCFResult(
                 ticker=ticker,
@@ -211,6 +228,7 @@ class DCFService:
                 shares_outstanding=shares,
                 wacc=wacc_res,
                 models=model_results,
+                solvency=solvency,
                 consensus_value=consensus_val,
                 consensus_upside_pct=consensus_upside,
                 analyst_target=analyst_target,
@@ -225,10 +243,14 @@ class DCFService:
         highlights: FundamentalsHighlights,
         statements: List[FinancialStatement],
         params: Optional[WACCInput],
+        rf_fred: Optional[Decimal] = None,
+        rf_source: Optional[str] = None,
     ) -> WACCResult:
         """Computes the Weighted Average Cost of Capital (WACC)."""
         # Default base parameters
-        risk_free = Decimal("0.04")  # 4%
+        risk_free = rf_fred if rf_fred is not None else Decimal("0.04")
+        current_rf_source = rf_source if rf_source else "env_fallback"
+        
         erp = Decimal("0.055")  # 5.5%
         beta = self._dec(highlights.beta) if highlights.beta else Decimal("1.0")
 
@@ -236,6 +258,7 @@ class DCFService:
         if params:
             if params.risk_free_rate is not None:
                 risk_free = params.risk_free_rate
+                current_rf_source = "client_override"
             if params.equity_risk_premium is not None:
                 erp = params.equity_risk_premium
             if params.beta_override is not None:
@@ -261,12 +284,21 @@ class DCFService:
             total_debt = self._dec(latest_statement.total_debt)
             total_equity = self._dec(latest_statement.total_equity)
 
-        # Cost of debt: Kd = interest_expense / total_debt
-        cost_of_debt = self._safe_div(
-            interest_expense, total_debt, fallback=risk_free + Decimal("0.02")
-        )
+        # Cost of debt: Kd priority
+        cost_of_debt = None
+        current_kd_source = None
+        
         if params and params.cost_of_debt_override is not None:
             cost_of_debt = params.cost_of_debt_override
+            current_kd_source = "client_override"
+        elif highlights.actual_cost_of_debt and highlights.cost_of_debt_source == "calculated":
+            cost_of_debt = self._dec(highlights.actual_cost_of_debt)
+            current_kd_source = "calculated"
+        else:
+            cost_of_debt = self._safe_div(
+                abs(interest_expense), total_debt, fallback=risk_free + Decimal("0.02")
+            )
+            current_kd_source = "sector_estimate"
 
         # Effective tax rate: t = tax_provision / ebit
         tax_rate = self._safe_div(tax_provision, ebit, fallback=Decimal("0.25"))
@@ -302,6 +334,8 @@ class DCFService:
             weight_equity=weight_equity.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
             weight_debt=weight_debt.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
             beta_used=beta.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
+            cost_of_debt_source=current_kd_source,
+            risk_free_rate_source=current_rf_source,
         )
 
     def _dcf_fcf(

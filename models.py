@@ -344,6 +344,16 @@ class FundamentalsHighlights(Base):
     revenue_ttm = Column(Numeric(20, 2))
     ebitda_ttm = Column(Numeric(20, 2))
 
+    # Solvabilité (Phase 13)
+    debt_to_equity_ratio = Column(Numeric(10, 4))
+    debt_to_assets_ratio = Column(Numeric(10, 6))
+    net_debt_to_ebitda = Column(Numeric(10, 4))
+    interest_coverage_ratio = Column(Numeric(10, 4))
+
+    # Coût de la dette (Phase 13)
+    actual_cost_of_debt = Column(Numeric(8, 6))
+    cost_of_debt_source = Column(String(20))  # "calculated"|"sector_estimate"
+
     asset = relationship("Asset", back_populates="highlights")
 
 
@@ -819,6 +829,23 @@ class ProviderAlert(Base):
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     is_resolved = Column(Boolean, default=False)
     resolution_note = Column(Text, nullable=True)
+
+
+class MacroRateCache(Base):
+    """Cache local des séries de taux FRED, rafraîchi périodiquement."""
+    __tablename__ = "macro_rates_cache"
+    __table_args__ = (
+        UniqueConstraint("series_id", "observation_date",
+                         name="uq_macro_rate_series_date"),
+        Index("ix_macro_rates_series_date", "series_id", "observation_date"),
+    )
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    series_id        = Column(String(30), nullable=False)
+    label            = Column(String(100))
+    value            = Column(Numeric(10, 6), nullable=False)
+    unit             = Column(String(10))
+    observation_date = Column(Date, nullable=False)
+    fetched_at       = Column(DateTime(timezone=True), server_default=func.now())
 
 
 def cleanup_old_data(days_to_keep=730):  # 2 ans par défaut

@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import httpx
 
+from concurrency import run_sync
 from models import MacroRateCache
 from schemas.macro import MacroRate, MacroRatesResponse
 
@@ -74,7 +75,7 @@ class FREDService:
 
         # 3. Fallback to PostgreSQL (last known value)
         if not rate:
-            rate = self._get_latest_from_db(series_id)
+            rate = await run_sync(self._get_latest_from_db, series_id)
 
         # Cache in Redis for the next requests
         if rate and self.redis_client:
@@ -143,7 +144,7 @@ class FREDService:
                 )
                 
                 # Save to DB
-                self._upsert_rate(rate)
+                await run_sync(self._upsert_rate, rate)
                 
                 return rate
         except Exception as e:

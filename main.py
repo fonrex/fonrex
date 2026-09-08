@@ -212,6 +212,7 @@ def configure_application_state(application: FastAPI):
         "canary_monitor",
         "canary_scheduler",
         "fred_service",
+        "validation_layer",
     ):
         setattr(application.state, state_name, None)
 
@@ -365,6 +366,7 @@ async def shutdown_event(application: FastAPI):
         "cache_service",
         "redis_client",
         "db_service",
+        "query_service",
         "async_session_factory",
         "async_db_resources",
         "fred_service",

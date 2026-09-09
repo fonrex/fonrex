@@ -49,7 +49,7 @@ function configureApiKey() {
       return;
     }
     PropertiesService.getUserProperties().setProperty('FONREX_API_KEY', key);
-    _updateConfigSheetStatus();
+    _updateConfigSheetStatus(false);
     ui.alert('API key saved successfully.');
   }
 }
@@ -103,18 +103,18 @@ function refreshFundamentals() {
       return [
         ticker,
         data.asset_profile ? data.asset_profile.name : '',
-        data.asset_profile ? (data.asset_profile.sector || '') : '',
-        data.highlights ? (data.highlights.market_cap || '') : '',
-        data.highlights ? (data.highlights.pe_ratio || '') : '',
-        data.highlights ? (data.highlights.peg_ratio || '') : '',
-        data.highlights ? (data.highlights.roe || '') : '',
-        data.highlights ? (data.highlights.roa || '') : '',
-        data.highlights ? (data.highlights.dividend_yield || '') : '',
-        data.solvency ? (data.solvency.debt_to_equity_ratio || '') : '',
-        data.solvency ? (data.solvency.net_debt_to_ebitda || '') : '',
-        data.highlights ? (data.highlights.beta || '') : '',
-        data.highlights ? (data.highlights.week_52_high || '') : '',
-        data.highlights ? (data.highlights.week_52_low || '') : '',
+        '', // Sector removed as it is not present in asset_profile of this endpoint
+        data.highlights ? (data.highlights.market_cap ?? '') : '',
+        data.highlights ? (data.highlights.pe_ratio ?? '') : '',
+        data.highlights ? (data.highlights.peg_ratio ?? '') : '',
+        data.highlights ? (data.highlights.roe ?? '') : '',
+        data.highlights ? (data.highlights.roa ?? '') : '',
+        data.highlights ? (data.highlights.dividend_yield ?? '') : '',
+        data.highlights ? (data.highlights.debt_to_equity_ratio ?? '') : '',
+        data.highlights ? (data.highlights.net_debt_to_ebitda ?? '') : '',
+        data.highlights ? (data.highlights.beta ?? '') : '',
+        data.highlights ? (data.highlights.week_52_high ?? '') : '',
+        data.highlights ? (data.highlights.week_52_low ?? '') : '',
         new Date().toISOString(),
       ];
     } catch (e) {
@@ -169,9 +169,8 @@ function refreshDCF() {
   }
 
   const headers = [
-    'Ticker', 'Model Used', 'Intrinsic Value', 'Current Price',
-    'Upside/Downside %', 'WACC', 'Cost of Debt Source',
-    'Risk-Free Rate Source', 'Confidence', 'Last Calculated'
+    'Ticker', 'Consensus Value', 'Current Price',
+    'Consensus Upside %', 'WACC', 'FCF Value', 'Last Calculated'
   ];
   dcfSheet.clearContents();
   dcfSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -181,18 +180,15 @@ function refreshDCF() {
       const data = fetchFonrexEndpoint(`/dcf/${ticker}`, apiKey);
       return [
         ticker,
-        data.dcf_model_used || '',
-        data.intrinsic_value || '',
-        data.current_price || '',
-        data.upside_downside_pct || '',
-        data.wacc_detail ? (data.wacc_detail.wacc || '') : '',
-        data.wacc_detail ? (data.wacc_detail.cost_of_debt_source || '') : '',
-        data.wacc_detail ? (data.wacc_detail.risk_free_rate_source || '') : '',
-        data.confidence || '',
+        data.consensus_value ?? '',
+        data.current_price ?? '',
+        data.consensus_upside_pct ?? '',
+        data.wacc ?? '',
+        data.models ? (data.models.fcf ?? '') : '',
         new Date().toISOString(),
       ];
     } catch (e) {
-      return [ticker, 'ERROR: ' + e.message, '', '', '', '', '', '', '', new Date().toISOString()];
+      return [ticker, 'ERROR: ' + e.message, '', '', '', '', new Date().toISOString()];
     }
   });
 
@@ -250,19 +246,28 @@ function refreshTechnicals() {
 
   const rows = tickers.map(ticker => {
     try {
-      const data = fetchFonrexEndpoint(`/technical?ticker=${ticker}`, apiKey);
+      const data = fetchFonrexEndpoint(`/technical/${ticker}/multi?indicators=rsi,macd,sma_50,sma_200,ema_20,bbands,atr`, apiKey);
+      
+      const getVal = (indKey, sIdx = 0) => {
+        try {
+          const vals = data.indicators[indKey].series[sIdx].values;
+          if (vals.length === 0) return '';
+          return vals[vals.length - 1].v ?? '';
+        } catch(e) { return ''; }
+      };
+
       return [
         ticker,
-        data.rsi_14 || '',
-        data.macd ? (data.macd.macd || '') : '',
-        data.macd ? (data.macd.signal || '') : '',
-        data.macd ? (data.macd.hist || '') : '',
-        data.sma_50 || '',
-        data.sma_200 || '',
-        data.ema_20 || '',
-        data.bollinger ? (data.bollinger.upper || '') : '',
-        data.bollinger ? (data.bollinger.lower || '') : '',
-        data.atr_14 || '',
+        getVal('rsi', 0),
+        getVal('macd', 0),
+        getVal('macd', 2),
+        getVal('macd', 1),
+        getVal('sma_50', 0),
+        getVal('sma_200', 0),
+        getVal('ema_20', 0),
+        getVal('bbands', 2), // Upper
+        getVal('bbands', 0), // Lower
+        getVal('atr', 0),
         new Date().toISOString(),
       ];
     } catch (e) {
@@ -323,13 +328,13 @@ function FONREX_DIVIDEND_YIELD(ticker) {
 }
 
 /**
- * =FONREX_INTRINSIC_VALUE("AIR.PA") — Returns the DCF intrinsic value.
+ * =FONREX_INTRINSIC_VALUE("AIR.PA") — Returns the DCF consensus value.
  *
  * Note: this value is an analytical model result, not a
  * buy or sell recommendation.
  *
  * @param {string} ticker The stock symbol
- * @return {number|string} The intrinsic value or an error message
+ * @return {number|string} The consensus value or an error message
  * @customfunction
  */
 function FONREX_INTRINSIC_VALUE(ticker) {
@@ -337,7 +342,7 @@ function FONREX_INTRINSIC_VALUE(ticker) {
   if (!apiKey) return 'Configure API key first';
   try {
     const data = fetchFonrexEndpoint(`/dcf/${ticker}`, apiKey);
-    return data.intrinsic_value;
+    return data.consensus_value;
   } catch (e) {
     return 'Error: ' + e.message;
   }
@@ -354,8 +359,13 @@ function FONREX_RSI(ticker) {
   const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
   if (!apiKey) return 'Configure API key first';
   try {
-    const data = fetchFonrexEndpoint(`/technical?ticker=${ticker}`, apiKey);
-    return data.rsi_14 !== undefined ? data.rsi_14 : 'N/A';
+    const data = fetchFonrexEndpoint(`/technical/${ticker}/multi?indicators=rsi`, apiKey);
+    const ind = data.indicators['rsi'];
+    if (ind && ind.series && ind.series[0] && ind.series[0].values.length > 0) {
+      const vals = ind.series[0].values;
+      return vals[vals.length - 1].v ?? 'N/A';
+    }
+    return 'N/A';
   } catch (e) {
     return 'Error: ' + e.message;
   }
@@ -396,6 +406,9 @@ function fetchFonrexEndpoint(path, apiKey) {
   }
   if (code >= 500) {
     throw new Error('Fonrex service temporarily unavailable');
+  }
+  if (code >= 400) {
+    throw new Error('API request failed with status ' + code);
   }
 
   return JSON.parse(response.getContentText());
@@ -438,7 +451,7 @@ function openDocs() {
  *
  * @private
  */
-function _updateConfigSheetStatus() {
+function _updateConfigSheetStatus(updateTimestamp = true) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName('Config');
   if (!configSheet) return;
@@ -447,6 +460,8 @@ function _updateConfigSheetStatus() {
   const statusCell = configSheet.getRange('B3');
   statusCell.setValue(apiKey ? '✅ API Key configured' : '❌ API Key not configured');
 
-  const lastRefreshCell = configSheet.getRange('B5');
-  lastRefreshCell.setValue(new Date().toUTCString());
+  if (updateTimestamp) {
+    const lastRefreshCell = configSheet.getRange('B5');
+    lastRefreshCell.setValue(new Date().toUTCString());
+  }
 }

@@ -20,7 +20,7 @@ Connect your Google Sheets to the Fonrex API to retrieve financial data (fundame
 
 Click the link below to create your own copy of the template:
 
-👉 **[Open the Fonrex Sheets template](https://docs.google.com/spreadsheets/d/TEMPLATE_ID/copy)**
+👉 **[Open the Fonrex Sheets template](https://docs.google.com/spreadsheets/d/1PUBLISHED_TEMPLATE_ID_XYZ_1234567890/copy)**
 
 > You will get a personal copy of the file in your Google Drive. The original file will never be modified.
 
@@ -54,7 +54,7 @@ Then run an initial refresh:
 | **Config** | Connection status, last refresh date, legal warning |
 | **Watchlist** | List of tracked tickers (column A, starting from row 2) |
 | **Fundamentals** | P/E, ROE, ROA, Market Cap, Dividend Yield, Beta, 52W High/Low… |
-| **DCF** | Intrinsic value, current price, WACC, upside/downside %, model used |
+| **DCF** | Consensus value, current price, consensus upside %, WACC, FCF value |
 | **Technicals** | RSI 14, MACD, SMA 50/200, EMA 20, Bollinger Bands, ATR 14 |
 | **Charts** | Native charts based on imported data (to be configured freely) |
 
@@ -68,7 +68,7 @@ You can also use formulas directly in any cell:
 |---|---|
 | `=FONREX_PE("AIR.PA")` | P/E ratio |
 | `=FONREX_DIVIDEND_YIELD("AIR.PA")` | Dividend yield (decimal) |
-| `=FONREX_INTRINSIC_VALUE("AIR.PA")` | DCF intrinsic value |
+| `=FONREX_INTRINSIC_VALUE("AIR.PA")` | DCF consensus value |
 | `=FONREX_RSI("AAPL")` | 14-period RSI |
 
 > ⚠️ **30-minute cache**: Custom formulas are cached by Google for 30 minutes. For fresh data, use the **Refresh** buttons in the menu instead of these formulas.

@@ -23,17 +23,17 @@ function onOpen() {
 }
 
 // ---------------------------------------------------------------------------
-// 1. CONFIGURATION DE LA CLÉ API
+// 1. API KEY CONFIGURATION
 // ---------------------------------------------------------------------------
 
 /**
- * Menu : Fonrex > Configure API Key
+ * Menu: Fonrex > Configure API Key
  *
- * Ouvre une boîte de dialogue et stocke la clé dans
- * PropertiesService.getUserProperties() — jamais dans une cellule,
- * jamais partagée si le Sheet est partagé avec quelqu'un d'autre
- * (les User Properties sont propres à chaque utilisateur Google,
- * pas au document).
+ * Opens a dialog and stores the key in
+ * PropertiesService.getUserProperties() — never in a cell,
+ * never shared if the Sheet is shared with someone else
+ * (User Properties are specific to each Google user,
+ * not the document).
  */
 function configureApiKey() {
   const ui = SpreadsheetApp.getUi();
@@ -59,11 +59,11 @@ function configureApiKey() {
 // ---------------------------------------------------------------------------
 
 /**
- * Menu : Fonrex > Refresh Fundamentals
+ * Menu: Fonrex > Refresh Fundamentals
  *
- * Lit la liste de tickers depuis la feuille "Watchlist",
- * appelle GET /fundamental/deep pour chacun, écrit les résultats
- * dans la feuille "Fundamentals".
+ * Reads the list of tickers from the "Watchlist" sheet,
+ * calls GET /fundamental/deep for each, and writes the results
+ * into the "Fundamentals" sheet.
  */
 function refreshFundamentals() {
   const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
@@ -135,14 +135,14 @@ function refreshFundamentals() {
 // ---------------------------------------------------------------------------
 
 /**
- * Menu : Fonrex > Refresh DCF Valuations
+ * Menu: Fonrex > Refresh DCF Valuations
  *
- * IMPORTANT : n'écrit JAMAIS de champ "verdict" textuel
- * ("SOUS-ÉVALUÉ"/"SURÉVALUÉ") dans le sheet — uniquement les
- * valeurs numériques brutes (intrinsic_value, current_price,
- * wacc, upside_downside_pct). L'utilisateur voit les chiffres
- * et en tire ses propres conclusions ; Fonrex ne formule aucune
- * recommandation dans ce connecteur.
+ * IMPORTANT: NEVER writes a textual "verdict" field
+ * ("UNDERVALUED"/"OVERVALUED") in the sheet — only the
+ * raw numeric values (intrinsic_value, current_price,
+ * wacc, upside_downside_pct). The user sees the numbers
+ * and draws their own conclusions; Fonrex makes no
+ * recommendations in this connector.
  */
 function refreshDCF() {
   const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
@@ -209,12 +209,12 @@ function refreshDCF() {
 // ---------------------------------------------------------------------------
 
 /**
- * Menu : Fonrex > Refresh Technical Indicators
+ * Menu: Fonrex > Refresh Technical Indicators
  *
- * Appelle GET /technical?ticker={ticker} pour chacun des tickers
- * de la watchlist et écrit les résultats dans la feuille "Technicals".
- * Seules les valeurs brutes sont écrites — aucune interprétation textuelle
- * ("Bullish", "Bearish") n'est insérée automatiquement.
+ * Calls GET /technical?ticker={ticker} for each ticker
+ * in the watchlist and writes the results into the "Technicals" sheet.
+ * Only raw values are written — no textual interpretation
+ * ("Bullish", "Bearish") is automatically inserted.
  */
 function refreshTechnicals() {
   const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
@@ -279,18 +279,18 @@ function refreshTechnicals() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. FONCTIONS CUSTOM (utilisables comme formules dans les cellules)
+// 5. CUSTOM FUNCTIONS (usable as formulas in cells)
 // ---------------------------------------------------------------------------
 
 /**
- * =FONREX_PE("AIR.PA") — Retourne le P/E ratio d'un ticker.
+ * =FONREX_PE("AIR.PA") — Returns the P/E ratio of a ticker.
  *
- * Limitation documentée : Apps Script custom functions sont mises en cache
- * pendant 30 minutes par Google. Pour une donnée fraîche, utiliser le
- * bouton "Refresh Fundamentals" du menu plutôt que cette formule.
+ * Documented limitation: Apps Script custom functions are cached
+ * for 30 minutes by Google. For fresh data, use the
+ * "Refresh Fundamentals" menu button instead of this formula.
  *
- * @param {string} ticker Le symbole boursier (ex: AIR.PA, AAPL)
- * @return {number|string} Le P/E ratio ou un message d'erreur
+ * @param {string} ticker The stock symbol (e.g. AIR.PA, AAPL)
+ * @return {number|string} The P/E ratio or an error message
  * @customfunction
  */
 function FONREX_PE(ticker) {
@@ -305,10 +305,10 @@ function FONREX_PE(ticker) {
 }
 
 /**
- * =FONREX_DIVIDEND_YIELD("AIR.PA") — Retourne le dividend yield d'un ticker.
+ * =FONREX_DIVIDEND_YIELD("AIR.PA") — Returns the dividend yield of a ticker.
  *
- * @param {string} ticker Le symbole boursier
- * @return {number|string} Le dividend yield (décimal, ex: 0.032 = 3.2%) ou un message d'erreur
+ * @param {string} ticker The stock symbol
+ * @return {number|string} The dividend yield (decimal, e.g. 0.032 = 3.2%) or an error message
  * @customfunction
  */
 function FONREX_DIVIDEND_YIELD(ticker) {
@@ -323,13 +323,13 @@ function FONREX_DIVIDEND_YIELD(ticker) {
 }
 
 /**
- * =FONREX_INTRINSIC_VALUE("AIR.PA") — Retourne la valeur intrinsèque DCF.
+ * =FONREX_INTRINSIC_VALUE("AIR.PA") — Returns the DCF intrinsic value.
  *
- * Note : cette valeur est un résultat de modèle analytique, pas une
- * recommandation d'achat ou de vente.
+ * Note: this value is an analytical model result, not a
+ * buy or sell recommendation.
  *
- * @param {string} ticker Le symbole boursier
- * @return {number|string} La valeur intrinsèque ou un message d'erreur
+ * @param {string} ticker The stock symbol
+ * @return {number|string} The intrinsic value or an error message
  * @customfunction
  */
 function FONREX_INTRINSIC_VALUE(ticker) {
@@ -344,10 +344,10 @@ function FONREX_INTRINSIC_VALUE(ticker) {
 }
 
 /**
- * =FONREX_RSI("AAPL") — Retourne le RSI 14 périodes d'un ticker.
+ * =FONREX_RSI("AAPL") — Returns the 14-period RSI of a ticker.
  *
- * @param {string} ticker Le symbole boursier
- * @return {number|string} Le RSI (14) ou un message d'erreur
+ * @param {string} ticker The stock symbol
+ * @return {number|string} The RSI (14) or an error message
  * @customfunction
  */
 function FONREX_RSI(ticker) {
@@ -362,17 +362,17 @@ function FONREX_RSI(ticker) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. UTILITAIRES
+// 6. UTILITIES
 // ---------------------------------------------------------------------------
 
 /**
- * Wrapper centralisé pour tous les appels à l'API Fonrex.
- * Gère l'authentification, le parsing JSON et les erreurs HTTP
- * de façon lisible pour un utilisateur non-technique.
+ * Centralized wrapper for all calls to the Fonrex API.
+ * Handles authentication, JSON parsing, and HTTP errors
+ * in a readable way for non-technical users.
  *
- * @param {string} path   Chemin de l'endpoint (ex: /fundamental/deep?ticker=AIR.PA)
- * @param {string} apiKey Clé API Fonrex Relay (frx_live_...)
- * @return {Object} Objet JSON parsé de la réponse
+ * @param {string} path   Endpoint path (e.g. /fundamental/deep?ticker=AIR.PA)
+ * @param {string} apiKey Fonrex Relay API Key (frx_live_...)
+ * @return {Object} Parsed JSON object of the response
  */
 function fetchFonrexEndpoint(path, apiKey) {
   const baseUrl = PropertiesService.getScriptProperties().getProperty('FONREX_BASE_URL')
@@ -402,8 +402,8 @@ function fetchFonrexEndpoint(path, apiKey) {
 }
 
 /**
- * Ajoute un ticker à la Watchlist via le menu.
- * Le ticker est normalisé en majuscules avant insertion.
+ * Adds a ticker to the Watchlist via the menu.
+ * The ticker is normalized to uppercase before insertion.
  */
 function promptAddTicker() {
   const ui = SpreadsheetApp.getUi();
@@ -422,7 +422,7 @@ function promptAddTicker() {
 }
 
 /**
- * Ouvre la documentation Fonrex dans un nouvel onglet du navigateur.
+ * Opens the Fonrex documentation in a new browser tab.
  */
 function openDocs() {
   const html = HtmlService.createHtmlOutput(
@@ -432,9 +432,9 @@ function openDocs() {
 }
 
 /**
- * Met à jour la feuille Config avec le statut courant (clé configurée,
- * date du dernier rafraîchissement). Appelé automatiquement après chaque
- * refresh et après la sauvegarde de la clé.
+ * Updates the Config sheet with the current status (configured key,
+ * last refresh date). Automatically called after each
+ * refresh and after saving the key.
  *
  * @private
  */

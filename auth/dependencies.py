@@ -8,9 +8,16 @@ Both formats resolve to the same underlying key validation logic —
 single point of truth.
 """
 
+import os
+import re
+import secrets
 from typing import Optional
 
 from fastapi import HTTPException, Request
+
+# Regular expression for valid Fonrex key format (frx_live_... or frx_test_...)
+# Requires a live or test prefix followed by at least 6 alphanumeric/dash/underscore characters.
+API_KEY_PATTERN = re.compile(r"^frx_(?:live|test)_[a-zA-Z0-9_-]{6,}$")
 
 
 def get_api_key_from_request(request: Request) -> Optional[str]:
@@ -37,12 +44,46 @@ def get_api_key_from_request(request: Request) -> Optional[str]:
     return None
 
 
+def is_auth_enforced() -> bool:
+    """Return True if authentication is explicitly required by configuration."""
+    return bool(
+        os.environ.get("FONREX_API_KEY")
+        or os.environ.get("FONREX_API_KEYS")
+        or os.environ.get("FONREX_AUTH_REQUIRED", "").lower() in ("true", "1", "yes")
+    )
+
+
+def validate_api_key(key: str) -> bool:
+    """Validate an API key against configured environment keys or key format.
+
+    - If ``FONREX_API_KEY`` or ``FONREX_API_KEYS`` is configured, the key must
+      match one of the configured keys (using constant-time comparison).
+    - If no configured keys are present, the key must conform to the valid
+      Fonrex key format (``frx_live_...`` or ``frx_test_...``).
+    """
+    configured_key = os.environ.get("FONREX_API_KEY")
+    configured_keys_str = os.environ.get("FONREX_API_KEYS")
+
+    allowed_keys: list[str] = []
+    if configured_key:
+        allowed_keys.extend([k.strip() for k in configured_key.split(",") if k.strip()])
+    if configured_keys_str:
+        allowed_keys.extend([k.strip() for k in configured_keys_str.split(",") if k.strip()])
+
+    if allowed_keys:
+        return any(secrets.compare_digest(key, k) for k in allowed_keys)
+
+    # When no explicit key is configured in the environment,
+    # validate that the key matches the structured Fonrex API key format.
+    return bool(API_KEY_PATTERN.match(key))
+
+
 def require_api_key(request: Request) -> str:
     """FastAPI dependency requiring a valid API key.
 
-    Extracts key via ``get_api_key_from_request``.
-    Raises HTTP 401 Unauthorized if neither Authorization: Bearer
-    nor X-API-KEY header is provided.
+    Extracts key via ``get_api_key_from_request`` and validates it via
+    ``validate_api_key``.
+    Raises HTTP 401 Unauthorized if missing, or HTTP 403 Forbidden if invalid.
     """
     key = get_api_key_from_request(request)
     if not key:
@@ -50,4 +91,11 @@ def require_api_key(request: Request) -> str:
             status_code=401,
             detail="Missing API key. Provide 'Authorization: Bearer <key>' or 'X-API-KEY: <key>'",
         )
+
+    if not validate_api_key(key):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid API key format or credentials",
+        )
+
     return key

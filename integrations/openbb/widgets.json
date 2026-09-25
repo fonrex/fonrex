@@ -57,13 +57,6 @@
         "label": "Period",
         "type": "text",
         "description": "History period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)"
-      },
-      {
-        "paramName": "resolution",
-        "value": "1D",
-        "label": "Resolution",
-        "type": "text",
-        "description": "Candle resolution (1D, 1W, 1M)"
       }
     ]
   },
@@ -84,25 +77,25 @@
         "description": "Stock symbol (e.g. AIR.PA, AAPL)"
       },
       {
-        "paramName": "from_date",
+        "paramName": "start_date",
         "value": "",
-        "label": "From Date",
+        "label": "Start Date",
         "type": "text",
         "description": "Start date (YYYY-MM-DD)"
       },
       {
-        "paramName": "to_date",
+        "paramName": "end_date",
         "value": "",
-        "label": "To Date",
+        "label": "End Date",
         "type": "text",
         "description": "End date (YYYY-MM-DD)"
       },
       {
-        "paramName": "resolution",
+        "paramName": "interval",
         "value": "1D",
-        "label": "Resolution",
+        "label": "Interval",
         "type": "text",
-        "description": "Candle resolution (1D, 1W, 1M)"
+        "description": "Candle interval (1D, 1W, 1M)"
       }
     ]
   },

@@ -1,10 +1,17 @@
 from fastapi import HTTPException, Request
 
-from auth.dependencies import get_api_key_from_request, require_api_key
+from auth.dependencies import (
+    get_api_key_from_request,
+    is_auth_enforced,
+    require_api_key,
+    validate_api_key,
+)
 
 __all__ = [
     "get_api_key_from_request",
     "require_api_key",
+    "validate_api_key",
+    "is_auth_enforced",
     "get_database_service",
     "get_query_service",
     "get_ingestion_service",

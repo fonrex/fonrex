@@ -273,3 +273,94 @@ def test_bearer_takes_priority_over_x_api_key():
     }
     key = get_api_key_from_request(mock_request)
     assert key == "frx_live_bearer_key"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: invalid API key format or value returns 403
+# ──────────────────────────────────────────────────────────────────────
+
+def test_invalid_api_key_returns_403():
+    """Arbitrary values such as 'frx_fake' or malformed keys are rejected with 403."""
+    from fastapi import HTTPException
+
+    from auth.dependencies import require_api_key
+
+    for bad_key in ["frx_fake", "invalid", "Bearer 123", "frx_live_"]:
+        mock_request = MagicMock()
+        mock_request.headers = {"X-API-KEY": bad_key}
+        with pytest.raises(HTTPException) as exc_info:
+            require_api_key(mock_request)
+        assert exc_info.value.status_code == 403
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: configured FONREX_API_KEY validation
+# ──────────────────────────────────────────────────────────────────────
+
+def test_configured_api_key_validation(monkeypatch):
+    """When FONREX_API_KEY is configured, only exact matching keys are accepted."""
+    from fastapi import HTTPException
+
+    from auth.dependencies import require_api_key
+
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_production_secret_999")
+
+    # Matching key passes
+    req_valid = MagicMock()
+    req_valid.headers = {"X-API-KEY": "frx_live_production_secret_999"}
+    assert require_api_key(req_valid) == "frx_live_production_secret_999"
+
+    # Non-matching key (even well-formatted) is rejected
+    req_other = MagicMock()
+    req_other.headers = {"X-API-KEY": "frx_live_other_valid_looking_key"}
+    with pytest.raises(HTTPException) as exc_info:
+        require_api_key(req_other)
+    assert exc_info.value.status_code == 403
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: production routes enforce auth when FONREX_API_KEY is set
+# ──────────────────────────────────────────────────────────────────────
+
+def test_production_routes_auth_enforced_when_configured(client, monkeypatch):
+    """When FONREX_API_KEY is configured, unauthenticated calls to API routes return 401."""
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_secret123")
+
+    # Public discovery route remains accessible
+    resp_widgets = client.get("/widgets.json")
+    assert resp_widgets.status_code == 200
+
+    # Protected route without auth returns 401
+    resp_unauth = client.get("/quotes?tickers=AAPL")
+    assert resp_unauth.status_code == 401
+    assert "Missing API key" in resp_unauth.json()["detail"]
+
+    # Protected route with wrong key returns 403
+    resp_wrong = client.get("/quotes?tickers=AAPL", headers={"X-API-KEY": "frx_live_wrong_key"})
+    assert resp_wrong.status_code == 403
+
+    # Protected route with valid key passes auth middleware
+    resp_valid = client.get(
+        "/quotes?tickers=AAPL",
+        headers={"X-API-KEY": "frx_live_secret123"},
+    )
+    # The response is not 401 or 403 (it reaches the handler)
+    assert resp_valid.status_code not in (401, 403)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: fonrex_eod and fonrex_history parameters match backend endpoints
+# ──────────────────────────────────────────────────────────────────────
+
+def test_eod_and_history_widget_parameters(widgets_data):
+    """Verify parameters for fonrex_eod and fonrex_history match API route signatures."""
+    # fonrex_eod should only use ticker and period (no resolution)
+    eod_params = {p["paramName"] for p in widgets_data["fonrex_eod"]["params"]}
+    assert "resolution" not in eod_params
+    assert "ticker" in eod_params
+    assert "period" in eod_params
+
+    # fonrex_history should use symbol, start_date, end_date, interval
+    history_params = {p["paramName"] for p in widgets_data["fonrex_history"]["params"]}
+    assert history_params == {"symbol", "start_date", "end_date", "interval"}
+

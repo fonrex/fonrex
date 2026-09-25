@@ -7,11 +7,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import redis.asyncio as redis
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from auth.dependencies import get_api_key_from_request, is_auth_enforced, require_api_key
 from cache.service import CacheService
 from cache.technical import RedisTechnicalCache
 from concurrency import run_sync
@@ -94,6 +95,35 @@ app.include_router(monitoring_router)
 
 
 @app.middleware("http")
+async def api_key_auth_middleware(request: Request, call_next):
+    """Enforces API key authentication on protected routes when configured in environment."""
+    if request.method != "OPTIONS" and is_auth_enforced():
+        path = request.url.path
+        public_exact = {
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/widgets.json",
+            "/apps.json",
+            "/favicon.ico",
+        }
+        if (
+            path not in public_exact
+            and not path.startswith("/static")
+            and not path.startswith("/health")
+        ):
+            try:
+                require_api_key(request)
+            except HTTPException as exc:
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content={"detail": exc.detail},
+                )
+
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def usage_logging_middleware(request: Request, call_next):
     """Logs API calls without interrupting the user response."""
     start_time = time.perf_counter()
@@ -117,7 +147,7 @@ async def usage_logging_middleware(request: Request, call_next):
                     method=request.method,
                     status_code=status_code,
                     latency_ms=latency_ms,
-                    api_key_id=request.headers.get("X-API-Key"),
+                    api_key_id=get_api_key_from_request(request) or request.headers.get("X-API-Key"),
                     provider_used=getattr(request.state, "provider_used", None),
                     cache_hit=getattr(request.state, "cache_hit", False),
                     cost_bucket=getattr(request.state, "cost_bucket", None),

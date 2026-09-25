@@ -499,7 +499,7 @@ connect your self-hosted instance to access fundamentals, DCF valuations,
 technical indicators and news directly inside OpenBB's dashboard environment.
 
 👉 See [integrations/openbb/README.md](integrations/openbb/README.md) for
-setup instructions and the full list of 18 available widgets.
+setup instructions and the full list of 19 available widgets.
 
 ---
 

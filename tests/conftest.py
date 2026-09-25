@@ -6,6 +6,10 @@ utilisent SQLAlchemy avec StaticPool et peuvent interférer si
 exécutées dans le même processus sans isolation explicite.
 """
 
+import os
+
+os.environ.setdefault("NUMBA_CACHE_DIR", "/tmp")
+
 
 def pytest_collection_modifyitems(items):
     """Garantit l'ordre d'exécution : migrations avant enricher pour éviter

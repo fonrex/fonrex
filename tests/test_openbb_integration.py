@@ -32,14 +32,20 @@ def client():
 
     orig_redis = getattr(app.state, "redis_client", None)
     orig_db = getattr(app.state, "db_service", None)
+    orig_fred = getattr(app.state, "fred_service", None)
+
+    mock_fred = MagicMock()
+    mock_fred.get_current_rates = AsyncMock(return_value={"risk_free_rate": None})
 
     with TestClient(app) as test_client:
         app.state.redis_client = mock_redis
         app.state.db_service = MagicMock()
+        app.state.fred_service = mock_fred
         yield test_client
 
     app.state.redis_client = orig_redis
     app.state.db_service = orig_db
+    app.state.fred_service = orig_fred
 
 
 @pytest.fixture
@@ -331,21 +337,20 @@ def test_production_routes_auth_enforced_when_configured(client, monkeypatch):
     assert resp_widgets.status_code == 200
 
     # Protected route without auth returns 401
-    resp_unauth = client.get("/quotes?tickers=AAPL")
+    resp_unauth = client.get("/macro/rates")
     assert resp_unauth.status_code == 401
     assert "Missing API key" in resp_unauth.json()["detail"]
 
     # Protected route with wrong key returns 403
-    resp_wrong = client.get("/quotes?tickers=AAPL", headers={"X-API-KEY": "frx_live_wrong_key"})
+    resp_wrong = client.get("/macro/rates", headers={"X-API-KEY": "frx_live_wrong_key"})
     assert resp_wrong.status_code == 403
 
     # Protected route with valid key passes auth middleware
     resp_valid = client.get(
-        "/quotes?tickers=AAPL",
+        "/macro/rates",
         headers={"X-API-KEY": "frx_live_secret123"},
     )
-    # The response is not 401 or 403 (it reaches the handler)
-    assert resp_valid.status_code not in (401, 403)
+    assert resp_valid.status_code == 200
 
 
 # ──────────────────────────────────────────────────────────────────────

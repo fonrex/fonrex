@@ -1,0 +1,151 @@
+[
+  {
+    "name": "Fonrex — EU Markets",
+    "description": "Deep fundamentals, DCF valuation, and technicals for a given ticker, with EU exchange coverage FMP/EODHD charge extra for",
+    "img": "https://fonrex.io/openbb-app-preview.png",
+    "img_dark": "",
+    "img_light": "",
+    "allowCustomization": true,
+    "tabs": {
+      "overview": {
+        "id": "overview",
+        "name": "Overview",
+        "layout": [
+          {
+            "i": "fonrex_quote",
+            "x": 0,
+            "y": 0,
+            "w": 8,
+            "h": 4,
+            "state": { "params": { "ticker": "AIR.PA" } }
+          },
+          {
+            "i": "fonrex_fundamentals_deep",
+            "x": 8,
+            "y": 0,
+            "w": 16,
+            "h": 12,
+            "state": { "params": { "ticker": "AIR.PA" } }
+          },
+          {
+            "i": "fonrex_eod",
+            "x": 0,
+            "y": 4,
+            "w": 8,
+            "h": 8,
+            "state": { "params": { "ticker": "AIR.PA" } }
+          }
+        ]
+      },
+      "valuation": {
+        "id": "valuation",
+        "name": "Valuation",
+        "layout": [
+          {
+            "i": "fonrex_dcf",
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA" } }
+          },
+          {
+            "i": "fonrex_dcf_sensitivity",
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA" } }
+          }
+        ]
+      },
+      "technical": {
+        "id": "technical",
+        "name": "Technical",
+        "layout": [
+          {
+            "i": "fonrex_technical_chart",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AIR.PA",
+                "indicators": "sma_20,rsi_14"
+              }
+            }
+          }
+        ]
+      },
+      "news": {
+        "id": "news",
+        "name": "News",
+        "layout": [
+          {
+            "i": "fonrex_news",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA" } }
+          }
+        ]
+      }
+    },
+    "groups": []
+  },
+  {
+    "name": "Fonrex — Screener & Macro",
+    "description": "Technical screener for idea generation combined with macro-economic context and index composition",
+    "img": "https://fonrex.io/openbb-app-screener-preview.png",
+    "img_dark": "",
+    "img_light": "",
+    "allowCustomization": true,
+    "tabs": {
+      "screener": {
+        "id": "screener",
+        "name": "Screener",
+        "layout": [
+          {
+            "i": "fonrex_screener",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 12,
+            "state": {
+              "params": {
+                "indicator": "rsi",
+                "operator": "lt",
+                "value": "30"
+              }
+            }
+          }
+        ]
+      },
+      "macro_context": {
+        "id": "macro_context",
+        "name": "Macro Context",
+        "layout": [
+          {
+            "i": "fonrex_macro_rates",
+            "x": 0,
+            "y": 0,
+            "w": 10,
+            "h": 6,
+            "state": {}
+          },
+          {
+            "i": "fonrex_index_constituents",
+            "x": 10,
+            "y": 0,
+            "w": 14,
+            "h": 12,
+            "state": { "params": { "name": "sp500" } }
+          }
+        ]
+      }
+    },
+    "groups": []
+  }
+]

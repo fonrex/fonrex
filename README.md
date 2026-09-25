@@ -490,6 +490,19 @@ GitHub Actions runs this exact same quality check for every pull request and pus
 
 ---
 
+## Integrations
+
+### OpenBB Workspace
+
+Fonrex integrates natively with [OpenBB Workspace](https://openbb.co) —
+connect your self-hosted instance to access fundamentals, DCF valuations,
+technical indicators and news directly inside OpenBB's dashboard environment.
+
+👉 See [integrations/openbb/README.md](integrations/openbb/README.md) for
+setup instructions and the full list of 18 available widgets.
+
+---
+
 ## Contributing
 
 Contributions are welcome. Please read `CONTRIBUTING.md` before opening a PR.

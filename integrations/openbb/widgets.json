@@ -1,0 +1,420 @@
+{
+  "fonrex_fundamentals": {
+    "name": "Fonrex Fundamentals",
+    "description": "Multi-provider fundamentals: P/E, ROE, dividend yield, market cap",
+    "category": "Fundamentals",
+    "type": "table",
+    "endpoint": "fundamental",
+    "gridData": { "w": 20, "h": 9 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      }
+    ]
+  },
+  "fonrex_fundamentals_deep": {
+    "name": "Fonrex Deep Fundamentals",
+    "description": "Financial statements, ESG scores, insider transactions, analyst ratings",
+    "category": "Fundamentals",
+    "type": "table",
+    "endpoint": "fundamental/deep",
+    "gridData": { "w": 24, "h": 12 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      }
+    ]
+  },
+  "fonrex_eod": {
+    "name": "Fonrex EOD History",
+    "description": "End-of-day OHLCV price history with auto-ingestion on first request",
+    "category": "Historical",
+    "type": "chart",
+    "endpoint": "eod/{ticker}",
+    "gridData": { "w": 20, "h": 9 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      },
+      {
+        "paramName": "period",
+        "value": "1y",
+        "label": "Period",
+        "type": "text",
+        "description": "History period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)"
+      },
+      {
+        "paramName": "resolution",
+        "value": "1D",
+        "label": "Resolution",
+        "type": "text",
+        "description": "Candle resolution (1D, 1W, 1M)"
+      }
+    ]
+  },
+  "fonrex_history": {
+    "name": "Fonrex OHLCV History",
+    "description": "OHLCV price history with date range filtering",
+    "category": "Historical",
+    "type": "chart",
+    "endpoint": "ticker/{symbol}/history",
+    "gridData": { "w": 20, "h": 9 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "symbol",
+        "value": "AAPL",
+        "label": "Symbol",
+        "type": "text",
+        "description": "Stock symbol (e.g. AIR.PA, AAPL)"
+      },
+      {
+        "paramName": "from_date",
+        "value": "",
+        "label": "From Date",
+        "type": "text",
+        "description": "Start date (YYYY-MM-DD)"
+      },
+      {
+        "paramName": "to_date",
+        "value": "",
+        "label": "To Date",
+        "type": "text",
+        "description": "End date (YYYY-MM-DD)"
+      },
+      {
+        "paramName": "resolution",
+        "value": "1D",
+        "label": "Resolution",
+        "type": "text",
+        "description": "Candle resolution (1D, 1W, 1M)"
+      }
+    ]
+  },
+  "fonrex_quote": {
+    "name": "Fonrex Quote",
+    "description": "Latest real-time price snapshot from WebSocket stream with Redis cache",
+    "category": "Market Data",
+    "type": "metric",
+    "endpoint": "quote/{ticker}",
+    "gridData": { "w": 8, "h": 4 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      }
+    ]
+  },
+  "fonrex_quotes_batch": {
+    "name": "Fonrex Batch Quotes",
+    "description": "Batch price snapshots for multiple tickers in a single request",
+    "category": "Market Data",
+    "type": "table",
+    "endpoint": "quotes",
+    "gridData": { "w": 20, "h": 9 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "tickers",
+        "value": "AIR.PA,BNP.PA,AAPL",
+        "label": "Tickers",
+        "type": "text",
+        "description": "Comma-separated list of ticker symbols"
+      }
+    ]
+  },
+  "fonrex_technical": {
+    "name": "Fonrex Technical Indicator",
+    "description": "Single technical indicator (RSI, SMA, EMA, MACD, Bollinger Bands, etc.)",
+    "category": "Technical",
+    "type": "chart",
+    "endpoint": "technical/{ticker}",
+    "gridData": { "w": 20, "h": 9 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      },
+      {
+        "paramName": "indicator",
+        "value": "rsi",
+        "label": "Indicator",
+        "type": "text",
+        "description": "Indicator name (rsi, sma, ema, macd, bbands, atr, obv, etc.)"
+      },
+      {
+        "paramName": "period",
+        "value": "14",
+        "label": "Period",
+        "type": "text",
+        "description": "Indicator period (e.g. 14 for RSI, 20 for SMA)"
+      }
+    ]
+  },
+  "fonrex_technical_multi": {
+    "name": "Fonrex Multi-Indicator",
+    "description": "Multiple technical indicators computed from a single database read",
+    "category": "Technical",
+    "type": "chart",
+    "endpoint": "technical/{ticker}/multi",
+    "gridData": { "w": 24, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      },
+      {
+        "paramName": "indicators",
+        "value": "sma_20,ema_50,rsi_14",
+        "label": "Indicators",
+        "type": "text",
+        "description": "Comma-separated indicator list (e.g. sma_20, ema_50, rsi_14, macd)"
+      }
+    ]
+  },
+  "fonrex_technical_chart": {
+    "name": "Fonrex Technical Chart",
+    "description": "OHLCV candlestick data with overlaid technical indicators, chart-ready",
+    "category": "Technical",
+    "type": "chart",
+    "endpoint": "technical/{ticker}/chart",
+    "gridData": { "w": 24, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      },
+      {
+        "paramName": "indicators",
+        "value": "sma_20,rsi_14",
+        "label": "Indicators",
+        "type": "text",
+        "description": "Comma-separated indicator list (e.g. sma_20, bbands_20, macd)"
+      }
+    ]
+  },
+  "fonrex_screener": {
+    "name": "Fonrex Technical Screener",
+    "description": "Screen stocks by technical indicator thresholds (e.g. RSI < 30 for oversold)",
+    "category": "Technical",
+    "type": "table",
+    "endpoint": "technical/screen",
+    "gridData": { "w": 20, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "indicator",
+        "value": "rsi",
+        "label": "Indicator",
+        "type": "text",
+        "description": "Technical indicator to screen (rsi, sma, ema, macd, etc.)"
+      },
+      {
+        "paramName": "operator",
+        "value": "lt",
+        "label": "Operator",
+        "type": "text",
+        "description": "Comparison operator (lt, gt, lte, gte, eq)"
+      },
+      {
+        "paramName": "value",
+        "value": "30",
+        "label": "Threshold",
+        "type": "text",
+        "description": "Threshold value for the screener"
+      }
+    ]
+  },
+  "fonrex_news": {
+    "name": "Fonrex News",
+    "description": "Aggregated financial news from 7 providers with URL deduplication",
+    "category": "News",
+    "type": "table",
+    "endpoint": "news/{ticker}",
+    "gridData": { "w": 24, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      },
+      {
+        "paramName": "limit",
+        "value": "20",
+        "label": "Limit",
+        "type": "text",
+        "description": "Maximum number of articles to return"
+      }
+    ]
+  },
+  "fonrex_news_feed": {
+    "name": "Fonrex News Feed",
+    "description": "Global financial news feed across all tracked tickers",
+    "category": "News",
+    "type": "table",
+    "endpoint": "news/feed",
+    "gridData": { "w": 24, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "limit",
+        "value": "20",
+        "label": "Limit",
+        "type": "text",
+        "description": "Maximum number of articles to return"
+      }
+    ]
+  },
+  "fonrex_dcf": {
+    "name": "Fonrex DCF Valuation",
+    "description": "Discounted Cash Flow intrinsic value using FCF, EPS and DDM models with dynamic WACC",
+    "category": "Valuation",
+    "type": "table",
+    "endpoint": "dcf/{ticker}",
+    "gridData": { "w": 20, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      }
+    ]
+  },
+  "fonrex_dcf_compare": {
+    "name": "Fonrex DCF Models Comparison",
+    "description": "Side-by-side comparison of all 3 DCF models (FCF, EPS, DDM)",
+    "category": "Valuation",
+    "type": "table",
+    "endpoint": "dcf/{ticker}/compare",
+    "gridData": { "w": 24, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      }
+    ]
+  },
+  "fonrex_dcf_sensitivity": {
+    "name": "Fonrex DCF Sensitivity Matrix",
+    "description": "WACC × terminal growth rate sensitivity matrix for intrinsic value analysis",
+    "category": "Valuation",
+    "type": "table",
+    "endpoint": "dcf/{ticker}/sensitivity",
+    "gridData": { "w": 24, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      }
+    ]
+  },
+  "fonrex_insider_transactions": {
+    "name": "Fonrex Insider Transactions",
+    "description": "SEC Form 4 insider trading data — purchases, sales, and option exercises (US stocks)",
+    "category": "Fundamentals",
+    "type": "table",
+    "endpoint": "insider-transactions/{ticker}",
+    "gridData": { "w": 20, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "US stock ticker (e.g. AAPL, MSFT, TSLA)"
+      }
+    ]
+  },
+  "fonrex_etf_details": {
+    "name": "Fonrex ETF Details",
+    "description": "UCITS ETF details from JustETF: TER, AUM, replication, top holdings, performance",
+    "category": "Fundamentals",
+    "type": "table",
+    "endpoint": "etf/{isin}/details",
+    "gridData": { "w": 20, "h": 10 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "isin",
+        "value": "IE00B4L5Y983",
+        "label": "ISIN",
+        "type": "text",
+        "description": "ETF ISIN code (e.g. IE00B4L5Y983 for iShares Core MSCI World)"
+      }
+    ]
+  },
+  "fonrex_index_constituents": {
+    "name": "Fonrex Index Constituents",
+    "description": "List of constituents for major indices (S&P 500, CAC 40, NASDAQ 100, DAX)",
+    "category": "Market Data",
+    "type": "table",
+    "endpoint": "index/{name}/constituents",
+    "gridData": { "w": 20, "h": 12 },
+    "source": "Fonrex",
+    "params": [
+      {
+        "paramName": "name",
+        "value": "sp500",
+        "label": "Index Name",
+        "type": "text",
+        "description": "Index identifier (sp500, cac40, nasdaq100, dax)"
+      }
+    ]
+  },
+  "fonrex_macro_rates": {
+    "name": "Fonrex Macro Rates",
+    "description": "Current macro-economic rates: risk-free rate (US 10Y), Fed funds rate, credit spread (FRED API)",
+    "category": "Macro",
+    "type": "metric",
+    "endpoint": "macro/rates",
+    "gridData": { "w": 10, "h": 6 },
+    "source": "Fonrex",
+    "params": []
+  }
+}

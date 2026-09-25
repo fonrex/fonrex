@@ -48,6 +48,7 @@ def is_auth_enforced() -> bool:
     """Return True if authentication is explicitly required by configuration."""
     return bool(
         os.environ.get("FONREX_API_KEY")
+        or os.environ.get("FONREX_RELAY_KEY")
         or os.environ.get("FONREX_API_KEYS")
         or os.environ.get("FONREX_AUTH_REQUIRED", "").lower() in ("true", "1", "yes")
     )
@@ -56,12 +57,12 @@ def is_auth_enforced() -> bool:
 def validate_api_key(key: str) -> bool:
     """Validate an API key against configured environment keys or key format.
 
-    - If ``FONREX_API_KEY`` or ``FONREX_API_KEYS`` is configured, the key must
-      match one of the configured keys (using constant-time comparison).
+    - If ``FONREX_API_KEY``, ``FONREX_RELAY_KEY`` or ``FONREX_API_KEYS`` is configured,
+      the key must match one of the configured keys (using constant-time comparison).
     - If no configured keys are present, the key must conform to the valid
       Fonrex key format (``frx_live_...`` or ``frx_test_...``).
     """
-    configured_key = os.environ.get("FONREX_API_KEY")
+    configured_key = os.environ.get("FONREX_API_KEY") or os.environ.get("FONREX_RELAY_KEY")
     configured_keys_str = os.environ.get("FONREX_API_KEYS")
 
     allowed_keys: list[str] = []

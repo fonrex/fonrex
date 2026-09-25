@@ -65,7 +65,11 @@ def _resolve_database_url(database_url: str | None) -> str:
     # style URLs. The async driver hint is silently rewritten so operators can
     # reuse the same ASYNC_DATABASE_URL for the bundle if convenient.
     if url.startswith("postgresql+asyncpg://"):
-        url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
     return url
 
 

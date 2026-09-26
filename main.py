@@ -3,18 +3,24 @@ import json
 import logging
 import os
 import time
+import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import redis.asyncio as redis
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
+
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message=r"'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated\. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead\.",
+        category=DeprecationWarning,
+    )
+    from fastapi import FastAPI, HTTPException, Request
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    from fastapi.staticfiles import StaticFiles
 
 from auth.dependencies import (
-    anonymize_api_key,
-    get_api_key_from_request,
     is_auth_enforced,
     require_api_key,
 )
@@ -151,14 +157,7 @@ async def usage_logging_middleware(request: Request, call_next):
 
         if service:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
-            raw_key = get_api_key_from_request(request) or request.headers.get("X-API-Key")
-            # Only record anonymized key fingerprint if authentication did not fail (401/403)
-            # and a key was provided; never record credentials from failed auth attempts.
-            anonymized_key = (
-                anonymize_api_key(raw_key)
-                if status_code not in (401, 403) and raw_key
-                else None
-            )
+            api_key_id = getattr(request.state, "api_key_id", None)
             try:
                 await run_sync(
                     service.log_usage,
@@ -166,7 +165,7 @@ async def usage_logging_middleware(request: Request, call_next):
                     method=request.method,
                     status_code=status_code,
                     latency_ms=latency_ms,
-                    api_key_id=anonymized_key,
+                    api_key_id=api_key_id,
                     provider_used=getattr(request.state, "provider_used", None),
                     cache_hit=getattr(request.state, "cache_hit", False),
                     cost_bucket=getattr(request.state, "cost_bucket", None),

@@ -101,7 +101,7 @@ DOCUMENTED_ENDPOINTS = [
     "dcf/{ticker}/sensitivity",
     "insider-transactions/{ticker}",
     "etf/{isin}/details",
-    "index/{name}/constituents",
+    "index/{index_name}/constituents",
     "macro/rates",
 ]
 
@@ -249,6 +249,9 @@ def test_apps_json_is_valid_json(client):
     data = response.json()
     assert isinstance(data, list), "apps.json should be a JSON array"
     assert len(data) == 2, "apps.json should contain exactly 2 apps"
+    # App 1 ("Fonrex — EU Markets") should have synced ticker parameter group
+    assert data[0]["groups"], "First app should define parameter groups for ticker synchronization"
+    assert data[0]["groups"][0]["paramName"] == "ticker"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -261,7 +264,7 @@ def test_widget_schema_structure(widgets_data):
     for widget_id, widget in widgets_data.items():
         missing = required_fields - set(widget.keys())
         assert not missing, f"Widget '{widget_id}' is missing fields: {missing}"
-        assert widget["source"] == "Fonrex", f"Widget '{widget_id}' source should be 'Fonrex'"
+        assert widget["source"] == ["Fonrex"], f"Widget '{widget_id}' source should be ['Fonrex']"
         assert widget["type"] in {"table", "chart", "markdown", "metric"}, (
             f"Widget '{widget_id}' has invalid type: {widget['type']}"
         )
@@ -325,6 +328,22 @@ def test_configured_api_key_validation(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         require_api_key(req_other)
     assert exc_info.value.status_code == 403
+
+
+def test_both_api_key_and_relay_key_accepted_simultaneously(monkeypatch):
+    """When both FONREX_API_KEY and FONREX_RELAY_KEY are configured, both are accepted."""
+    from auth.dependencies import require_api_key
+
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_primary_secret_111")
+    monkeypatch.setenv("FONREX_RELAY_KEY", "frx_live_relay_secret_222")
+
+    req_api = MagicMock()
+    req_api.headers = {"X-API-KEY": "frx_live_primary_secret_111"}
+    assert require_api_key(req_api) == "frx_live_primary_secret_111"
+
+    req_relay = MagicMock()
+    req_relay.headers = {"X-API-KEY": "frx_live_relay_secret_222"}
+    assert require_api_key(req_relay) == "frx_live_relay_secret_222"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -430,12 +449,14 @@ def test_health_monitoring_routes_auth_enforcement_when_configured(client, monke
 # Test: Usage logging persists anonymized key, not raw secret
 # ──────────────────────────────────────────────────────────────────────
 
-def test_usage_logging_middleware_masks_raw_api_key(client):
+def test_usage_logging_middleware_masks_raw_api_key(client, monkeypatch):
     """Verify usage_logging_middleware logs anonymized key fingerprint instead of raw secret."""
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_super_secret_token_abcdef123456")
     raw_secret = "frx_live_super_secret_token_abcdef123456"
 
-    # Make request with secret key header
-    client.get("/widgets.json", headers={"X-API-KEY": raw_secret})
+    # Make request with secret key header to authenticated endpoint
+    resp = client.get("/macro/rates", headers={"X-API-KEY": raw_secret})
+    assert resp.status_code == 200
 
     # Ensure db_service.log_usage was called
     db_mock = app.state.db_service
@@ -447,6 +468,21 @@ def test_usage_logging_middleware_masks_raw_api_key(client):
     assert logged_key_id is not None
     assert raw_secret not in logged_key_id
     assert logged_key_id.startswith("frx_live_sha256_")
+
+
+def test_usage_logging_middleware_does_not_log_unauthenticated_public_keys(client):
+    """Public endpoints that bypass auth middleware must not log unvalidated keys."""
+    arbitrary_key = "frx_live_attacker_arbitrary_key_12345"
+
+    resp = client.get("/widgets.json", headers={"X-API-KEY": arbitrary_key})
+    assert resp.status_code == 200
+
+    db_mock = app.state.db_service
+    assert db_mock.log_usage.called
+    call_kwargs = db_mock.log_usage.call_args.kwargs
+    logged_key_id = call_kwargs.get("api_key_id")
+
+    assert logged_key_id is None
 
 
 def test_usage_logging_middleware_does_not_log_failed_credentials(client, monkeypatch):

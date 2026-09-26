@@ -7,8 +7,17 @@ exécutées dans le même processus sans isolation explicite.
 """
 
 import os
+import warnings
 
 os.environ.setdefault("NUMBA_CACHE_DIR", "/tmp")
+
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message=r"'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated\. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead\.",
+        category=DeprecationWarning,
+    )
+    import fastapi  # noqa: F401
 
 
 def pytest_collection_modifyitems(items):

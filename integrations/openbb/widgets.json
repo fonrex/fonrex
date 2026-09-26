@@ -6,7 +6,7 @@
     "type": "table",
     "endpoint": "fundamental",
     "gridData": { "w": 20, "h": 9 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -24,7 +24,7 @@
     "type": "table",
     "endpoint": "fundamental/deep",
     "gridData": { "w": 24, "h": 12 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -42,7 +42,7 @@
     "type": "chart",
     "endpoint": "eod/{ticker}",
     "gridData": { "w": 20, "h": 9 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -67,7 +67,7 @@
     "type": "chart",
     "endpoint": "ticker/{symbol}/history",
     "gridData": { "w": 20, "h": 9 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "symbol",
@@ -106,7 +106,7 @@
     "type": "metric",
     "endpoint": "quote/{ticker}",
     "gridData": { "w": 8, "h": 4 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -124,7 +124,7 @@
     "type": "table",
     "endpoint": "quotes",
     "gridData": { "w": 20, "h": 9 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "tickers",
@@ -142,7 +142,7 @@
     "type": "chart",
     "endpoint": "technical/{ticker}",
     "gridData": { "w": 20, "h": 9 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -174,7 +174,7 @@
     "type": "chart",
     "endpoint": "technical/{ticker}/multi",
     "gridData": { "w": 24, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -199,7 +199,7 @@
     "type": "chart",
     "endpoint": "technical/{ticker}/chart",
     "gridData": { "w": 24, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -224,7 +224,7 @@
     "type": "table",
     "endpoint": "technical/screen",
     "gridData": { "w": 20, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "indicator",
@@ -256,7 +256,7 @@
     "type": "table",
     "endpoint": "news/{ticker}",
     "gridData": { "w": 24, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -281,7 +281,7 @@
     "type": "table",
     "endpoint": "news/feed",
     "gridData": { "w": 24, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "limit",
@@ -299,7 +299,7 @@
     "type": "table",
     "endpoint": "dcf/{ticker}",
     "gridData": { "w": 20, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -317,7 +317,7 @@
     "type": "table",
     "endpoint": "dcf/{ticker}/compare",
     "gridData": { "w": 24, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -335,7 +335,7 @@
     "type": "table",
     "endpoint": "dcf/{ticker}/sensitivity",
     "gridData": { "w": 24, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -353,7 +353,7 @@
     "type": "table",
     "endpoint": "insider-transactions/{ticker}",
     "gridData": { "w": 20, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "ticker",
@@ -371,7 +371,7 @@
     "type": "table",
     "endpoint": "etf/{isin}/details",
     "gridData": { "w": 20, "h": 10 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
         "paramName": "isin",
@@ -387,12 +387,12 @@
     "description": "List of constituents for major indices (S&P 500, CAC 40, NASDAQ 100, DAX)",
     "category": "Market Data",
     "type": "table",
-    "endpoint": "index/{name}/constituents",
+    "endpoint": "index/{index_name}/constituents",
     "gridData": { "w": 20, "h": 12 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": [
       {
-        "paramName": "name",
+        "paramName": "index_name",
         "value": "sp500",
         "label": "Index Name",
         "type": "text",
@@ -407,7 +407,7 @@
     "type": "metric",
     "endpoint": "macro/rates",
     "gridData": { "w": 10, "h": 6 },
-    "source": "Fonrex",
+    "source": ["Fonrex"],
     "params": []
   }
 }

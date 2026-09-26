@@ -1,7 +1,7 @@
 [
   {
     "name": "Fonrex — EU Markets",
-    "description": "Deep fundamentals, DCF valuation, and technicals for a given ticker, with EU exchange coverage FMP/EODHD charge extra for",
+    "description": "Deep fundamentals, DCF valuation, and technicals for a given ticker, with European exchange coverage.",
     "img": "https://fonrex.io/openbb-app-preview.png",
     "img_dark": "",
     "img_light": "",
@@ -17,7 +17,10 @@
             "y": 0,
             "w": 8,
             "h": 4,
-            "state": { "params": { "ticker": "AIR.PA" } }
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
           },
           {
             "i": "fonrex_fundamentals_deep",
@@ -25,7 +28,10 @@
             "y": 0,
             "w": 16,
             "h": 12,
-            "state": { "params": { "ticker": "AIR.PA" } }
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
           },
           {
             "i": "fonrex_eod",
@@ -33,7 +39,10 @@
             "y": 4,
             "w": 8,
             "h": 8,
-            "state": { "params": { "ticker": "AIR.PA" } }
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
           }
         ]
       },
@@ -47,7 +56,10 @@
             "y": 0,
             "w": 12,
             "h": 10,
-            "state": { "params": { "ticker": "AIR.PA" } }
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
           },
           {
             "i": "fonrex_dcf_sensitivity",
@@ -55,7 +67,10 @@
             "y": 0,
             "w": 12,
             "h": 10,
-            "state": { "params": { "ticker": "AIR.PA" } }
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
           }
         ]
       },
@@ -74,7 +89,10 @@
                 "ticker": "AIR.PA",
                 "indicators": "sma_20,rsi_14"
               }
-            }
+            },
+            "groups": [
+              "Group 1"
+            ]
           }
         ]
       },
@@ -88,12 +106,22 @@
             "y": 0,
             "w": 24,
             "h": 10,
-            "state": { "params": { "ticker": "AIR.PA" } }
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
           }
         ]
       }
     },
-    "groups": []
+    "groups": [
+      {
+        "name": "Group 1",
+        "type": "param",
+        "paramName": "ticker",
+        "defaultValue": "AIR.PA"
+      }
+    ]
   },
   {
     "name": "Fonrex — Screener & Macro",
@@ -141,7 +169,7 @@
             "y": 0,
             "w": 14,
             "h": 12,
-            "state": { "params": { "name": "sp500" } }
+            "state": { "params": { "index_name": "sp500" } }
           }
         ]
       }

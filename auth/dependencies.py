@@ -111,14 +111,11 @@ def validate_api_key(key: str) -> bool:
     - If no configured keys are present, the key must conform to the valid
       Fonrex key format (``frx_live_...`` or ``frx_test_...``).
     """
-    configured_key = os.environ.get("FONREX_API_KEY") or os.environ.get("FONREX_RELAY_KEY")
-    configured_keys_str = os.environ.get("FONREX_API_KEYS")
-
     allowed_keys: list[str] = []
-    if configured_key:
-        allowed_keys.extend([k.strip() for k in configured_key.split(",") if k.strip()])
-    if configured_keys_str:
-        allowed_keys.extend([k.strip() for k in configured_keys_str.split(",") if k.strip()])
+    for env_var in ("FONREX_API_KEY", "FONREX_RELAY_KEY", "FONREX_API_KEYS"):
+        val = os.environ.get(env_var)
+        if val:
+            allowed_keys.extend([k.strip() for k in val.split(",") if k.strip()])
 
     if allowed_keys:
         return any(secrets.compare_digest(key, k) for k in allowed_keys)
@@ -148,4 +145,5 @@ def require_api_key(request: Request) -> str:
             detail="Invalid API key format or credentials",
         )
 
+    request.state.api_key_id = anonymize_api_key(key)
     return key

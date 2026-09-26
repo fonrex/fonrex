@@ -62,6 +62,54 @@ class DCFService:
             rf_fred, rf_source = await self.fred.get_risk_free_rate()
         return await run_sync(self._compute_dcf_sync, ticker, request, rf_fred, rf_source)
 
+    def _find_asset_by_ticker(self, session, ticker: str) -> Optional[Asset]:
+        """Resolves an Asset from its ticker string, handling fallback for suffix tickers (e.g. AIR.PA -> AIR)."""
+        normalized = ticker.strip().upper()
+        tickers_to_try = [normalized]
+        if "." in normalized:
+            base_ticker = normalized.split(".")[0]
+            if base_ticker and base_ticker not in tickers_to_try:
+                tickers_to_try.append(base_ticker)
+
+        for sym in tickers_to_try:
+            # Prioritize asset with populated FundamentalsHighlights
+            stmt_hl = (
+                select(Asset)
+                .join(AssetListing, AssetListing.asset_id == Asset.id)
+                .join(FundamentalsHighlights, FundamentalsHighlights.asset_id == Asset.id)
+                .where(AssetListing.ticker == sym)
+                .where(AssetListing.is_active.is_(True))
+                .limit(1)
+            )
+            asset = session.execute(stmt_hl).scalars().first()
+            if asset:
+                return asset
+
+            # Fallback to any matching listing
+            stmt_asset = (
+                select(Asset)
+                .join(AssetListing, AssetListing.asset_id == Asset.id)
+                .where(AssetListing.ticker == sym)
+                .where(AssetListing.is_active.is_(True))
+                .order_by(AssetListing.is_primary.desc())
+                .limit(1)
+            )
+            asset = session.execute(stmt_asset).scalars().first()
+            if asset:
+                return asset
+
+            stmt_asset2 = (
+                select(Asset)
+                .where(Asset.ticker == sym)
+                .where(Asset.is_active.is_(True))
+                .limit(1)
+            )
+            asset = session.execute(stmt_asset2).scalars().first()
+            if asset:
+                return asset
+
+        return None
+
     def _compute_dcf_sync(self, ticker: str, request: DCFRequest, 
                           rf_fred: Optional[Decimal] = None, 
                           rf_source: Optional[str] = None) -> DCFResult:
@@ -71,15 +119,7 @@ class DCFService:
         session = self.db_service.get_session()
         try:
             # 1. Resolve the asset
-            stmt_asset = (
-                select(Asset)
-                .join(AssetListing, AssetListing.asset_id == Asset.id)
-                .where(AssetListing.ticker == ticker)
-                .where(AssetListing.is_active.is_(True))
-                .limit(1)
-            )
-            result_asset = session.execute(stmt_asset)
-            asset = result_asset.scalars().first()
+            asset = self._find_asset_by_ticker(session, ticker)
             if not asset:
                 raise ValueError(f"Ticker {ticker} not found or inactive.")
 
@@ -721,14 +761,7 @@ class DCFService:
         session = self.db_service.get_session()
         try:
             # Resolve the asset
-            stmt_asset = (
-                select(Asset)
-                .join(AssetListing, AssetListing.asset_id == Asset.id)
-                .where(AssetListing.ticker == ticker)
-                .where(AssetListing.is_active.is_(True))
-                .limit(1)
-            )
-            asset = session.execute(stmt_asset).scalars().first()
+            asset = self._find_asset_by_ticker(session, ticker)
             if not asset:
                 raise ValueError(f"Ticker {ticker} not found or inactive.")
 

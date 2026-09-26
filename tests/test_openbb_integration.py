@@ -1,0 +1,704 @@
+"""Tests for the OpenBB Workspace integration layer.
+
+Validates:
+- /widgets.json and /apps.json serve valid JSON
+- All documented Fonrex endpoints have a corresponding widget
+- apps.json only references widgets that exist in widgets.json
+- CORS allows the OpenBB origin
+- X-API-KEY authentication works identically to Authorization: Bearer
+- Missing auth headers return 401 on protected endpoints
+- /widgets.json and /apps.json are excluded from OpenAPI schema
+"""
+
+import json
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from fastapi.testclient import TestClient
+
+from main import app
+
+# ──────────────────────────────────────────────────────────────────────
+# Fixtures
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def client():
+    """TestClient with minimal mocked services to allow startup."""
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    mock_redis.setex = AsyncMock()
+
+    orig_redis = getattr(app.state, "redis_client", None)
+    orig_db = getattr(app.state, "db_service", None)
+    orig_db_available = getattr(app.state, "db_available", None)
+    orig_fred = getattr(app.state, "fred_service", None)
+
+    mock_fred = MagicMock()
+    mock_fred.get_current_rates = AsyncMock(return_value={"risk_free_rate": None})
+
+    with TestClient(app) as test_client:
+        app.state.redis_client = mock_redis
+        app.state.db_service = MagicMock()
+        app.state.db_available = True
+        app.state.fred_service = mock_fred
+        yield test_client
+
+    app.state.redis_client = orig_redis
+    app.state.db_service = orig_db
+    app.state.db_available = orig_db_available
+    app.state.fred_service = orig_fred
+
+
+@pytest.fixture
+def widgets_data():
+    """Load widgets.json from disk for structural validation."""
+    widgets_path = Path(__file__).parent.parent / "integrations" / "openbb" / "widgets.json"
+    return json.loads(widgets_path.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def apps_data():
+    """Load apps.json from disk for structural validation."""
+    apps_path = Path(__file__).parent.parent / "integrations" / "openbb" / "apps.json"
+    return json.loads(apps_path.read_text(encoding="utf-8"))
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: /widgets.json returns valid JSON
+# ──────────────────────────────────────────────────────────────────────
+
+def test_widgets_json_is_valid_json(client):
+    """GET /widgets.json returns valid JSON with status 200."""
+    response = client.get("/widgets.json")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict), "widgets.json should be a JSON object"
+    assert len(data) > 0, "widgets.json should not be empty"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: all documented endpoints have widgets
+# ──────────────────────────────────────────────────────────────────────
+
+# The 19 Fonrex endpoints that must be covered by widgets (via /openbb/ adapters)
+DOCUMENTED_ENDPOINTS = [
+    "openbb/fundamental",
+    "openbb/fundamental/deep",
+    "openbb/eod/{ticker}",
+    "openbb/ticker/{symbol}/history",
+    "openbb/quote/{ticker}",
+    "openbb/quotes",
+    "openbb/technical/{ticker}",
+    "openbb/technical/{ticker}/multi",
+    "openbb/technical/{ticker}/chart",
+    "openbb/technical/screen",
+    "openbb/news/{ticker}",
+    "openbb/news/feed",
+    "openbb/dcf/{ticker}",
+    "openbb/dcf/{ticker}/compare",
+    "openbb/dcf/{ticker}/sensitivity",
+    "openbb/insider-transactions/{ticker}",
+    "openbb/etf/{isin}/details",
+    "openbb/index/{index_name}/constituents",
+    "openbb/macro/rates",
+]
+
+
+def test_widgets_json_covers_all_documented_endpoints(widgets_data):
+    """Each documented Fonrex endpoint has a corresponding widget."""
+    widget_endpoints = {w["endpoint"] for w in widgets_data.values()}
+    missing = [ep for ep in DOCUMENTED_ENDPOINTS if ep not in widget_endpoints]
+    assert not missing, f"Missing widgets for endpoints: {missing}"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: OpenBB adapter endpoints return expected schema contracts
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_openbb_macro_rates_endpoint_contract(client):
+    """GET /openbb/macro/rates returns OpenBB metric format [{label, value, delta}]."""
+    response = client.get("/openbb/macro/rates")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    assert "label" in data[0]
+    assert "value" in data[0]
+    assert "delta" in data[0]
+
+
+def test_openbb_dcf_endpoints_contract(client):
+    """GET /openbb/dcf/* returns flat AgGrid table rows."""
+    from decimal import Decimal
+
+    from schemas.dcf import (
+        DCFModelResult,
+        DCFResult,
+        SensitivityCell,
+        SensitivityResult,
+        WACCResult,
+    )
+
+    dcf_res = DCFResult(
+        ticker="AAPL",
+        currency="USD",
+        current_price=Decimal("150.0"),
+        consensus_value=Decimal("175.0"),
+        consensus_upside_pct=Decimal("16.6"),
+        models={
+            "fcf": DCFModelResult(
+                model_name="Free Cash Flow",
+                intrinsic_value_per_share=Decimal("180.0"),
+                upside_pct=Decimal("20.0"),
+                terminal_value=Decimal("500000000"),
+                projected_values=[],
+                present_values=[],
+                pv_terminal=Decimal("400000000"),
+            )
+        },
+        wacc=WACCResult(
+            wacc=Decimal("0.08"),
+            cost_of_equity=Decimal("0.09"),
+            cost_of_debt=Decimal("0.04"),
+            beta_used=Decimal("1.1"),
+            tax_rate=Decimal("0.21"),
+            weight_equity=Decimal("0.8"),
+            weight_debt=Decimal("0.2"),
+        ),
+    )
+    sens_res = SensitivityResult(
+        ticker="AAPL",
+        model="fcf",
+        wacc_range=[Decimal("0.08")],
+        growth_range=[Decimal("0.02")],
+        matrix=[
+            [
+                SensitivityCell(
+                    wacc=Decimal("0.08"),
+                    terminal_growth=Decimal("0.02"),
+                    intrinsic_value=Decimal("180.0"),
+                    upside_pct=Decimal("20.0"),
+                )
+            ]
+        ],
+    )
+
+    mock_dcf = MagicMock()
+    mock_dcf.compute_dcf = AsyncMock(return_value=dcf_res)
+    mock_dcf.compute_sensitivity = MagicMock(return_value=sens_res)
+
+    orig_dcf = getattr(app.state, "dcf_service", None)
+    app.state.dcf_service = mock_dcf
+    try:
+        # /openbb/dcf/{ticker}
+        resp_dcf = client.get("/openbb/dcf/AAPL")
+        assert resp_dcf.status_code == 200
+        data_dcf = resp_dcf.json()
+        assert isinstance(data_dcf, list)
+        assert any(r.get("metric") == "Current Price" for r in data_dcf)
+
+        # /openbb/dcf/{ticker}/compare
+        resp_cmp = client.get("/openbb/dcf/AAPL/compare")
+        assert resp_cmp.status_code == 200
+        data_cmp = resp_cmp.json()
+        assert isinstance(data_cmp, list)
+        assert data_cmp[0]["model_name"] == "Free Cash Flow"
+
+        # /openbb/dcf/{ticker}/sensitivity
+        resp_sens = client.get("/openbb/dcf/AAPL/sensitivity")
+        assert resp_sens.status_code == 200
+        data_sens = resp_sens.json()
+        assert isinstance(data_sens, list)
+        assert data_sens[0]["wacc"] == "8.0%"
+    finally:
+        app.state.dcf_service = orig_dcf
+
+
+def test_openbb_quote_endpoint_contract(client):
+    """GET /openbb/quote/{ticker} returns OpenBB metric format."""
+    quote_data = {
+        "ticker": "AAPL",
+        "close": 150.25,
+        "change": 1.5,
+        "change_pct": 1.01,
+        "volume": 50000000,
+        "high": 151.0,
+        "low": 149.0,
+        "previous_close": 148.75,
+        "is_realtime": True,
+    }
+    mock_worker = MagicMock()
+    mock_worker.get_quote_from_cache = AsyncMock(return_value=quote_data)
+
+    orig_worker = getattr(app.state, "realtime_worker", None)
+    app.state.realtime_worker = mock_worker
+    try:
+        resp = client.get("/openbb/quote/AAPL")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert data[0]["label"] == "AAPL Price"
+        assert data[0]["value"] == 150.25
+        assert data[0]["delta"] == 1.01
+    finally:
+        app.state.realtime_worker = orig_worker
+
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: apps.json only references existing widgets
+# ──────────────────────────────────────────────────────────────────────
+
+def test_apps_json_references_only_existing_widgets(widgets_data, apps_data):
+    """Every widget_id referenced in apps.json layout exists in widgets.json."""
+    widget_ids = set(widgets_data.keys())
+    referenced_ids = set()
+
+    for app_def in apps_data:
+        for tab in app_def.get("tabs", {}).values():
+            for layout_item in tab.get("layout", []):
+                referenced_ids.add(layout_item["i"])
+
+    orphans = referenced_ids - widget_ids
+    assert not orphans, f"apps.json references non-existent widgets: {orphans}"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: CORS allows OpenBB origin
+# ──────────────────────────────────────────────────────────────────────
+
+def test_cors_allows_openbb_origin(client):
+    """A preflight request from https://pro.openbb.co receives proper CORS headers."""
+    response = client.options(
+        "/widgets.json",
+        headers={
+            "Origin": "https://pro.openbb.co",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") == "https://pro.openbb.co"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: X-API-KEY authenticates same as Bearer
+# ──────────────────────────────────────────────────────────────────────
+
+def test_x_api_key_header_authenticates_same_as_bearer():
+    """X-API-KEY and Authorization: Bearer resolve to the same key."""
+    from auth.dependencies import get_api_key_from_request
+    from routers.dependencies import get_api_key_from_request as router_get_key
+
+    # Single point of truth: both imports resolve to the same function
+    assert get_api_key_from_request is router_get_key
+
+    # Mock request with X-API-KEY
+    mock_request_xapi = MagicMock()
+    mock_request_xapi.headers = {"X-API-KEY": "frx_live_test123"}
+    key_xapi = get_api_key_from_request(mock_request_xapi)
+
+    # Mock request with Authorization: Bearer
+    mock_request_bearer = MagicMock()
+    mock_request_bearer.headers = {"Authorization": "Bearer frx_live_test123"}
+    key_bearer = get_api_key_from_request(mock_request_bearer)
+
+    assert key_xapi == key_bearer == "frx_live_test123"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: missing both auth headers returns 401
+# ──────────────────────────────────────────────────────────────────────
+
+def test_missing_both_auth_headers_returns_401():
+    """When neither X-API-KEY nor Authorization Bearer is present:
+    1. get_api_key_from_request returns None
+    2. require_api_key raises HTTPException 401
+    3. An endpoint protected with require_api_key returns 401 over HTTP.
+    """
+    from fastapi import Depends, FastAPI, HTTPException
+
+    from auth.dependencies import get_api_key_from_request, require_api_key
+
+    mock_request = MagicMock()
+    mock_request.headers = {}
+    key = get_api_key_from_request(mock_request)
+    assert key is None
+
+    # Calling require_api_key directly raises HTTPException(status_code=401)
+    with pytest.raises(HTTPException) as exc_info:
+        require_api_key(mock_request)
+    assert exc_info.value.status_code == 401
+
+    # End-to-end FastAPI test: protected route returns 401 when unauthenticated
+    test_app = FastAPI()
+
+    @test_app.get("/protected")
+    def protected_route(api_key: str = Depends(require_api_key)):
+        return {"status": "ok", "key": api_key}
+
+    test_client = TestClient(test_app)
+
+    # No headers -> 401 Unauthorized
+    resp_unauth = test_client.get("/protected")
+    assert resp_unauth.status_code == 401
+
+    # Bearer header -> 200 OK
+    resp_bearer = test_client.get(
+        "/protected", headers={"Authorization": "Bearer frx_live_test123"}
+    )
+    assert resp_bearer.status_code == 200
+    assert resp_bearer.json()["key"] == "frx_live_test123"
+
+    # X-API-KEY header -> 200 OK
+    resp_xapi = test_client.get(
+        "/protected", headers={"X-API-KEY": "frx_live_test123"}
+    )
+    assert resp_xapi.status_code == 200
+    assert resp_xapi.json()["key"] == "frx_live_test123"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: /widgets.json and /apps.json not in OpenAPI schema
+# ──────────────────────────────────────────────────────────────────────
+
+def test_widgets_json_not_in_openapi_schema(client):
+    """GET /widgets.json and /apps.json do not appear in /openapi.json."""
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    schema = response.json()
+    paths = schema.get("paths", {})
+    assert "/widgets.json" not in paths, "/widgets.json should not appear in OpenAPI schema"
+    assert "/apps.json" not in paths, "/apps.json should not appear in OpenAPI schema"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: apps.json returns valid JSON
+# ──────────────────────────────────────────────────────────────────────
+
+def test_apps_json_is_valid_json(client):
+    """GET /apps.json returns valid JSON with status 200."""
+    response = client.get("/apps.json")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list), "apps.json should be a JSON array"
+    assert len(data) == 2, "apps.json should contain exactly 2 apps"
+    # App 1 ("Fonrex — EU Markets") should have synced ticker parameter group
+    assert data[0]["groups"], "First app should define parameter groups for ticker synchronization"
+    assert data[0]["groups"][0]["paramName"] == "ticker"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: widget schema structure
+# ──────────────────────────────────────────────────────────────────────
+
+def test_widget_schema_structure(widgets_data):
+    """Each widget has the required fields for OpenBB Workspace."""
+    required_fields = {"name", "description", "category", "type", "endpoint", "gridData", "source", "params"}
+    for widget_id, widget in widgets_data.items():
+        missing = required_fields - set(widget.keys())
+        assert not missing, f"Widget '{widget_id}' is missing fields: {missing}"
+        assert widget["source"] == ["Fonrex"], f"Widget '{widget_id}' source should be ['Fonrex']"
+        assert widget["type"] in {"table", "chart", "markdown", "metric"}, (
+            f"Widget '{widget_id}' has invalid type: {widget['type']}"
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: Bearer header priority over X-API-KEY
+# ──────────────────────────────────────────────────────────────────────
+
+def test_bearer_takes_priority_over_x_api_key():
+    """When both headers are present, Authorization: Bearer takes priority."""
+    from routers.dependencies import get_api_key_from_request
+
+    mock_request = MagicMock()
+    mock_request.headers = {
+        "Authorization": "Bearer frx_live_bearer_key",
+        "X-API-KEY": "frx_live_xapi_key",
+    }
+    key = get_api_key_from_request(mock_request)
+    assert key == "frx_live_bearer_key"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: invalid API key format or value returns 403
+# ──────────────────────────────────────────────────────────────────────
+
+def test_invalid_api_key_returns_403():
+    """Arbitrary values such as 'frx_fake' or malformed keys are rejected with 403."""
+    from fastapi import HTTPException
+
+    from auth.dependencies import require_api_key
+
+    for bad_key in ["frx_fake", "invalid", "Bearer 123", "frx_live_"]:
+        mock_request = MagicMock()
+        mock_request.headers = {"X-API-KEY": bad_key}
+        with pytest.raises(HTTPException) as exc_info:
+            require_api_key(mock_request)
+        assert exc_info.value.status_code == 403
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: configured FONREX_API_KEY validation
+# ──────────────────────────────────────────────────────────────────────
+
+def test_configured_api_key_validation(monkeypatch):
+    """When FONREX_API_KEY is configured, only exact matching keys are accepted."""
+    from fastapi import HTTPException
+
+    from auth.dependencies import require_api_key
+
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_production_secret_999")
+
+    # Matching key passes
+    req_valid = MagicMock()
+    req_valid.headers = {"X-API-KEY": "frx_live_production_secret_999"}
+    assert require_api_key(req_valid) == "frx_live_production_secret_999"
+
+    # Non-matching key (even well-formatted) is rejected
+    req_other = MagicMock()
+    req_other.headers = {"X-API-KEY": "frx_live_other_valid_looking_key"}
+    with pytest.raises(HTTPException) as exc_info:
+        require_api_key(req_other)
+    assert exc_info.value.status_code == 403
+
+
+def test_both_api_key_and_relay_key_accepted_simultaneously(monkeypatch):
+    """When both FONREX_API_KEY and FONREX_RELAY_KEY are configured, both are accepted."""
+    from auth.dependencies import require_api_key
+
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_primary_secret_111")
+    monkeypatch.setenv("FONREX_RELAY_KEY", "frx_live_relay_secret_222")
+
+    req_api = MagicMock()
+    req_api.headers = {"X-API-KEY": "frx_live_primary_secret_111"}
+    assert require_api_key(req_api) == "frx_live_primary_secret_111"
+
+    req_relay = MagicMock()
+    req_relay.headers = {"X-API-KEY": "frx_live_relay_secret_222"}
+    assert require_api_key(req_relay) == "frx_live_relay_secret_222"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: production routes enforce auth when FONREX_API_KEY is set
+# ──────────────────────────────────────────────────────────────────────
+
+def test_production_routes_auth_enforced_when_configured(client, monkeypatch):
+    """When FONREX_API_KEY is configured, unauthenticated calls to API routes return 401."""
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_secret123")
+
+    # Public discovery route remains accessible
+    resp_widgets = client.get("/widgets.json")
+    assert resp_widgets.status_code == 200
+
+    # Protected route without auth returns 401
+    resp_unauth = client.get("/macro/rates")
+    assert resp_unauth.status_code == 401
+    assert "Missing API key" in resp_unauth.json()["detail"]
+
+    # Protected route with wrong key returns 403
+    resp_wrong = client.get("/macro/rates", headers={"X-API-KEY": "frx_live_wrong_key"})
+    assert resp_wrong.status_code == 403
+
+    # Protected route with valid key passes auth middleware
+    resp_valid = client.get(
+        "/macro/rates",
+        headers={"X-API-KEY": "frx_live_secret123"},
+    )
+    assert resp_valid.status_code == 200
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: fonrex_eod and fonrex_history parameters match backend endpoints
+# ──────────────────────────────────────────────────────────────────────
+
+def test_eod_and_history_widget_parameters(widgets_data):
+    """Verify parameters for fonrex_eod and fonrex_history match API route signatures."""
+    # fonrex_eod should only use ticker and period (no resolution)
+    eod_params = {p["paramName"] for p in widgets_data["fonrex_eod"]["params"]}
+    assert "resolution" not in eod_params
+    assert "ticker" in eod_params
+    assert "period" in eod_params
+
+    # fonrex_history should use symbol, start_date, end_date, interval
+    history_params = {p["paramName"] for p in widgets_data["fonrex_history"]["params"]}
+    assert history_params == {"symbol", "start_date", "end_date", "interval"}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: API key anonymization
+# ──────────────────────────────────────────────────────────────────────
+
+def test_anonymize_api_key():
+    """Verify that anonymize_api_key returns non-reversible digests and preserves key prefix."""
+    from auth.dependencies import anonymize_api_key
+
+    assert anonymize_api_key(None) is None
+    assert anonymize_api_key("") is None
+
+    live_hash = anonymize_api_key("frx_live_production_secret_key_12345")
+    assert live_hash is not None
+    assert live_hash.startswith("frx_live_sha256_")
+    assert "production_secret_key" not in live_hash
+
+    test_hash = anonymize_api_key("frx_test_sandbox_secret_key_12345")
+    assert test_hash is not None
+    assert test_hash.startswith("frx_test_sha256_")
+    assert "sandbox_secret_key" not in test_hash
+
+    custom_hash = anonymize_api_key("some_custom_unprefixed_token")
+    assert custom_hash is not None
+    assert custom_hash.startswith("sha256_")
+    assert "some_custom" not in custom_hash
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: Health monitoring routes auth enforcement
+# ──────────────────────────────────────────────────────────────────────
+
+def test_health_monitoring_routes_auth_enforcement_when_configured(client, monkeypatch):
+    """Verify only exact /health is exempted, while /health/* monitoring routes require auth."""
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_monitoring_key_123")
+
+    # Exact liveness endpoint is public
+    resp_health = client.get("/health")
+    assert resp_health.status_code == 200
+
+    # Operational/monitoring endpoints require authentication
+    resp_providers = client.get("/health/providers")
+    assert resp_providers.status_code == 401
+    assert "Missing API key" in resp_providers.json()["detail"]
+
+    resp_alerts = client.get("/health/alerts")
+    assert resp_alerts.status_code == 401
+    assert "Missing API key" in resp_alerts.json()["detail"]
+
+    resp_canary = client.post("/health/canary/run")
+    assert resp_canary.status_code == 401
+    assert "Missing API key" in resp_canary.json()["detail"]
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: Usage logging persists anonymized key, not raw secret
+# ──────────────────────────────────────────────────────────────────────
+
+def test_usage_logging_middleware_masks_raw_api_key(client, monkeypatch):
+    """Verify usage_logging_middleware logs anonymized key fingerprint instead of raw secret."""
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_super_secret_token_abcdef123456")
+    raw_secret = "frx_live_super_secret_token_abcdef123456"
+
+    # Make request with secret key header to authenticated endpoint
+    resp = client.get("/macro/rates", headers={"X-API-KEY": raw_secret})
+    assert resp.status_code == 200
+
+    # Ensure db_service.log_usage was called
+    db_mock = app.state.db_service
+    assert db_mock.log_usage.called
+
+    call_kwargs = db_mock.log_usage.call_args.kwargs
+    logged_key_id = call_kwargs.get("api_key_id")
+
+    assert logged_key_id is not None
+    assert raw_secret not in logged_key_id
+    assert logged_key_id.startswith("frx_live_sha256_")
+
+
+def test_usage_logging_middleware_does_not_log_unauthenticated_public_keys(client):
+    """Public endpoints that bypass auth middleware must not log unvalidated keys."""
+    arbitrary_key = "frx_live_attacker_arbitrary_key_12345"
+
+    resp = client.get("/widgets.json", headers={"X-API-KEY": arbitrary_key})
+    assert resp.status_code == 200
+
+    db_mock = app.state.db_service
+    assert db_mock.log_usage.called
+    call_kwargs = db_mock.log_usage.call_args.kwargs
+    logged_key_id = call_kwargs.get("api_key_id")
+
+    assert logged_key_id is None
+
+
+def test_usage_logging_middleware_does_not_log_failed_credentials(client, monkeypatch):
+    """Verify usage_logging_middleware does not persist credentials when authentication fails."""
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_authorized_key_999")
+    failed_secret = "frx_live_wrong_secret_123456"
+
+    resp = client.get("/health/alerts", headers={"X-API-KEY": failed_secret})
+    assert resp.status_code == 403
+
+    db_mock = app.state.db_service
+    assert db_mock.log_usage.called
+    call_kwargs = db_mock.log_usage.call_args.kwargs
+    logged_key_id = call_kwargs.get("api_key_id")
+
+    assert logged_key_id is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: OpenBB chart and news adapter endpoints
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_openbb_eod_chart_contract(client):
+    """GET /openbb/eod/{ticker} returns Plotly candlestick figure."""
+    mock_query = MagicMock()
+    mock_query.get_history = AsyncMock(
+        return_value=[
+            {
+                "time": "2026-09-22",
+                "open": 150.0,
+                "high": 155.0,
+                "low": 149.0,
+                "close": 154.0,
+                "volume": 1000000,
+            }
+        ]
+    )
+
+    orig_query = getattr(app.state, "query_service", None)
+    app.state.query_service = mock_query
+    try:
+        resp = client.get("/openbb/eod/AAPL")
+        assert resp.status_code == 200
+        fig = resp.json()
+        assert "data" in fig
+        assert "layout" in fig
+        assert fig["data"][0]["type"] == "candlestick"
+        assert fig["data"][0]["name"] == "AAPL"
+    finally:
+        app.state.query_service = orig_query
+
+
+def test_openbb_news_endpoints_contract(client):
+    """GET /openbb/news/{ticker} and /openbb/news/feed return flat lists of article records."""
+    mock_news = MagicMock()
+    article = {
+        "title": "Apple Reports Record Results",
+        "url": "https://example.com/apple-news",
+        "provider": "reuters",
+        "published_at": "2026-09-25T10:00:00Z",
+    }
+    mock_news.get_news = AsyncMock(return_value=MagicMock(articles=[article]))
+    mock_news.get_feed = AsyncMock(return_value=MagicMock(articles=[article]))
+
+    orig_news = getattr(app.state, "news_service", None)
+    app.state.news_service = mock_news
+    try:
+        resp_news = client.get("/openbb/news/AAPL")
+        assert resp_news.status_code == 200
+        data_news = resp_news.json()
+        assert isinstance(data_news, list)
+        assert data_news[0]["title"] == "Apple Reports Record Results"
+
+        resp_feed = client.get("/openbb/news/feed")
+        assert resp_feed.status_code == 200
+        data_feed = resp_feed.json()
+        assert isinstance(data_feed, list)
+        assert data_feed[0]["title"] == "Apple Reports Record Results"
+    finally:
+        app.state.news_service = orig_news
+
+
+

@@ -408,6 +408,45 @@ class TestWebSocketEndpoint:
                 except Exception:
                     pass
 
+    def test_websocket_auth_enforcement_when_configured(self, test_app_client, monkeypatch):
+        """Vérifie que la connexion WS requiert une clé API valide quand FONREX_API_KEY est configurée."""
+        from starlette.websockets import WebSocketDisconnect
+
+        client, worker = test_app_client
+        monkeypatch.setenv("FONREX_API_KEY", "frx_live_ws_secret_999")
+
+        # 1. Non authentifié -> rejet immédiat avec code 1008
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/ws/realtime/AAPL"):
+                pass
+        assert exc.value.code == 1008
+
+        # 2. Clé invalide -> code 1008
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect(
+                "/ws/realtime/AAPL",
+                headers={"X-API-KEY": "frx_live_bad_key"},
+            ):
+                pass
+        assert exc.value.code == 1008
+
+        # 3. Clé valide via Authorization: Bearer
+        with patch.object(worker, "subscribe", new_callable=AsyncMock):
+            with client.websocket_connect(
+                "/ws/realtime/AAPL",
+                headers={"Authorization": "Bearer frx_live_ws_secret_999"},
+            ) as ws:
+                ws.send_text("ping")
+                assert ws.receive_json() == {"type": "pong"}
+
+        # 4. Clé valide via query param token
+        with patch.object(worker, "subscribe", new_callable=AsyncMock):
+            with client.websocket_connect(
+                "/ws/realtime/AAPL?token=frx_live_ws_secret_999",
+            ) as ws:
+                ws.send_text("ping")
+                assert ws.receive_json() == {"type": "pong"}
+
 
 class TestQuoteEndpoint:
     def test_quote_from_redis_cache(self, test_app_client, fake_redis):

@@ -58,7 +58,7 @@ class IndexConstituentsResult(BaseModel):
 WIKIPEDIA_URLS = {
     IndexName.SP500: "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
     IndexName.CAC40: "https://fr.wikipedia.org/wiki/CAC_40",
-    IndexName.NASDAQ100: "https://en.wikipedia.org/wiki/Nasdaq-100",
+    IndexName.NASDAQ100: "https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies",
     IndexName.DAX: "https://en.wikipedia.org/wiki/DAX",
 }
 
@@ -75,12 +75,11 @@ class IndexConstituentsProvider(BaseFinancialProvider):
     retry_delay = 1.0
 
     def _wiki_headers(self, lang: str = "en") -> dict:
-        return self._get_headers(
-            {
-                "Accept-Language": f"{lang},{lang}-{lang.upper()};q=0.9,en;q=0.7",
-                "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
-            }
-        )
+        return {
+            "User-Agent": "Fonrex/1.0 (https://fonrex.com; contact@fonrex.com)",
+            "Accept-Language": f"{lang},{lang}-{lang.upper()};q=0.9,en;q=0.7",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
 
     async def fetch(
         self,
@@ -159,35 +158,45 @@ class IndexConstituentsProvider(BaseFinancialProvider):
         if not html:
             return IndexConstituentsResult(index_name="CAC40", source_url=url, total_count=0)
 
-        rows = self._parse_wikipedia_table(html, table_index=1)
+        rows = self._parse_wikipedia_table(html, table_index=0)
+        if not any(
+            row.get("Société") or row.get("Entreprise") or row.get("Nom") or row.get("Company")
+            for row in rows
+        ):
+            rows = self._parse_wikipedia_table(html, table_index=1)
+
         constituents = []
         for row in rows:
-            # Les noms de colonnes varient — on cherche de façon flexible
             name = (
-                row.get("Entreprise")
-                or row.get("Société")
+                row.get("Société")
+                or row.get("Entreprise")
                 or row.get("Nom")
                 or row.get("Company")
                 or ""
             )
             isin = row.get("ISIN") or row.get("Code ISIN") or ""
-            ticker = row.get("Mnémonique") or row.get("Ticker") or row.get("Code") or ""
+            ticker = (
+                row.get("Mnémo")
+                or row.get("Mnémonique")
+                or row.get("Ticker")
+                or row.get("Code")
+                or ""
+            )
             sector = (
                 row.get("Secteur") or row.get("Secteur d'activité") or row.get("Secteur ICB") or ""
             )
             if not name:
                 continue
 
-            # Dériver le pays depuis l'ISIN (2 premiers caractères)
-            country = isin[:2].upper() if isin and len(isin) >= 2 else None
+            ticker = ticker.strip()
+            if ticker and "." not in ticker and len(ticker) <= 5:
+                ticker = f"{ticker}.PA"
 
-            # Ajouter suffixe .PA si pas de ticker
-            if not ticker and name:
-                ticker = name  # Sera raffiné en DB
+            country = isin[:2].upper() if isin and len(isin) >= 2 else "FR"
 
             constituents.append(
                 IndexConstituent(
-                    ticker=ticker.strip() if ticker else name.strip(),
+                    ticker=ticker if ticker else name.strip(),
                     isin=isin.strip() if isin else None,
                     name=name.strip(),
                     sector=sector.strip() if sector else None,
@@ -207,14 +216,14 @@ class IndexConstituentsProvider(BaseFinancialProvider):
     async def fetch_nasdaq100(self) -> IndexConstituentsResult:
         """
         Parse la table Wikipedia du NASDAQ 100.
-        Colonnes : Company | Ticker | GICS Sector | GICS Sub-Industry
+        Colonnes : Ticker | Company | ICBIndustry | ICBSubsector
         """
         url = WIKIPEDIA_URLS[IndexName.NASDAQ100]
         html = await self._get(url, headers=self._wiki_headers("en"))
         if not html:
             return IndexConstituentsResult(index_name="NASDAQ100", source_url=url, total_count=0)
 
-        rows = self._parse_wikipedia_table(html, table_index=3)
+        rows = self._parse_wikipedia_table(html, table_index=0)
         constituents = []
         for row in rows:
             ticker = row.get("Ticker") or row.get("Symbol") or ""
@@ -225,8 +234,8 @@ class IndexConstituentsProvider(BaseFinancialProvider):
                 IndexConstituent(
                     ticker=ticker.strip(),
                     name=name.strip(),
-                    sector=row.get("GICS Sector"),
-                    sub_sector=row.get("GICS Sub-Industry"),
+                    sector=row.get("ICBIndustry") or row.get("GICS Sector") or row.get("Sector"),
+                    sub_sector=row.get("ICBSubsector") or row.get("GICS Sub-Industry"),
                     country="US",
                 )
             )

@@ -40,23 +40,34 @@ class QueryService:
         """Récupère l'ID d'un actif à partir d'une cotation ou du ticker legacy."""
         async with self.async_session() as session:
             normalized_ticker = ticker.strip().upper()
-            stmt = (
-                select(AssetListing.asset_id)
-                .where(AssetListing.ticker == normalized_ticker)
-                .order_by(
-                    AssetListing.is_primary.desc(),
-                    AssetListing.currency.asc(),
-                    AssetListing.exchange.asc(),
-                )
-            )
-            result = await session.execute(stmt)
-            asset_id = result.scalars().first()
-            if asset_id:
-                return asset_id
+            tickers_to_try = [normalized_ticker]
+            if "." in normalized_ticker:
+                base_symbol = normalized_ticker.split(".")[0]
+                if base_symbol and base_symbol not in tickers_to_try:
+                    tickers_to_try.append(base_symbol)
 
-            stmt = select(Asset.id).where(Asset.ticker == normalized_ticker)
-            result = await session.execute(stmt)
-            return result.scalars().first()
+            for sym in tickers_to_try:
+                stmt = (
+                    select(AssetListing.asset_id)
+                    .where(AssetListing.ticker == sym)
+                    .order_by(
+                        AssetListing.is_primary.desc(),
+                        AssetListing.currency.asc(),
+                        AssetListing.exchange.asc(),
+                    )
+                )
+                result = await session.execute(stmt)
+                asset_id = result.scalars().first()
+                if asset_id:
+                    return asset_id
+
+                stmt = select(Asset.id).where(Asset.ticker == sym)
+                result = await session.execute(stmt)
+                asset_id = result.scalars().first()
+                if asset_id:
+                    return asset_id
+
+            return None
 
     async def get_history(
         self,

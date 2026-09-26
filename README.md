@@ -33,6 +33,7 @@ Fonrex is a **self-hosted financial data API** that aggregates market data, fund
 git clone https://github.com/fonrex/fonrex
 cd fonrex
 cp .env.example .env
+mkdir -p logs
 docker compose up
 # → API running on http://localhost:5000
 ```
@@ -45,17 +46,20 @@ docker compose up
 - Docker + Docker Compose
 - 4 GB RAM minimum (8 GB recommended)
 
-### Start in 3 commands
+### Start in 4 commands
 
 ```bash
 # 1. Clone and configure
 git clone https://github.com/fonrex/fonrex && cd fonrex
 cp .env.example .env
 
-# 2. Start (runs migrations automatically)
+# 2. Ensure log directory exists
+mkdir -p logs
+
+# 3. Start (runs migrations automatically)
 docker compose up -d
 
-# 3. Import your first assets
+# 4. Import your first assets
 docker compose exec fonrex-api python import_assets.py --file data/etf.csv
 ```
 
@@ -439,6 +443,27 @@ OPENFIGI_API_KEY=
 
 ---
 
+## Troubleshooting
+
+### Common Docker Issues
+
+#### 1. Permission Denied on `logs` volume (`chown permission denied`)
+On macOS or Linux, Docker Desktop may fail to initialize volume permissions if the `./logs` directory is missing or owned by root.
+```bash
+mkdir -p logs
+chmod 777 logs
+docker compose up -d
+```
+
+#### 2. Container Name Conflict (`container name "/fonrex-db" is already in use`)
+If previous containers with the same names already exist on your host:
+```bash
+docker rm -f fonrex-db fonrex-redis fonrex-api
+docker compose up -d
+```
+
+---
+
 ## Tests and Quality Checks
 
 A `Makefile` is provided to simplify local development, testing, and quality checks. Run `make` or `make help` to see all available commands.
@@ -487,6 +512,19 @@ GitHub Actions runs this exact same quality check for every pull request and pus
 - [ ] Browser extension (Fonrex DevTools)
 - [ ] DCF bulk valuation endpoint
 - [ ] Webhook support for price alerts
+
+---
+
+## Integrations
+
+### OpenBB Workspace
+
+Fonrex integrates natively with [OpenBB Workspace](https://openbb.co) —
+connect your self-hosted instance to access fundamentals, DCF valuations,
+technical indicators and news directly inside OpenBB's dashboard environment.
+
+👉 See [integrations/openbb/README.md](integrations/openbb/README.md) for
+setup instructions and the full list of 19 available widgets.
 
 ---
 

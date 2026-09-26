@@ -391,7 +391,39 @@ class AssetRepository(DatabaseComponent):
             if active_only:
                 query = query.filter(AssetListing.is_active.is_(True))
             if normalized_ticker:
-                query = query.filter(AssetListing.ticker == normalized_ticker)
+                query_exact = query.filter(
+                    (AssetListing.ticker == normalized_ticker)
+                    | (Asset.ticker == normalized_ticker)
+                )
+                if normalized_isin:
+                    query_exact = query_exact.filter(Asset.isin == normalized_isin)
+                if normalized_exchange is not None:
+                    query_exact = query_exact.filter(AssetListing.exchange == normalized_exchange)
+                if normalized_currency is not None:
+                    query_exact = query_exact.filter(AssetListing.currency == normalized_currency)
+
+                exact_results = (
+                    query_exact.order_by(
+                        AssetListing.is_primary.desc(),
+                        AssetListing.ticker.asc(),
+                        AssetListing.currency.asc(),
+                        AssetListing.exchange.asc(),
+                    )
+                    .limit(limit)
+                    .all()
+                )
+                if exact_results:
+                    return exact_results
+
+                if "." in normalized_ticker:
+                    base_symbol = normalized_ticker.split(".")[0]
+                    if base_symbol:
+                        query = query.filter(
+                            (AssetListing.ticker == base_symbol)
+                            | (Asset.ticker == base_symbol)
+                        )
+                else:
+                    return []
             if normalized_isin:
                 query = query.filter(Asset.isin == normalized_isin)
             if normalized_exchange is not None:
@@ -510,8 +542,16 @@ class AssetRepository(DatabaseComponent):
                 ).first()
 
             if normalized_ticker:
+                tickers_to_try = [normalized_ticker]
+                if "." in normalized_ticker:
+                    base_symbol = normalized_ticker.split(".")[0]
+                    if base_symbol and base_symbol not in tickers_to_try:
+                        tickers_to_try.append(base_symbol)
                 return (
-                    query.filter(Asset.ticker == normalized_ticker)
+                    query.filter(
+                        (Asset.ticker.in_(tickers_to_try))
+                        | (Asset.official_symbol.in_(tickers_to_try))
+                    )
                     .order_by(Asset.isin.desc(), Asset.exchange.asc())
                     .first()
                 )

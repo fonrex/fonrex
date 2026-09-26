@@ -1,0 +1,262 @@
+[
+  {
+    "name": "Fonrex — EU Markets",
+    "description": "Deep fundamentals, DCF valuation, multi-indicator technicals, news feed and macro rates for European assets.",
+    "img": "https://fonrex.io/openbb-app-preview.png",
+    "img_dark": "",
+    "img_light": "",
+    "allowCustomization": true,
+    "tabs": {
+      "overview": {
+        "id": "overview",
+        "name": "Overview",
+        "layout": [
+          {
+            "i": "fonrex_quote",
+            "x": 0,
+            "y": 0,
+            "w": 8,
+            "h": 4,
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_macro_rates",
+            "x": 0,
+            "y": 4,
+            "w": 8,
+            "h": 4,
+            "state": {}
+          },
+          {
+            "i": "fonrex_eod",
+            "x": 8,
+            "y": 0,
+            "w": 16,
+            "h": 8,
+            "state": { "params": { "ticker": "AIR.PA", "period": "1y" } },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_fundamentals_deep",
+            "x": 0,
+            "y": 8,
+            "w": 14,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_news",
+            "x": 14,
+            "y": 8,
+            "w": 10,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA", "limit": "15" } },
+            "groups": [
+              "Group 1"
+            ]
+          }
+        ]
+      },
+      "valuation": {
+        "id": "valuation",
+        "name": "Valuation",
+        "layout": [
+          {
+            "i": "fonrex_dcf",
+            "x": 0,
+            "y": 0,
+            "w": 8,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_dcf_compare",
+            "x": 8,
+            "y": 0,
+            "w": 8,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_dcf_sensitivity",
+            "x": 16,
+            "y": 0,
+            "w": 8,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
+          }
+        ]
+      },
+      "technical": {
+        "id": "technical",
+        "name": "Technical",
+        "layout": [
+          {
+            "i": "fonrex_technical_chart",
+            "x": 0,
+            "y": 0,
+            "w": 16,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AIR.PA",
+                "indicators": "sma_20,rsi_14"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_technical_multi",
+            "x": 16,
+            "y": 0,
+            "w": 8,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AIR.PA",
+                "indicators": "sma_20,ema_50,rsi_14"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          }
+        ]
+      },
+      "news": {
+        "id": "news",
+        "name": "News",
+        "layout": [
+          {
+            "i": "fonrex_news",
+            "x": 0,
+            "y": 0,
+            "w": 14,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA", "limit": "20" } },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_news_feed",
+            "x": 14,
+            "y": 0,
+            "w": 10,
+            "h": 10,
+            "state": { "params": { "limit": "20" } }
+          }
+        ]
+      },
+      "watchlist": {
+        "id": "watchlist",
+        "name": "Watchlist",
+        "layout": [
+          {
+            "i": "fonrex_quotes_batch",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 10,
+            "state": {
+              "params": {
+                "tickers": "AIR.PA,BNP.PA,MC.PA,OR.PA,SAN.PA,AAPL,MSFT,TSLA"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "groups": [
+      {
+        "name": "Group 1",
+        "type": "param",
+        "paramName": "ticker",
+        "defaultValue": "AIR.PA",
+        "widgetIds": [
+          "fonrex_quote",
+          "fonrex_eod",
+          "fonrex_fundamentals_deep",
+          "fonrex_news",
+          "fonrex_dcf",
+          "fonrex_dcf_compare",
+          "fonrex_dcf_sensitivity",
+          "fonrex_technical_chart",
+          "fonrex_technical_multi"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Fonrex — Screener & Macro",
+    "description": "Technical screener for idea generation combined with macro-economic context and index composition",
+    "img": "https://fonrex.io/openbb-app-screener-preview.png",
+    "img_dark": "",
+    "img_light": "",
+    "allowCustomization": true,
+    "tabs": {
+      "screener": {
+        "id": "screener",
+        "name": "Screener",
+        "layout": [
+          {
+            "i": "fonrex_screener",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 12,
+            "state": {
+              "params": {
+                "indicator": "rsi",
+                "operator": "lt",
+                "value": "50"
+              }
+            }
+          }
+        ]
+      },
+      "macro_context": {
+        "id": "macro_context",
+        "name": "Macro Context",
+        "layout": [
+          {
+            "i": "fonrex_macro_rates",
+            "x": 0,
+            "y": 0,
+            "w": 10,
+            "h": 6,
+            "state": {}
+          },
+          {
+            "i": "fonrex_index_constituents",
+            "x": 10,
+            "y": 0,
+            "w": 14,
+            "h": 12,
+            "state": { "params": { "index_name": "cac40" } }
+          }
+        ]
+      }
+    },
+    "groups": []
+  }
+]

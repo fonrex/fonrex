@@ -29,8 +29,12 @@ class DatabaseService:
     def __init__(self, database_url=None):
         database_url = database_url or os.environ.get(
             "DATABASE_URL",
-            "postgresql://fonrex:fonrex_password@localhost:5432/fonrex",
+            "postgresql+psycopg2://fonrex:fonrex_password@localhost:5432/fonrex",
         )
+        if database_url.startswith("postgresql://"):
+            database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        elif database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
         self.engine = create_engine(database_url)
         self.Session = scoped_session(sessionmaker(bind=self.engine))
         self.migrations = MigrationInspector(self.engine, self.Session)

@@ -1,13 +1,29 @@
 import importlib
+import json
 import logging
 import os
 import time
+import warnings
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import redis.asyncio as redis
-from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
 
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message=r"'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated\. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead\.",
+        category=DeprecationWarning,
+    )
+    from fastapi import FastAPI, HTTPException, Request
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    from fastapi.staticfiles import StaticFiles
+
+from auth.dependencies import (
+    is_auth_enforced,
+    require_api_key,
+)
 from cache.service import CacheService
 from cache.technical import RedisTechnicalCache
 from concurrency import run_sync
@@ -33,6 +49,7 @@ from routers.historical import router as historical_router
 from routers.macro import router as macro_router
 from routers.monitoring import router as monitoring_router
 from routers.news import router as news_router
+from routers.openbb import router as openbb_router
 from routers.realtime import router as realtime_router
 from routers.specialized import router as specialized_router
 from routers.technical import router as technical_router
@@ -56,6 +73,20 @@ async def app_lifespan(_app: FastAPI):
 
 app = FastAPI(title="FonRex API", version="2.0.0", lifespan=app_lifespan)
 
+# CORS — restrict to OpenBB Workspace origin (configurable for Enterprise)
+_openbb_origins = [
+    origin.strip()
+    for origin in os.environ.get("OPENBB_ALLOWED_ORIGIN", "https://pro.openbb.co").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_openbb_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -73,6 +104,42 @@ app.include_router(realtime_router)
 app.include_router(macro_router)
 
 app.include_router(monitoring_router)
+app.include_router(openbb_router)
+
+
+@app.middleware("http")
+async def api_key_auth_middleware(request: Request, call_next):
+    """Enforces API key authentication on protected routes when configured in environment.
+
+    Note: WebSocket connections (e.g. /ws/realtime/{ticker}) do not pass through HTTP
+    middleware and enforce API key validation during the WebSocket handshake in their
+    respective endpoint handlers.
+    """
+    if request.method != "OPTIONS" and is_auth_enforced():
+        path = request.url.path
+        public_exact = {
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/widgets.json",
+            "/apps.json",
+            "/favicon.ico",
+            "/health",
+            "/health/",
+        }
+        if (
+            path not in public_exact
+            and not path.startswith("/static")
+        ):
+            try:
+                require_api_key(request)
+            except HTTPException as exc:
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content={"detail": exc.detail},
+                )
+
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -92,6 +159,7 @@ async def usage_logging_middleware(request: Request, call_next):
 
         if service:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
+            api_key_id = getattr(request.state, "api_key_id", None)
             try:
                 await run_sync(
                     service.log_usage,
@@ -99,7 +167,7 @@ async def usage_logging_middleware(request: Request, call_next):
                     method=request.method,
                     status_code=status_code,
                     latency_ms=latency_ms,
-                    api_key_id=request.headers.get("X-API-Key"),
+                    api_key_id=api_key_id,
                     provider_used=getattr(request.state, "provider_used", None),
                     cache_hit=getattr(request.state, "cache_hit", False),
                     cost_bucket=getattr(request.state, "cost_bucket", None),
@@ -215,6 +283,8 @@ def configure_application_state(application: FastAPI):
         "validation_layer",
     ):
         setattr(application.state, state_name, None)
+    application.state.openbb_widgets = {}
+    application.state.openbb_apps = []
 
 
 configure_application_state(app)
@@ -326,6 +396,22 @@ async def startup_event(application: FastAPI):
         state.canary_scheduler = None
         logger.warning("⚠️ Provider Monitoring not started: %s", exc)
 
+    # ── OpenBB Workspace integration ─────────────────────────────
+    _openbb_dir = Path(__file__).parent / "integrations" / "openbb"
+    try:
+        state.openbb_widgets = json.loads(
+            (_openbb_dir / "widgets.json").read_text(encoding="utf-8")
+        )
+        state.openbb_apps = json.loads(
+            (_openbb_dir / "apps.json").read_text(encoding="utf-8")
+        )
+        logger.info("🔌 OpenBB Workspace integration loaded (%d widgets, %d apps)",
+                     len(state.openbb_widgets), len(state.openbb_apps))
+    except FileNotFoundError as exc:
+        state.openbb_widgets = {}
+        state.openbb_apps = []
+        logger.warning("⚠️ OpenBB integration files not found: %s", exc)
+
     logger.info("🚀 FonRex API (FastAPI) started")
 
 
@@ -372,6 +458,8 @@ async def shutdown_event(application: FastAPI):
         "fred_service",
     ):
         setattr(state, state_name, None)
+    state.openbb_widgets = {}
+    state.openbb_apps = []
     state.db_available = None
     logger.info("🛑 FonRex API stopped")
 
@@ -381,3 +469,43 @@ async def index():
     """Page d'accueil avec documentation de l'API."""
     documentation = get_api_documentation()
     return documentation
+
+
+# ──────────────────────────────────────────────────────────────────────
+# OpenBB Workspace — static configuration endpoints
+# ──────────────────────────────────────────────────────────────────────
+
+@app.get("/widgets.json", include_in_schema=False)
+async def get_openbb_widgets(request: Request):
+    """Serve the widget definitions for OpenBB Workspace.
+
+    Loaded once at startup from integrations/openbb/widgets.json.
+    ``include_in_schema=False`` keeps this out of the public OpenAPI docs.
+    """
+    widgets = getattr(request.app.state, "openbb_widgets", None)
+    if not widgets:
+        _openbb_path = Path(__file__).parent / "integrations" / "openbb" / "widgets.json"
+        try:
+            widgets = json.loads(_openbb_path.read_text(encoding="utf-8"))
+            request.app.state.openbb_widgets = widgets
+        except FileNotFoundError:
+            widgets = {}
+    return JSONResponse(content=widgets)
+
+
+@app.get("/apps.json", include_in_schema=False)
+async def get_openbb_apps(request: Request):
+    """Serve the pre-assembled app definitions for OpenBB Workspace.
+
+    Loaded once at startup from integrations/openbb/apps.json.
+    ``include_in_schema=False`` keeps this out of the public OpenAPI docs.
+    """
+    apps = getattr(request.app.state, "openbb_apps", None)
+    if not apps:
+        _openbb_path = Path(__file__).parent / "integrations" / "openbb" / "apps.json"
+        try:
+            apps = json.loads(_openbb_path.read_text(encoding="utf-8"))
+            request.app.state.openbb_apps = apps
+        except FileNotFoundError:
+            apps = []
+    return JSONResponse(content=apps)

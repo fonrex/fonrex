@@ -89,33 +89,41 @@ class SqlAlchemyTechnicalRepository:
 
     async def resolve_asset_id(self, ticker: str) -> int | None:
         normalized = ticker.strip().upper()
-        session, close_session = self._session()
+        tickers_to_try = [normalized]
+        if "." in normalized:
+            base_ticker = normalized.split(".")[0]
+            if base_ticker and base_ticker not in tickers_to_try:
+                tickers_to_try.append(base_ticker)
 
         def resolve() -> int | None:
+            session, close_session = self._session()
             try:
                 from models import Asset, AssetListing
 
-                listing = (
-                    session.query(AssetListing)
-                    .filter(
-                        AssetListing.ticker == normalized,
-                        AssetListing.is_active.is_(True),
+                for sym in tickers_to_try:
+                    listing = (
+                        session.query(AssetListing)
+                        .filter(
+                            AssetListing.ticker == sym,
+                            AssetListing.is_active.is_(True),
+                        )
+                        .order_by(
+                            AssetListing.is_primary.desc(),
+                            AssetListing.currency.asc(),
+                            AssetListing.exchange.asc(),
+                        )
+                        .first()
                     )
-                    .order_by(
-                        AssetListing.is_primary.desc(),
-                        AssetListing.currency.asc(),
-                        AssetListing.exchange.asc(),
+                    if listing:
+                        return listing.asset_id
+                    asset = (
+                        session.query(Asset)
+                        .filter(Asset.ticker == sym, Asset.is_active.is_(True))
+                        .first()
                     )
-                    .first()
-                )
-                if listing:
-                    return listing.asset_id
-                asset = (
-                    session.query(Asset)
-                    .filter(Asset.ticker == normalized, Asset.is_active.is_(True))
-                    .first()
-                )
-                return asset.id if asset else None
+                    if asset:
+                        return asset.id
+                return None
             finally:
                 if close_session:
                     session.close()

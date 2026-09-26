@@ -8,6 +8,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from starlette.requests import HTTPConnection
 
+from auth.dependencies import (
+    get_api_key_from_connection,
+    is_auth_enforced,
+    validate_api_key,
+)
 from routers.errors import raise_http_error
 from schemas.realtime import (
     QuoteSnapshot,
@@ -73,6 +78,12 @@ async def websocket_realtime(
         "ts": "2026-05-22T14:32:01Z"
     }
     """
+    if is_auth_enforced():
+        api_key = get_api_key_from_connection(websocket)
+        if not api_key or not validate_api_key(api_key):
+            await websocket.close(code=1008, reason="Unauthorized: Missing or invalid API key")
+            return
+
     ticker = ticker.upper()
     worker = _require_realtime_worker(worker)
 

@@ -12,7 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from auth.dependencies import get_api_key_from_request, is_auth_enforced, require_api_key
+from auth.dependencies import (
+    anonymize_api_key,
+    get_api_key_from_request,
+    is_auth_enforced,
+    require_api_key,
+)
 from cache.service import CacheService
 from cache.technical import RedisTechnicalCache
 from concurrency import run_sync
@@ -106,11 +111,11 @@ async def api_key_auth_middleware(request: Request, call_next):
             "/widgets.json",
             "/apps.json",
             "/favicon.ico",
+            "/health",
         }
         if (
             path not in public_exact
             and not path.startswith("/static")
-            and not path.startswith("/health")
         ):
             try:
                 require_api_key(request)
@@ -140,6 +145,7 @@ async def usage_logging_middleware(request: Request, call_next):
 
         if service:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
+            raw_key = get_api_key_from_request(request) or request.headers.get("X-API-Key")
             try:
                 await run_sync(
                     service.log_usage,
@@ -147,7 +153,7 @@ async def usage_logging_middleware(request: Request, call_next):
                     method=request.method,
                     status_code=status_code,
                     latency_ms=latency_ms,
-                    api_key_id=get_api_key_from_request(request) or request.headers.get("X-API-Key"),
+                    api_key_id=anonymize_api_key(raw_key),
                     provider_used=getattr(request.state, "provider_used", None),
                     cache_hit=getattr(request.state, "cache_hit", False),
                     cost_bucket=getattr(request.state, "cost_bucket", None),

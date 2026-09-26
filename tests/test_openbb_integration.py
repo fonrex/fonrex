@@ -32,6 +32,7 @@ def client():
 
     orig_redis = getattr(app.state, "redis_client", None)
     orig_db = getattr(app.state, "db_service", None)
+    orig_db_available = getattr(app.state, "db_available", None)
     orig_fred = getattr(app.state, "fred_service", None)
 
     mock_fred = MagicMock()
@@ -40,11 +41,13 @@ def client():
     with TestClient(app) as test_client:
         app.state.redis_client = mock_redis
         app.state.db_service = MagicMock()
+        app.state.db_available = True
         app.state.fred_service = mock_fred
         yield test_client
 
     app.state.redis_client = orig_redis
     app.state.db_service = orig_db
+    app.state.db_available = orig_db_available
     app.state.fred_service = orig_fred
 
 
@@ -368,4 +371,81 @@ def test_eod_and_history_widget_parameters(widgets_data):
     # fonrex_history should use symbol, start_date, end_date, interval
     history_params = {p["paramName"] for p in widgets_data["fonrex_history"]["params"]}
     assert history_params == {"symbol", "start_date", "end_date", "interval"}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: API key anonymization
+# ──────────────────────────────────────────────────────────────────────
+
+def test_anonymize_api_key():
+    """Verify that anonymize_api_key returns non-reversible digests and preserves key prefix."""
+    from auth.dependencies import anonymize_api_key
+
+    assert anonymize_api_key(None) is None
+    assert anonymize_api_key("") is None
+
+    live_hash = anonymize_api_key("frx_live_production_secret_key_12345")
+    assert live_hash is not None
+    assert live_hash.startswith("frx_live_sha256_")
+    assert "production_secret_key" not in live_hash
+
+    test_hash = anonymize_api_key("frx_test_sandbox_secret_key_12345")
+    assert test_hash is not None
+    assert test_hash.startswith("frx_test_sha256_")
+    assert "sandbox_secret_key" not in test_hash
+
+    custom_hash = anonymize_api_key("some_custom_unprefixed_token")
+    assert custom_hash is not None
+    assert custom_hash.startswith("sha256_")
+    assert "some_custom" not in custom_hash
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: Health monitoring routes auth enforcement
+# ──────────────────────────────────────────────────────────────────────
+
+def test_health_monitoring_routes_auth_enforcement_when_configured(client, monkeypatch):
+    """Verify only exact /health is exempted, while /health/* monitoring routes require auth."""
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_monitoring_key_123")
+
+    # Exact liveness endpoint is public
+    resp_health = client.get("/health")
+    assert resp_health.status_code == 200
+
+    # Operational/monitoring endpoints require authentication
+    resp_providers = client.get("/health/providers")
+    assert resp_providers.status_code == 401
+    assert "Missing API key" in resp_providers.json()["detail"]
+
+    resp_alerts = client.get("/health/alerts")
+    assert resp_alerts.status_code == 401
+    assert "Missing API key" in resp_alerts.json()["detail"]
+
+    resp_canary = client.post("/health/canary/run")
+    assert resp_canary.status_code == 401
+    assert "Missing API key" in resp_canary.json()["detail"]
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: Usage logging persists anonymized key, not raw secret
+# ──────────────────────────────────────────────────────────────────────
+
+def test_usage_logging_middleware_masks_raw_api_key(client):
+    """Verify usage_logging_middleware logs anonymized key fingerprint instead of raw secret."""
+    raw_secret = "frx_live_super_secret_token_abcdef123456"
+
+    # Make request with secret key header
+    client.get("/widgets.json", headers={"X-API-KEY": raw_secret})
+
+    # Ensure db_service.log_usage was called
+    db_mock = app.state.db_service
+    assert db_mock.log_usage.called
+
+    call_kwargs = db_mock.log_usage.call_args.kwargs
+    logged_key_id = call_kwargs.get("api_key_id")
+
+    assert logged_key_id is not None
+    assert raw_secret not in logged_key_id
+    assert logged_key_id.startswith("frx_live_sha256_")
+
 

@@ -8,16 +8,65 @@ Both formats resolve to the same underlying key validation logic —
 single point of truth.
 """
 
+import hashlib
 import os
 import re
 import secrets
 from typing import Optional
 
 from fastapi import HTTPException, Request
+from starlette.requests import HTTPConnection
 
 # Regular expression for valid Fonrex key format (frx_live_... or frx_test_...)
 # Requires a live or test prefix followed by at least 6 alphanumeric/dash/underscore characters.
 API_KEY_PATTERN = re.compile(r"^frx_(?:live|test)_[a-zA-Z0-9_-]{6,}$")
+
+
+def anonymize_api_key(key: Optional[str]) -> Optional[str]:
+    """Return a non-reversible cryptographic fingerprint for an API key.
+
+    Hashes the secret using SHA-256 and preserves the prefix (e.g., 'frx_live_'
+    or 'frx_test_') for telemetry / billing attribution while ensuring raw
+    credentials are never persisted to database tables or logs.
+    """
+    if not key:
+        return None
+    prefix = ""
+    if key.startswith("frx_live_"):
+        prefix = "frx_live_"
+    elif key.startswith("frx_test_"):
+        prefix = "frx_test_"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}sha256_{digest}" if prefix else f"sha256_{digest}"
+
+
+def get_api_key_from_connection(connection: HTTPConnection) -> Optional[str]:
+    """Extract the API key from an HTTP request or WebSocket connection.
+
+    Priority order:
+      1. ``Authorization: Bearer <key>`` header
+      2. ``X-API-KEY: <key>`` header
+      3. Query parameter: ``api_key``, ``token``, or ``key`` (primarily for WebSockets)
+
+    Returns the raw key string, or ``None`` if neither header nor query param is present.
+    """
+    # 1. Authorization: Bearer …
+    auth_header = connection.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+
+    # 2. X-API-KEY: …
+    x_api_key = connection.headers.get("X-API-KEY")
+    if x_api_key:
+        return x_api_key.strip()
+
+    # 3. Query parameters (e.g. for WebSocket clients that cannot set headers)
+    for qparam in ("api_key", "token", "key"):
+        val = connection.query_params.get(qparam)
+        if val:
+            return val.strip()
+
+    return None
 
 
 def get_api_key_from_request(request: Request) -> Optional[str]:

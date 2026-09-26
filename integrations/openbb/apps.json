@@ -191,7 +191,18 @@
         "name": "Group 1",
         "type": "param",
         "paramName": "ticker",
-        "defaultValue": "AIR.PA"
+        "defaultValue": "AIR.PA",
+        "widgetIds": [
+          "fonrex_quote",
+          "fonrex_eod",
+          "fonrex_fundamentals_deep",
+          "fonrex_news",
+          "fonrex_dcf",
+          "fonrex_dcf_compare",
+          "fonrex_dcf_sensitivity",
+          "fonrex_technical_chart",
+          "fonrex_technical_multi"
+        ]
       }
     ]
   },

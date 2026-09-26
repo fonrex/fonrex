@@ -120,7 +120,12 @@ def validate_api_key(key: str) -> bool:
     if allowed_keys:
         return any(secrets.compare_digest(key, k) for k in allowed_keys)
 
-    # When no explicit key is configured in the environment,
+    # If auth is explicitly required by configuration but no explicit key list is provided,
+    # fail closed instead of accepting any key matching the format pattern.
+    if os.environ.get("FONREX_AUTH_REQUIRED", "").lower() in ("true", "1", "yes"):
+        return False
+
+    # When no explicit key or requirement flag is configured in the environment,
     # validate that the key matches the structured Fonrex API key format.
     return bool(API_KEY_PATTERN.match(key))
 

@@ -346,7 +346,14 @@ async def get_openbb_quotes_batch(
 ) -> List[Dict[str, Any]]:
     """Return batch quotes as an AgGrid table."""
     batch_res = await get_quotes_batch(tickers=tickers, worker=worker, redis_client=redis_client)
-    return format_batch_quotes_table(batch_res)
+    quotes_map = (
+        batch_res.get("quotes", {})
+        if isinstance(batch_res, dict)
+        else getattr(batch_res, "quotes", batch_res)
+    )
+    if not isinstance(quotes_map, dict):
+        quotes_map = {}
+    return format_batch_quotes_table(quotes_map)
 
 
 @router.get("/dcf/{ticker}")

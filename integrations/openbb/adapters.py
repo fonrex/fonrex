@@ -387,26 +387,66 @@ def format_fundamentals_deep_table(deep_data: Any) -> List[Dict[str, Any]]:
     data = _to_dict(deep_data)
     rows: List[Dict[str, Any]] = []
 
-    for section, content in data.items():
-        if section in {"meta", "error", "message"}:
-            continue
-        if isinstance(content, dict):
-            for k, v in content.items():
-                if isinstance(v, (dict, list)):
-                    continue
-                rows.append({"section": section, "field": k, "value": _to_plain_value(v)})
-        elif isinstance(content, list):
-            for idx, item in enumerate(content[:20]):
-                if isinstance(item, dict):
-                    for k, v in item.items():
+    def _flatten_item(sec_name: str, item: Any):
+        if isinstance(item, dict):
+            for k, v in item.items():
+                if isinstance(v, dict):
+                    for sub_k, sub_v in v.items():
+                        if not isinstance(sub_v, (dict, list)):
+                            rows.append(
+                                {
+                                    "section": f"{sec_name}.{k}",
+                                    "field": sub_k,
+                                    "value": _to_plain_value(sub_v),
+                                }
+                            )
+                elif isinstance(v, list):
+                    for idx, list_elem in enumerate(v[:20]):
+                        if isinstance(list_elem, dict):
+                            for sub_k, sub_v in list_elem.items():
+                                if not isinstance(sub_v, (dict, list)):
+                                    rows.append(
+                                        {
+                                            "section": f"{sec_name}.{k} [{idx + 1}]",
+                                            "field": sub_k,
+                                            "value": _to_plain_value(sub_v),
+                                        }
+                                    )
+                        elif not isinstance(list_elem, (dict, list)):
+                            rows.append(
+                                {
+                                    "section": f"{sec_name}.{k}",
+                                    "field": f"item_{idx + 1}",
+                                    "value": _to_plain_value(list_elem),
+                                }
+                            )
+                else:
+                    rows.append({"section": sec_name, "field": k, "value": _to_plain_value(v)})
+        elif isinstance(item, list):
+            for idx, elem in enumerate(item[:20]):
+                if isinstance(elem, dict):
+                    for k, v in elem.items():
                         if not isinstance(v, (dict, list)):
                             rows.append(
                                 {
-                                    "section": f"{section} [{idx + 1}]",
+                                    "section": f"{sec_name} [{idx + 1}]",
                                     "field": k,
                                     "value": _to_plain_value(v),
                                 }
                             )
+                elif not isinstance(elem, (dict, list)):
+                    rows.append(
+                        {
+                            "section": sec_name,
+                            "field": f"item_{idx + 1}",
+                            "value": _to_plain_value(elem),
+                        }
+                    )
+
+    for section, content in data.items():
+        if section in {"meta", "error", "message"}:
+            continue
+        _flatten_item(section, content)
 
     return rows
 

@@ -4,7 +4,7 @@
     "description": "Multi-provider fundamentals: P/E, ROE, dividend yield, market cap",
     "category": "Fundamentals",
     "type": "table",
-    "endpoint": "fundamental",
+    "endpoint": "openbb/fundamental",
     "gridData": { "w": 20, "h": 9 },
     "source": ["Fonrex"],
     "params": [
@@ -22,7 +22,7 @@
     "description": "Financial statements, ESG scores, insider transactions, analyst ratings",
     "category": "Fundamentals",
     "type": "table",
-    "endpoint": "fundamental/deep",
+    "endpoint": "openbb/fundamental/deep",
     "gridData": { "w": 24, "h": 12 },
     "source": ["Fonrex"],
     "params": [
@@ -40,7 +40,7 @@
     "description": "End-of-day OHLCV price history with auto-ingestion on first request",
     "category": "Historical",
     "type": "chart",
-    "endpoint": "eod/{ticker}",
+    "endpoint": "openbb/eod/{ticker}",
     "gridData": { "w": 20, "h": 9 },
     "source": ["Fonrex"],
     "params": [
@@ -65,7 +65,7 @@
     "description": "OHLCV price history with date range filtering",
     "category": "Historical",
     "type": "chart",
-    "endpoint": "ticker/{symbol}/history",
+    "endpoint": "openbb/ticker/{symbol}/history",
     "gridData": { "w": 20, "h": 9 },
     "source": ["Fonrex"],
     "params": [
@@ -104,7 +104,7 @@
     "description": "Latest real-time price snapshot from WebSocket stream with Redis cache",
     "category": "Market Data",
     "type": "metric",
-    "endpoint": "quote/{ticker}",
+    "endpoint": "openbb/quote/{ticker}",
     "gridData": { "w": 8, "h": 4 },
     "source": ["Fonrex"],
     "params": [
@@ -122,7 +122,7 @@
     "description": "Batch price snapshots for multiple tickers in a single request",
     "category": "Market Data",
     "type": "table",
-    "endpoint": "quotes",
+    "endpoint": "openbb/quotes",
     "gridData": { "w": 20, "h": 9 },
     "source": ["Fonrex"],
     "params": [
@@ -140,7 +140,7 @@
     "description": "Single technical indicator (RSI, SMA, EMA, MACD, Bollinger Bands, etc.)",
     "category": "Technical",
     "type": "chart",
-    "endpoint": "technical/{ticker}",
+    "endpoint": "openbb/technical/{ticker}",
     "gridData": { "w": 20, "h": 9 },
     "source": ["Fonrex"],
     "params": [
@@ -172,7 +172,7 @@
     "description": "Multiple technical indicators computed from a single database read",
     "category": "Technical",
     "type": "chart",
-    "endpoint": "technical/{ticker}/multi",
+    "endpoint": "openbb/technical/{ticker}/multi",
     "gridData": { "w": 24, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -197,7 +197,7 @@
     "description": "OHLCV candlestick data with overlaid technical indicators, chart-ready",
     "category": "Technical",
     "type": "chart",
-    "endpoint": "technical/{ticker}/chart",
+    "endpoint": "openbb/technical/{ticker}/chart",
     "gridData": { "w": 24, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -222,7 +222,7 @@
     "description": "Screen stocks by technical indicator thresholds (e.g. RSI < 30 for oversold)",
     "category": "Technical",
     "type": "table",
-    "endpoint": "technical/screen",
+    "endpoint": "openbb/technical/screen",
     "gridData": { "w": 20, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -254,7 +254,7 @@
     "description": "Aggregated financial news from 7 providers with URL deduplication",
     "category": "News",
     "type": "table",
-    "endpoint": "news/{ticker}",
+    "endpoint": "openbb/news/{ticker}",
     "gridData": { "w": 24, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -279,7 +279,7 @@
     "description": "Global financial news feed across all tracked tickers",
     "category": "News",
     "type": "table",
-    "endpoint": "news/feed",
+    "endpoint": "openbb/news/feed",
     "gridData": { "w": 24, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -297,7 +297,7 @@
     "description": "Discounted Cash Flow intrinsic value using FCF, EPS and DDM models with dynamic WACC",
     "category": "Valuation",
     "type": "table",
-    "endpoint": "dcf/{ticker}",
+    "endpoint": "openbb/dcf/{ticker}",
     "gridData": { "w": 20, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -315,7 +315,7 @@
     "description": "Side-by-side comparison of all 3 DCF models (FCF, EPS, DDM)",
     "category": "Valuation",
     "type": "table",
-    "endpoint": "dcf/{ticker}/compare",
+    "endpoint": "openbb/dcf/{ticker}/compare",
     "gridData": { "w": 24, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -333,7 +333,7 @@
     "description": "WACC × terminal growth rate sensitivity matrix for intrinsic value analysis",
     "category": "Valuation",
     "type": "table",
-    "endpoint": "dcf/{ticker}/sensitivity",
+    "endpoint": "openbb/dcf/{ticker}/sensitivity",
     "gridData": { "w": 24, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -351,7 +351,7 @@
     "description": "SEC Form 4 insider trading data — purchases, sales, and option exercises (US stocks)",
     "category": "Fundamentals",
     "type": "table",
-    "endpoint": "insider-transactions/{ticker}",
+    "endpoint": "openbb/insider-transactions/{ticker}",
     "gridData": { "w": 20, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -369,7 +369,7 @@
     "description": "UCITS ETF details from JustETF: TER, AUM, replication, top holdings, performance",
     "category": "Fundamentals",
     "type": "table",
-    "endpoint": "etf/{isin}/details",
+    "endpoint": "openbb/etf/{isin}/details",
     "gridData": { "w": 20, "h": 10 },
     "source": ["Fonrex"],
     "params": [
@@ -387,7 +387,7 @@
     "description": "List of constituents for major indices (S&P 500, CAC 40, NASDAQ 100, DAX)",
     "category": "Market Data",
     "type": "table",
-    "endpoint": "index/{index_name}/constituents",
+    "endpoint": "openbb/index/{index_name}/constituents",
     "gridData": { "w": 20, "h": 12 },
     "source": ["Fonrex"],
     "params": [
@@ -405,7 +405,7 @@
     "description": "Current macro-economic rates: risk-free rate (US 10Y), Fed funds rate, credit spread (FRED API)",
     "category": "Macro",
     "type": "metric",
-    "endpoint": "macro/rates",
+    "endpoint": "openbb/macro/rates",
     "gridData": { "w": 10, "h": 6 },
     "source": ["Fonrex"],
     "params": []

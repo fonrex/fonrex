@@ -49,6 +49,7 @@ from routers.historical import router as historical_router
 from routers.macro import router as macro_router
 from routers.monitoring import router as monitoring_router
 from routers.news import router as news_router
+from routers.openbb import router as openbb_router
 from routers.realtime import router as realtime_router
 from routers.specialized import router as specialized_router
 from routers.technical import router as technical_router
@@ -103,6 +104,7 @@ app.include_router(realtime_router)
 app.include_router(macro_router)
 
 app.include_router(monitoring_router)
+app.include_router(openbb_router)
 
 
 @app.middleware("http")

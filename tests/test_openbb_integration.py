@@ -82,27 +82,27 @@ def test_widgets_json_is_valid_json(client):
 # Test: all documented endpoints have widgets
 # ──────────────────────────────────────────────────────────────────────
 
-# The 19 Fonrex endpoints that must be covered by widgets
+# The 19 Fonrex endpoints that must be covered by widgets (via /openbb/ adapters)
 DOCUMENTED_ENDPOINTS = [
-    "fundamental",
-    "fundamental/deep",
-    "eod/{ticker}",
-    "ticker/{symbol}/history",
-    "quote/{ticker}",
-    "quotes",
-    "technical/{ticker}",
-    "technical/{ticker}/multi",
-    "technical/{ticker}/chart",
-    "technical/screen",
-    "news/{ticker}",
-    "news/feed",
-    "dcf/{ticker}",
-    "dcf/{ticker}/compare",
-    "dcf/{ticker}/sensitivity",
-    "insider-transactions/{ticker}",
-    "etf/{isin}/details",
-    "index/{index_name}/constituents",
-    "macro/rates",
+    "openbb/fundamental",
+    "openbb/fundamental/deep",
+    "openbb/eod/{ticker}",
+    "openbb/ticker/{symbol}/history",
+    "openbb/quote/{ticker}",
+    "openbb/quotes",
+    "openbb/technical/{ticker}",
+    "openbb/technical/{ticker}/multi",
+    "openbb/technical/{ticker}/chart",
+    "openbb/technical/screen",
+    "openbb/news/{ticker}",
+    "openbb/news/feed",
+    "openbb/dcf/{ticker}",
+    "openbb/dcf/{ticker}/compare",
+    "openbb/dcf/{ticker}/sensitivity",
+    "openbb/insider-transactions/{ticker}",
+    "openbb/etf/{isin}/details",
+    "openbb/index/{index_name}/constituents",
+    "openbb/macro/rates",
 ]
 
 
@@ -111,6 +111,141 @@ def test_widgets_json_covers_all_documented_endpoints(widgets_data):
     widget_endpoints = {w["endpoint"] for w in widgets_data.values()}
     missing = [ep for ep in DOCUMENTED_ENDPOINTS if ep not in widget_endpoints]
     assert not missing, f"Missing widgets for endpoints: {missing}"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: OpenBB adapter endpoints return expected schema contracts
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_openbb_macro_rates_endpoint_contract(client):
+    """GET /openbb/macro/rates returns OpenBB metric format [{label, value, delta}]."""
+    response = client.get("/openbb/macro/rates")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    assert "label" in data[0]
+    assert "value" in data[0]
+    assert "delta" in data[0]
+
+
+def test_openbb_dcf_endpoints_contract(client):
+    """GET /openbb/dcf/* returns flat AgGrid table rows."""
+    from decimal import Decimal
+
+    from schemas.dcf import (
+        DCFModelResult,
+        DCFResult,
+        SensitivityCell,
+        SensitivityResult,
+        WACCResult,
+    )
+
+    dcf_res = DCFResult(
+        ticker="AAPL",
+        currency="USD",
+        current_price=Decimal("150.0"),
+        consensus_value=Decimal("175.0"),
+        consensus_upside_pct=Decimal("16.6"),
+        models={
+            "fcf": DCFModelResult(
+                model_name="Free Cash Flow",
+                intrinsic_value_per_share=Decimal("180.0"),
+                upside_pct=Decimal("20.0"),
+                terminal_value=Decimal("500000000"),
+                projected_values=[],
+                present_values=[],
+                pv_terminal=Decimal("400000000"),
+            )
+        },
+        wacc=WACCResult(
+            wacc=Decimal("0.08"),
+            cost_of_equity=Decimal("0.09"),
+            cost_of_debt=Decimal("0.04"),
+            beta_used=Decimal("1.1"),
+            tax_rate=Decimal("0.21"),
+            weight_equity=Decimal("0.8"),
+            weight_debt=Decimal("0.2"),
+        ),
+    )
+    sens_res = SensitivityResult(
+        ticker="AAPL",
+        model="fcf",
+        wacc_range=[Decimal("0.08")],
+        growth_range=[Decimal("0.02")],
+        matrix=[
+            [
+                SensitivityCell(
+                    wacc=Decimal("0.08"),
+                    terminal_growth=Decimal("0.02"),
+                    intrinsic_value=Decimal("180.0"),
+                    upside_pct=Decimal("20.0"),
+                )
+            ]
+        ],
+    )
+
+    mock_dcf = MagicMock()
+    mock_dcf.compute_dcf = AsyncMock(return_value=dcf_res)
+    mock_dcf.compute_sensitivity = MagicMock(return_value=sens_res)
+
+    orig_dcf = getattr(app.state, "dcf_service", None)
+    app.state.dcf_service = mock_dcf
+    try:
+        # /openbb/dcf/{ticker}
+        resp_dcf = client.get("/openbb/dcf/AAPL")
+        assert resp_dcf.status_code == 200
+        data_dcf = resp_dcf.json()
+        assert isinstance(data_dcf, list)
+        assert any(r.get("metric") == "Current Price" for r in data_dcf)
+
+        # /openbb/dcf/{ticker}/compare
+        resp_cmp = client.get("/openbb/dcf/AAPL/compare")
+        assert resp_cmp.status_code == 200
+        data_cmp = resp_cmp.json()
+        assert isinstance(data_cmp, list)
+        assert data_cmp[0]["model_name"] == "Free Cash Flow"
+
+        # /openbb/dcf/{ticker}/sensitivity
+        resp_sens = client.get("/openbb/dcf/AAPL/sensitivity")
+        assert resp_sens.status_code == 200
+        data_sens = resp_sens.json()
+        assert isinstance(data_sens, list)
+        assert data_sens[0]["wacc"] == "8.0%"
+    finally:
+        app.state.dcf_service = orig_dcf
+
+
+def test_openbb_quote_endpoint_contract(client):
+    """GET /openbb/quote/{ticker} returns OpenBB metric format."""
+    quote_data = {
+        "ticker": "AAPL",
+        "close": 150.25,
+        "change": 1.5,
+        "change_pct": 1.01,
+        "volume": 50000000,
+        "high": 151.0,
+        "low": 149.0,
+        "previous_close": 148.75,
+        "is_realtime": True,
+    }
+    mock_worker = MagicMock()
+    mock_worker.get_quote_from_cache = AsyncMock(return_value=quote_data)
+
+    orig_worker = getattr(app.state, "realtime_worker", None)
+    app.state.realtime_worker = mock_worker
+    try:
+        resp = client.get("/openbb/quote/AAPL")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert data[0]["label"] == "AAPL Price"
+        assert data[0]["value"] == 150.25
+        assert data[0]["delta"] == 1.01
+    finally:
+        app.state.realtime_worker = orig_worker
+
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -499,5 +634,71 @@ def test_usage_logging_middleware_does_not_log_failed_credentials(client, monkey
     logged_key_id = call_kwargs.get("api_key_id")
 
     assert logged_key_id is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Test: OpenBB chart and news adapter endpoints
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_openbb_eod_chart_contract(client):
+    """GET /openbb/eod/{ticker} returns Plotly candlestick figure."""
+    mock_query = MagicMock()
+    mock_query.get_history = AsyncMock(
+        return_value=[
+            {
+                "time": "2026-09-22",
+                "open": 150.0,
+                "high": 155.0,
+                "low": 149.0,
+                "close": 154.0,
+                "volume": 1000000,
+            }
+        ]
+    )
+
+    orig_query = getattr(app.state, "query_service", None)
+    app.state.query_service = mock_query
+    try:
+        resp = client.get("/openbb/eod/AAPL")
+        assert resp.status_code == 200
+        fig = resp.json()
+        assert "data" in fig
+        assert "layout" in fig
+        assert fig["data"][0]["type"] == "candlestick"
+        assert fig["data"][0]["name"] == "AAPL"
+    finally:
+        app.state.query_service = orig_query
+
+
+def test_openbb_news_endpoints_contract(client):
+    """GET /openbb/news/{ticker} and /openbb/news/feed return flat lists of article records."""
+    mock_news = MagicMock()
+    article = {
+        "title": "Apple Reports Record Results",
+        "url": "https://example.com/apple-news",
+        "provider": "reuters",
+        "published_at": "2026-09-25T10:00:00Z",
+    }
+    mock_news.get_news = AsyncMock(return_value=MagicMock(articles=[article]))
+    mock_news.get_feed = AsyncMock(return_value=MagicMock(articles=[article]))
+
+    orig_news = getattr(app.state, "news_service", None)
+    app.state.news_service = mock_news
+    try:
+        resp_news = client.get("/openbb/news/AAPL")
+        assert resp_news.status_code == 200
+        data_news = resp_news.json()
+        assert isinstance(data_news, list)
+        assert data_news[0]["title"] == "Apple Reports Record Results"
+
+        resp_feed = client.get("/openbb/news/feed")
+        assert resp_feed.status_code == 200
+        data_feed = resp_feed.json()
+        assert isinstance(data_feed, list)
+        assert data_feed[0]["title"] == "Apple Reports Record Results"
+    finally:
+        app.state.news_service = orig_news
+
 
 

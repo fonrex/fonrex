@@ -305,24 +305,29 @@ class HistoricalIngestionService:
         Résout un ticker en (asset_id, listing_id).
         """
         normalized = ticker.strip().upper()
-        # 1. Rechercher dans les listings
-        listing = (
-            session.query(AssetListing)
-            .filter(AssetListing.ticker == normalized)
-            .order_by(
-                AssetListing.is_primary.desc(),
-                AssetListing.currency.asc(),
-                AssetListing.exchange.asc(),
-            )
-            .first()
-        )
-        if listing:
-            return listing.asset_id, listing.id
+        tickers_to_try = [normalized]
+        if "." in normalized:
+            base_symbol = normalized.split(".")[0]
+            if base_symbol and base_symbol not in tickers_to_try:
+                tickers_to_try.append(base_symbol)
 
-        # 2. Repli vers la table assets historique
-        asset = session.query(Asset).filter(Asset.ticker == normalized).first()
-        if asset:
-            return asset.id, None
+        for sym in tickers_to_try:
+            listing = (
+                session.query(AssetListing)
+                .filter(AssetListing.ticker == sym)
+                .order_by(
+                    AssetListing.is_primary.desc(),
+                    AssetListing.currency.asc(),
+                    AssetListing.exchange.asc(),
+                )
+                .first()
+            )
+            if listing:
+                return listing.asset_id, listing.id
+
+            asset = session.query(Asset).filter(Asset.ticker == sym).first()
+            if asset:
+                return asset.id, None
 
         return None, None
 

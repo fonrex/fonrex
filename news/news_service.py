@@ -417,18 +417,41 @@ class NewsService:
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     async def _resolve_asset(self, ticker: str) -> Optional[Asset]:
-        """Résout l'Asset depuis son ticker via asset_listings."""
+        """Résout l'Asset depuis son ticker via asset_listings ou asset (avec fallback pour les suffixes)."""
         try:
-            stmt = (
-                select(Asset)
-                .join(AssetListing, AssetListing.asset_id == Asset.id)
-                .where(AssetListing.ticker == ticker)
-                .where(AssetListing.is_active == True)  # noqa: E712
-                .limit(1)
-            )
+            normalized = ticker.strip().upper()
+            tickers_to_try = [normalized]
+            if "." in normalized:
+                base_ticker = normalized.split(".")[0]
+                if base_ticker and base_ticker not in tickers_to_try:
+                    tickers_to_try.append(base_ticker)
+
             async with self._session() as db:
-                result = await db.execute(stmt)
-                return result.scalars().first()
+                for sym in tickers_to_try:
+                    stmt = (
+                        select(Asset)
+                        .join(AssetListing, AssetListing.asset_id == Asset.id)
+                        .where(AssetListing.ticker == sym)
+                        .where(AssetListing.is_active == True)  # noqa: E712
+                        .limit(1)
+                    )
+                    result = await db.execute(stmt)
+                    asset = result.scalars().first()
+                    if asset:
+                        return asset
+
+                    stmt2 = (
+                        select(Asset)
+                        .where(Asset.ticker == sym)
+                        .where(Asset.is_active == True)  # noqa: E712
+                        .limit(1)
+                    )
+                    result2 = await db.execute(stmt2)
+                    asset = result2.scalars().first()
+                    if asset:
+                        return asset
+
+                return None
         except Exception as exc:
             logger.warning("[NewsService] _resolve_asset(%s) error: %s", ticker, exc)
             return None

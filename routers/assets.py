@@ -151,7 +151,7 @@ def _format_records(rows, descending: bool):
     for row in sorted(rows, key=lambda item: item.get("time"), reverse=descending):
         timestamp = row.get("time")
         displayed_date = (
-            timestamp.strftime("%m-%d-%Y")
+            timestamp.strftime("%Y-%m-%d")
             if isinstance(timestamp, (date, datetime))
             else str(timestamp)
         )

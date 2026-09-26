@@ -136,6 +136,14 @@ def format_macro_rates_metric(macro_obj: Any) -> List[Dict[str, Any]]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _normalize_date_str(val: Any) -> Any:
+    val = _to_plain_value(val)
+    if isinstance(val, str) and len(val) == 10 and val[2] == "-" and val[5] == "-":
+        m, d, y = val.split("-")
+        return f"{y}-{m}-{d}"
+    return val
+
+
 def format_candlestick_chart(
     ticker: str,
     records: List[Dict[str, Any]],
@@ -151,7 +159,7 @@ def format_candlestick_chart(
 
     for r in records:
         d = r.get("Date") or r.get("time") or r.get("timestamp")
-        dates.append(_to_plain_value(d))
+        dates.append(_normalize_date_str(d))
         opens.append(_to_plain_value(r.get("Open") or r.get("open")))
         highs.append(_to_plain_value(r.get("High") or r.get("high")))
         lows.append(_to_plain_value(r.get("Low") or r.get("low")))

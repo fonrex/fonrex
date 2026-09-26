@@ -101,7 +101,12 @@ app.include_router(monitoring_router)
 
 @app.middleware("http")
 async def api_key_auth_middleware(request: Request, call_next):
-    """Enforces API key authentication on protected routes when configured in environment."""
+    """Enforces API key authentication on protected routes when configured in environment.
+
+    Note: WebSocket connections (e.g. /ws/realtime/{ticker}) do not pass through HTTP
+    middleware and enforce API key validation during the WebSocket handshake in their
+    respective endpoint handlers.
+    """
     if request.method != "OPTIONS" and is_auth_enforced():
         path = request.url.path
         public_exact = {
@@ -112,6 +117,7 @@ async def api_key_auth_middleware(request: Request, call_next):
             "/apps.json",
             "/favicon.ico",
             "/health",
+            "/health/",
         }
         if (
             path not in public_exact
@@ -146,6 +152,13 @@ async def usage_logging_middleware(request: Request, call_next):
         if service:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             raw_key = get_api_key_from_request(request) or request.headers.get("X-API-Key")
+            # Only record anonymized key fingerprint if authentication did not fail (401/403)
+            # and a key was provided; never record credentials from failed auth attempts.
+            anonymized_key = (
+                anonymize_api_key(raw_key)
+                if status_code not in (401, 403) and raw_key
+                else None
+            )
             try:
                 await run_sync(
                     service.log_usage,
@@ -153,7 +166,7 @@ async def usage_logging_middleware(request: Request, call_next):
                     method=request.method,
                     status_code=status_code,
                     latency_ms=latency_ms,
-                    api_key_id=anonymize_api_key(raw_key),
+                    api_key_id=anonymized_key,
                     provider_used=getattr(request.state, "provider_used", None),
                     cache_hit=getattr(request.state, "cache_hit", False),
                     cost_bucket=getattr(request.state, "cost_bucket", None),

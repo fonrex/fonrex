@@ -449,3 +449,19 @@ def test_usage_logging_middleware_masks_raw_api_key(client):
     assert logged_key_id.startswith("frx_live_sha256_")
 
 
+def test_usage_logging_middleware_does_not_log_failed_credentials(client, monkeypatch):
+    """Verify usage_logging_middleware does not persist credentials when authentication fails."""
+    monkeypatch.setenv("FONREX_API_KEY", "frx_live_authorized_key_999")
+    failed_secret = "frx_live_wrong_secret_123456"
+
+    resp = client.get("/health/alerts", headers={"X-API-KEY": failed_secret})
+    assert resp.status_code == 403
+
+    db_mock = app.state.db_service
+    assert db_mock.log_usage.called
+    call_kwargs = db_mock.log_usage.call_args.kwargs
+    logged_key_id = call_kwargs.get("api_key_id")
+
+    assert logged_key_id is None
+
+

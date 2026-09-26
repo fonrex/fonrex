@@ -72,7 +72,7 @@ class WallStreetJournalProvider(BaseProvider):
             "Accept": "application/json",
             "Accept-Language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
             "Referer": "https://www.wsj.com/",
-            "dylan2010.entitlementtoken": self.TOKEN,
+            "dylan2010.entitlementtoken": self.TOKEN or "",
             "Origin": "https://www.wsj.com",
             "Connection": "keep-alive",
             "Sec-Fetch-Dest": "empty",

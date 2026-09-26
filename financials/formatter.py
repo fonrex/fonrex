@@ -36,14 +36,14 @@ class FinancialsFormatter:
 
         # Construction du rendu Premium
         rendered = {
-            "General": FinancialsFormatter._build_general(asset_profile, yf_info),
+            "General": FinancialsFormatter._build_general(asset_profile, yf_info, results),
             "Highlights": FinancialsFormatter._build_highlights(highlights, yf_info),
             "Valuation": FinancialsFormatter._build_valuation(highlights, yf_info),
             "SharesStats": FinancialsFormatter._build_shares_stats(highlights, yf_info),
             "Technicals": FinancialsFormatter._build_technicals(highlights, yf_info),
             "SplitsDividends": FinancialsFormatter._build_splits_dividends(highlights, yf_info),
             "AnalystRatings": FinancialsFormatter._build_analyst_ratings(
-                results.get("analyst_ratings"), yf_info
+                results.get("analyst_ratings"), yf_info, results
             ),
             "Holders": FinancialsFormatter._build_holders(yf_info),
             "InsiderTransactions": FinancialsFormatter._build_insider_transactions(results),
@@ -54,6 +54,8 @@ class FinancialsFormatter:
             "Financials": FinancialsFormatter._format_financials(
                 results.get("financial_statements")
             ),
+            "News": FinancialsFormatter._build_news(results),
+            "Competitors": FinancialsFormatter._build_competitors(results),
             "Providers": FinancialsFormatter._build_providers(results),
         }
 
@@ -62,6 +64,47 @@ class FinancialsFormatter:
             rendered["ETF_Data"] = FinancialsFormatter._build_etf_data(results)
 
         return rendered
+
+    @staticmethod
+    def _build_news(results: Dict) -> Dict:
+        news_dict = {}
+        idx = 0
+        for provider_name, payload in results.items():
+            if not isinstance(payload, dict) and not hasattr(payload, "model_dump") and not hasattr(payload, "dict"):
+                continue
+            
+            p_dict = payload
+            if hasattr(payload, "model_dump"):
+                p_dict = payload.model_dump()
+            elif hasattr(payload, "dict"):
+                p_dict = payload.dict()
+            
+            if isinstance(p_dict, dict) and p_dict.get("news"):
+                for article in p_dict["news"]:
+                    # exclude null fields if needed, but dict is fine
+                    news_dict[str(idx)] = article
+                    idx += 1
+        return news_dict
+
+    @staticmethod
+    def _build_competitors(results: Dict) -> Dict:
+        competitors_dict = {}
+        idx = 0
+        for provider_name, payload in results.items():
+            if not isinstance(payload, dict) and not hasattr(payload, "model_dump") and not hasattr(payload, "dict"):
+                continue
+            
+            p_dict = payload
+            if hasattr(payload, "model_dump"):
+                p_dict = payload.model_dump()
+            elif hasattr(payload, "dict"):
+                p_dict = payload.dict()
+            
+            if isinstance(p_dict, dict) and p_dict.get("competitors"):
+                for comp in p_dict["competitors"]:
+                    competitors_dict[str(idx)] = comp
+                    idx += 1
+        return competitors_dict
 
     @staticmethod
     def _build_providers(results: Dict) -> Dict:
@@ -100,39 +143,89 @@ class FinancialsFormatter:
         return str(val)
 
     @staticmethod
-    def _build_general(profile: Dict, yf: Dict) -> Dict:
+    def _build_general(profile: Dict, yf: Dict, results: Dict = None) -> Dict:
+        import datetime
+        if results is None:
+            results = {}
+            
+        isin = profile.get("isin") or yf.get("isin")
+        country = profile.get("country") or yf.get("country")
+        
+        if not isin or not country:
+            for p, p_data in results.items():
+                if isinstance(p_data, dict):
+                    if not isin and p_data.get("isin"):
+                        isin_candidate = p_data.get("isin")
+                        if isin_candidate:
+                            isin = isin_candidate.split(" ")[0]
+                    if not country and p_data.get("country"):
+                        country = p_data.get("country")
+
         # Logo URL logic
         ticker = profile.get("ticker") or yf.get("symbol")
         logo_url = profile.get("logo_path")
         if not logo_url and ticker:
-            exchange = profile.get("exchange") or "UNKNOWN"
+            exchange = profile.get("exchange") or yf.get("exchange") or "UNKNOWN"
             clean_ticker = ticker.split(".")[0].upper()
             logo_url = f"/static/logos/{exchange}/{clean_ticker}.webp"
 
+        # Currency formatting
+        currency = profile.get("currency") or yf.get("currency")
+        currency_symbol_map = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥", "CAD": "C$", "AUD": "A$", "CHF": "CHF"}
+        currency_symbol = currency_symbol_map.get(currency)
+
+        # Country ISO
+        country_iso_map = {"United States": "US", "France": "FR", "Germany": "DE", "United Kingdom": "GB", "Canada": "CA", "Japan": "JP", "China": "CN", "Switzerland": "CH", "Netherlands": "NL", "Ireland": "IE"}
+        country_iso = profile.get("country_code") or country_iso_map.get(country)
+
+        # IPO Date formatting
+        ipo_date = FinancialsFormatter._safe_str(yf.get("firstTradeDateEpochUtc"))
+        if not ipo_date and yf.get("firstTradeDateMilliseconds"):
+            try:
+                ipo_date = datetime.datetime.fromtimestamp(yf.get("firstTradeDateMilliseconds") / 1000, tz=datetime.timezone.utc).strftime('%Y-%m-%d')
+            except Exception:
+                pass
+
+        # Fiscal Year End
+        fiscal_year_end = yf.get("fiscalYearEnd")
+        if not fiscal_year_end and yf.get("lastFiscalYearEnd"):
+            try:
+                fiscal_year_end = datetime.datetime.fromtimestamp(yf.get("lastFiscalYearEnd"), tz=datetime.timezone.utc).strftime('%B')
+            except Exception:
+                pass
+
+        # CIK
+        cik = yf.get("cik")
+        if not cik:
+            for p, p_data in results.items():
+                if isinstance(p_data, dict) and p_data.get("cik"):
+                    cik = p_data.get("cik")
+                    break
+
         return {
             "Code": ticker,
-            "Type": profile.get("quote_type") or "Common Stock",
+            "Type": profile.get("quote_type") or yf.get("quoteType") or "Common Stock",
             "Name": profile.get("name") or yf.get("longName"),
-            "Exchange": profile.get("exchange"),
-            "CurrencyCode": profile.get("currency") or yf.get("currency"),
-            "CurrencySymbol": None,  # Non-essentiel
-            "CountryName": profile.get("country"),
-            "CountryISO": profile.get("country_code"),
+            "Exchange": profile.get("exchange") or yf.get("exchange") or yf.get("fullExchangeName"),
+            "CurrencyCode": currency,
+            "CurrencySymbol": currency_symbol,
+            "CountryName": country,
+            "CountryISO": country_iso,
             "OpenFigi": None,
-            "ISIN": profile.get("isin") or yf.get("isin"),
+            "ISIN": isin,
             "LEI": None,
-            "PrimaryTicker": profile.get("ticker"),
-            "CIK": yf.get("cik"),
+            "PrimaryTicker": profile.get("ticker") or ticker,
+            "CIK": cik,
             "EmployerIdNumber": None,
-            "FiscalYearEnd": yf.get("fiscalYearEnd"),
-            "IPODate": FinancialsFormatter._safe_str(yf.get("firstTradeDateEpochUtc")),
+            "FiscalYearEnd": fiscal_year_end,
+            "IPODate": ipo_date,
             "Sector": profile.get("sector") or yf.get("sector"),
             "Industry": profile.get("industry") or yf.get("industry"),
             "GicSector": profile.get("gic_sector"),
             "GicGroup": profile.get("gic_group"),
             "GicIndustry": profile.get("gic_industry"),
             "GicSubIndustry": profile.get("gic_sub_industry"),
-            "Description": profile.get("long_business_summary"),
+            "Description": profile.get("long_business_summary") or yf.get("longBusinessSummary"),
             "Address": yf.get("address1"),
             "Phone": yf.get("phone"),
             "WebURL": yf.get("website"),
@@ -230,11 +323,34 @@ class FinancialsFormatter:
         }
 
     @staticmethod
-    def _build_analyst_ratings(r: Optional[Dict], yf: Dict) -> Dict:
+    def _build_analyst_ratings(r: Optional[Dict], yf: Dict, results: Dict = None) -> Dict:
         if not r:
             r = {}
+        if not results:
+            results = {}
+            
+        provider_rating = None
+        provider_sentiment = None
+        
+        for provider_name, payload in results.items():
+            if not isinstance(payload, dict) and not hasattr(payload, "model_dump") and not hasattr(payload, "dict"):
+                continue
+            
+            p_dict = payload
+            if hasattr(payload, "model_dump"):
+                p_dict = payload.model_dump()
+            elif hasattr(payload, "dict"):
+                p_dict = payload.dict()
+            
+            if isinstance(p_dict, dict):
+                if p_dict.get("rating") and not provider_rating:
+                    provider_rating = p_dict.get("rating")
+                if p_dict.get("sentiment") and not provider_sentiment:
+                    provider_sentiment = p_dict.get("sentiment")
+
         return {
-            "Rating": r.get("consensus") or yf.get("recommendationKey"),
+            "Rating": provider_rating or r.get("consensus") or yf.get("recommendationKey"),
+            "Sentiment": provider_sentiment,
             "TargetPrice": r.get("target_mean") or yf.get("targetMeanPrice"),
             "StrongBuy": r.get("strong_buy"),
             "Buy": r.get("buy"),

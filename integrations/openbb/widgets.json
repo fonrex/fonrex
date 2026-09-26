@@ -242,7 +242,7 @@
       },
       {
         "paramName": "value",
-        "value": "30",
+        "value": "50",
         "label": "Threshold",
         "type": "text",
         "description": "Threshold value for the screener"

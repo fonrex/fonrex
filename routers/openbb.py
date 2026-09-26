@@ -171,6 +171,33 @@ async def get_openbb_history(
     return format_candlestick_chart(symbol.upper(), records, title=f"{symbol.upper()} History ({interval})")
 
 
+@router.get("/technical/screen")
+async def get_openbb_screener(
+    indicator: str = "rsi",
+    operator: str = "lt",
+    value: float = 30,
+    resolution: str = "1D",
+    period: int = 14,
+    limit: int = 50,
+    db_service=Depends(get_database_service),
+    technical_service=Depends(get_technical_service),
+    redis_client=Depends(get_redis_client),
+) -> List[Dict[str, Any]]:
+    """Return technical screener matches directly as an AgGrid table."""
+    res = await screen_by_indicator(
+        indicator=indicator,
+        operator=operator,
+        value=value,
+        resolution=resolution,
+        period=period,
+        limit=limit,
+        db_service=db_service,
+        technical_service=technical_service,
+        redis_client=redis_client,
+    )
+    return res.get("matches", []) if isinstance(res, dict) else []
+
+
 @router.get("/technical/{ticker}")
 async def get_openbb_technical(
     ticker: str,
@@ -387,31 +414,22 @@ async def get_openbb_dcf_sensitivity(
     return format_dcf_sensitivity_table(res)
 
 
-@router.get("/technical/screen")
-async def get_openbb_screener(
-    indicator: str = "rsi",
-    operator: str = "lt",
-    value: float = 30,
-    resolution: str = "1D",
-    period: int = 14,
-    limit: int = 50,
-    db_service=Depends(get_database_service),
-    technical_service=Depends(get_technical_service),
-    redis_client=Depends(get_redis_client),
+@router.get("/news/feed")
+async def get_openbb_news_feed(
+    limit: int = Query(default=20, ge=1, le=100),
+    language: Optional[str] = None,
+    tickers: Optional[str] = None,
+    service=Depends(get_news_service),
 ) -> List[Dict[str, Any]]:
-    """Return technical screener matches directly as an AgGrid table."""
-    res = await screen_by_indicator(
-        indicator=indicator,
-        operator=operator,
-        value=value,
-        resolution=resolution,
-        period=period,
+    """Return news feed articles directly as an AgGrid table."""
+    res = await get_news_feed(
         limit=limit,
-        db_service=db_service,
-        technical_service=technical_service,
-        redis_client=redis_client,
+        language=language,
+        tickers=tickers,
+        service=service,
     )
-    return res.get("matches", []) if isinstance(res, dict) else []
+    articles = getattr(res, "articles", []) or []
+    return [a.model_dump(mode="json") if hasattr(a, "model_dump") else a for a in articles]
 
 
 @router.get("/news/{ticker}")
@@ -428,24 +446,6 @@ async def get_openbb_news(
         limit=limit,
         language=language,
         force_refresh=force_refresh,
-        service=service,
-    )
-    articles = getattr(res, "articles", []) or []
-    return [a.model_dump(mode="json") if hasattr(a, "model_dump") else a for a in articles]
-
-
-@router.get("/news/feed")
-async def get_openbb_news_feed(
-    limit: int = Query(default=20, ge=1, le=100),
-    language: Optional[str] = None,
-    tickers: Optional[str] = None,
-    service=Depends(get_news_service),
-) -> List[Dict[str, Any]]:
-    """Return news feed articles directly as an AgGrid table."""
-    res = await get_news_feed(
-        limit=limit,
-        language=language,
-        tickers=tickers,
         service=service,
     )
     articles = getattr(res, "articles", []) or []

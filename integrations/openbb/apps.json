@@ -1,7 +1,7 @@
 [
   {
     "name": "Fonrex — EU Markets",
-    "description": "Deep fundamentals, DCF valuation, and technicals for a given ticker, with European exchange coverage.",
+    "description": "Deep fundamentals, DCF valuation, multi-indicator technicals, news feed and macro rates for European assets.",
     "img": "https://fonrex.io/openbb-app-preview.png",
     "img_dark": "",
     "img_light": "",
@@ -23,23 +23,42 @@
             ]
           },
           {
-            "i": "fonrex_fundamentals_deep",
+            "i": "fonrex_macro_rates",
+            "x": 0,
+            "y": 4,
+            "w": 8,
+            "h": 4,
+            "state": {}
+          },
+          {
+            "i": "fonrex_eod",
             "x": 8,
             "y": 0,
             "w": 16,
-            "h": 12,
+            "h": 8,
+            "state": { "params": { "ticker": "AIR.PA", "period": "1y" } },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_fundamentals_deep",
+            "x": 0,
+            "y": 8,
+            "w": 14,
+            "h": 10,
             "state": { "params": { "ticker": "AIR.PA" } },
             "groups": [
               "Group 1"
             ]
           },
           {
-            "i": "fonrex_eod",
-            "x": 0,
-            "y": 4,
-            "w": 8,
-            "h": 8,
-            "state": { "params": { "ticker": "AIR.PA" } },
+            "i": "fonrex_news",
+            "x": 14,
+            "y": 8,
+            "w": 10,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA", "limit": "15" } },
             "groups": [
               "Group 1"
             ]
@@ -54,7 +73,18 @@
             "i": "fonrex_dcf",
             "x": 0,
             "y": 0,
-            "w": 12,
+            "w": 8,
+            "h": 10,
+            "state": { "params": { "ticker": "AIR.PA" } },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_dcf_compare",
+            "x": 8,
+            "y": 0,
+            "w": 8,
             "h": 10,
             "state": { "params": { "ticker": "AIR.PA" } },
             "groups": [
@@ -63,9 +93,9 @@
           },
           {
             "i": "fonrex_dcf_sensitivity",
-            "x": 12,
+            "x": 16,
             "y": 0,
-            "w": 12,
+            "w": 8,
             "h": 10,
             "state": { "params": { "ticker": "AIR.PA" } },
             "groups": [
@@ -82,12 +112,28 @@
             "i": "fonrex_technical_chart",
             "x": 0,
             "y": 0,
-            "w": 24,
+            "w": 16,
             "h": 10,
             "state": {
               "params": {
                 "ticker": "AIR.PA",
                 "indicators": "sma_20,rsi_14"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_technical_multi",
+            "x": 16,
+            "y": 0,
+            "w": 8,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AIR.PA",
+                "indicators": "sma_20,ema_50,rsi_14"
               }
             },
             "groups": [
@@ -104,12 +150,38 @@
             "i": "fonrex_news",
             "x": 0,
             "y": 0,
-            "w": 24,
+            "w": 14,
             "h": 10,
-            "state": { "params": { "ticker": "AIR.PA" } },
+            "state": { "params": { "ticker": "AIR.PA", "limit": "20" } },
             "groups": [
               "Group 1"
             ]
+          },
+          {
+            "i": "fonrex_news_feed",
+            "x": 14,
+            "y": 0,
+            "w": 10,
+            "h": 10,
+            "state": { "params": { "limit": "20" } }
+          }
+        ]
+      },
+      "watchlist": {
+        "id": "watchlist",
+        "name": "Watchlist",
+        "layout": [
+          {
+            "i": "fonrex_quotes_batch",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 10,
+            "state": {
+              "params": {
+                "tickers": "AIR.PA,BNP.PA,MC.PA,OR.PA,SAN.PA,AAPL,MSFT,TSLA"
+              }
+            }
           }
         ]
       }
@@ -145,7 +217,7 @@
               "params": {
                 "indicator": "rsi",
                 "operator": "lt",
-                "value": "30"
+                "value": "50"
               }
             }
           }
@@ -169,7 +241,7 @@
             "y": 0,
             "w": 14,
             "h": 12,
-            "state": { "params": { "index_name": "sp500" } }
+            "state": { "params": { "index_name": "cac40" } }
           }
         ]
       }

@@ -95,9 +95,8 @@ class SqlAlchemyTechnicalRepository:
             if base_ticker and base_ticker not in tickers_to_try:
                 tickers_to_try.append(base_ticker)
 
-        session, close_session = self._session()
-
         def resolve() -> int | None:
+            session, close_session = self._session()
             try:
                 from models import Asset, AssetListing
 

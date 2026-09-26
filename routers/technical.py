@@ -187,13 +187,35 @@ async def run_indicator_screen(
     def load_tickers():
         session = db_service.get_session()
         try:
-            listings = (
-                session.query(AssetListing)
-                .join(Asset)
-                .filter(AssetListing.is_active.is_(True), AssetListing.is_primary.is_(True))
-                .limit(limit)
-                .all()
-            )
+            from sqlalchemy import text
+
+            asset_ids = [
+                r[0]
+                for r in session.execute(
+                    text("SELECT DISTINCT asset_id FROM prices_eod LIMIT :lim"),
+                    {"lim": limit * 2},
+                ).all()
+            ]
+            if asset_ids:
+                listings = (
+                    session.query(AssetListing)
+                    .join(Asset, AssetListing.asset_id == Asset.id)
+                    .filter(
+                        AssetListing.asset_id.in_(asset_ids),
+                        AssetListing.is_active.is_(True),
+                        AssetListing.is_primary.is_(True),
+                    )
+                    .limit(limit)
+                    .all()
+                )
+            else:
+                listings = (
+                    session.query(AssetListing)
+                    .join(Asset, AssetListing.asset_id == Asset.id)
+                    .filter(AssetListing.is_active.is_(True), AssetListing.is_primary.is_(True))
+                    .limit(limit)
+                    .all()
+                )
             return [
                 {"ticker": listing.ticker, "name": listing.asset.name, "isin": listing.asset.isin}
                 for listing in listings
@@ -202,7 +224,7 @@ async def run_indicator_screen(
             session.close()
 
     tickers = await run_sync(load_tickers)
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(25)
 
     async def evaluate(asset):
         async with semaphore:

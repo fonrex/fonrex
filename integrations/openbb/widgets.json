@@ -5,8 +5,13 @@
     "category": "Fundamentals",
     "type": "table",
     "endpoint": "openbb/fundamental",
-    "gridData": { "w": 20, "h": 9 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 9
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -23,8 +28,13 @@
     "category": "Fundamentals",
     "type": "table",
     "endpoint": "openbb/fundamental/deep",
-    "gridData": { "w": 24, "h": 12 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 24,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -41,8 +51,13 @@
     "category": "Historical",
     "type": "chart",
     "endpoint": "openbb/eod/{ticker}",
-    "gridData": { "w": 20, "h": 9 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 9
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -66,8 +81,13 @@
     "category": "Historical",
     "type": "chart",
     "endpoint": "openbb/ticker/{symbol}/history",
-    "gridData": { "w": 20, "h": 9 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 9
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "symbol",
@@ -100,22 +120,79 @@
     ]
   },
   "fonrex_quote": {
-    "name": "Fonrex Quote",
-    "description": "Latest real-time price snapshot from WebSocket stream with Redis cache",
+    "name": "Ticker Information",
+    "description": "Ticker Information block with price, day change, area chart and ticker search",
     "category": "Market Data",
-    "type": "metric",
-    "endpoint": "openbb/quote/{ticker}",
-    "gridData": { "w": 8, "h": 4 },
-    "source": ["Fonrex"],
-    "params": [
-      {
-        "paramName": "ticker",
-        "value": "AAPL",
-        "label": "Ticker",
-        "type": "text",
-        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
-      }
-    ]
+    "type": "iframe",
+    "endpoint": "static/ticker_info.html",
+    "gridData": {
+      "w": 24,
+      "h": 8
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
+  },
+  "fonrex_ticker_info": {
+    "name": "Ticker Information",
+    "description": "Ticker Information block with price, day change, area chart and ticker search",
+    "category": "Market Data",
+    "type": "iframe",
+    "endpoint": "static/ticker_info.html",
+    "gridData": {
+      "w": 24,
+      "h": 8
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
+  },
+  "fonrex_ticker_profile": {
+    "name": "Ticker Profile",
+    "description": "Company profile details including address, phone, website, sector, industry, employees, CIK, ISIN, CUSIP, exchange, IPO date and business description",
+    "category": "Fundamentals",
+    "type": "iframe",
+    "endpoint": "static/ticker_profile.html",
+    "gridData": {
+      "w": 24,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
+  },
+  "fonrex_key_metrics": {
+    "name": "Key Metrics",
+    "description": "Key Financial Metrics including Beta, Vol Avg, Market Cap, Range, 52-week High/Low and Currency",
+    "category": "Market Data",
+    "type": "iframe",
+    "endpoint": "static/key_metrics.html",
+    "gridData": {
+      "w": 12,
+      "h": 8
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
+  },
+  "fonrex_share_statistics": {
+    "name": "Share Statistics",
+    "description": "Share statistics including Free float, Float shares, Outstanding shares, and Source",
+    "category": "Market Data",
+    "type": "iframe",
+    "endpoint": "static/share_statistics.html",
+    "gridData": {
+      "w": 12,
+      "h": 8
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
   },
   "fonrex_quotes_batch": {
     "name": "Fonrex Batch Quotes",
@@ -123,8 +200,13 @@
     "category": "Market Data",
     "type": "table",
     "endpoint": "openbb/quotes",
-    "gridData": { "w": 20, "h": 9 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 9
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "tickers",
@@ -141,8 +223,13 @@
     "category": "Technical",
     "type": "chart",
     "endpoint": "openbb/technical/{ticker}",
-    "gridData": { "w": 20, "h": 9 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 9
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -173,8 +260,13 @@
     "category": "Technical",
     "type": "chart",
     "endpoint": "openbb/technical/{ticker}/multi",
-    "gridData": { "w": 24, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 24,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -198,8 +290,13 @@
     "category": "Technical",
     "type": "chart",
     "endpoint": "openbb/technical/{ticker}/chart",
-    "gridData": { "w": 24, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 24,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -223,8 +320,13 @@
     "category": "Technical",
     "type": "table",
     "endpoint": "openbb/technical/screen",
-    "gridData": { "w": 20, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "indicator",
@@ -255,8 +357,13 @@
     "category": "News",
     "type": "table",
     "endpoint": "openbb/news/{ticker}",
-    "gridData": { "w": 24, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 24,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -280,8 +387,13 @@
     "category": "News",
     "type": "table",
     "endpoint": "openbb/news/feed",
-    "gridData": { "w": 24, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 24,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "limit",
@@ -298,8 +410,13 @@
     "category": "Valuation",
     "type": "table",
     "endpoint": "openbb/dcf/{ticker}",
-    "gridData": { "w": 20, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -316,8 +433,13 @@
     "category": "Valuation",
     "type": "table",
     "endpoint": "openbb/dcf/{ticker}/compare",
-    "gridData": { "w": 24, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 24,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -330,12 +452,17 @@
   },
   "fonrex_dcf_sensitivity": {
     "name": "Fonrex DCF Sensitivity Matrix",
-    "description": "WACC × terminal growth rate sensitivity matrix for intrinsic value analysis",
+    "description": "WACC \u00d7 terminal growth rate sensitivity matrix for intrinsic value analysis",
     "category": "Valuation",
     "type": "table",
     "endpoint": "openbb/dcf/{ticker}/sensitivity",
-    "gridData": { "w": 24, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 24,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -348,12 +475,17 @@
   },
   "fonrex_insider_transactions": {
     "name": "Fonrex Insider Transactions",
-    "description": "SEC Form 4 insider trading data — purchases, sales, and option exercises (US stocks)",
+    "description": "SEC Form 4 insider trading data \u2014 purchases, sales, and option exercises (US stocks)",
     "category": "Fundamentals",
     "type": "table",
     "endpoint": "openbb/insider-transactions/{ticker}",
-    "gridData": { "w": 20, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "ticker",
@@ -370,8 +502,13 @@
     "category": "Fundamentals",
     "type": "table",
     "endpoint": "openbb/etf/{isin}/details",
-    "gridData": { "w": 20, "h": 10 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "isin",
@@ -388,8 +525,13 @@
     "category": "Market Data",
     "type": "table",
     "endpoint": "openbb/index/{index_name}/constituents",
-    "gridData": { "w": 20, "h": 12 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 20,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": [
       {
         "paramName": "index_name",
@@ -406,8 +548,43 @@
     "category": "Macro",
     "type": "metric",
     "endpoint": "openbb/macro/rates",
-    "gridData": { "w": 10, "h": 6 },
-    "source": ["Fonrex"],
+    "gridData": {
+      "w": 10,
+      "h": 6
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
+  },
+  "fonrex_market_overview": {
+    "name": "Fonrex Market Overview",
+    "description": "Market overview carousel with sparklines",
+    "category": "Market Data",
+    "type": "iframe",
+    "endpoint": "static/index.html",
+    "gridData": {
+      "w": 24,
+      "h": 6
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
+  },
+  "fonrex_price_performance": {
+    "name": "Price Performance",
+    "description": "TradingView Advanced Real-Time Chart widget showing price performance, volume, percentage scale, and outstanding shares",
+    "category": "Chart",
+    "type": "iframe",
+    "endpoint": "static/price_performance.html",
+    "gridData": {
+      "w": 24,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
     "params": []
   }
 }

@@ -8,6 +8,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 
+import json
+import urllib.request
+from urllib.parse import quote_plus
+
 from cache.service import CacheService
 from concurrency import run_sync
 from database.query import QueryService
@@ -37,6 +41,101 @@ VALID_PERIODS = {
     "weekly",
     "monthly",
 }
+
+SEARCH_TOP_RESULTS = [
+    {"ticker": "AAPL", "name": "Apple Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "AAPL", "value": "AAPL"},
+    {"ticker": "ADBE", "name": "Adobe Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "ADBE", "value": "ADBE"},
+    {"ticker": "AGG", "name": "iShares Core U.S. Aggregate Bond ETF", "quote_type": "ETF", "exchange": "AMEX", "label": "AGG", "value": "AGG"},
+    {"ticker": "AMZN", "name": "Amazon.com, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "AMZN", "value": "AMZN"},
+    {"ticker": "BAC", "name": "Bank of America Corporation", "quote_type": "STOCK", "exchange": "NYSE", "label": "BAC", "value": "BAC"},
+    {"ticker": "COMP", "name": "Compass, Inc.", "quote_type": "STOCK", "exchange": "NYSE", "label": "COMP", "value": "COMP"},
+    {"ticker": "DIA", "name": "SPDR Dow Jones Industrial Average ETF Trust", "quote_type": "ETF", "exchange": "AMEX", "label": "DIA", "value": "DIA"},
+    {"ticker": "DIS", "name": "The Walt Disney Company", "quote_type": "STOCK", "exchange": "NYSE", "label": "DIS", "value": "DIS"},
+    {"ticker": "AIR.PA", "name": "Airbus SE", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "AIR.PA", "value": "AIR.PA"},
+    {"ticker": "TTE", "name": "TotalEnergies SE", "quote_type": "STOCK", "exchange": "NYSE", "label": "TTE", "value": "TTE"},
+    {"ticker": "GOOG", "name": "Alphabet Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "GOOG", "value": "GOOG"},
+    {"ticker": "MSFT", "name": "Microsoft Corporation", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "MSFT", "value": "MSFT"},
+    {"ticker": "NVDA", "name": "NVIDIA Corporation", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "NVDA", "value": "NVDA"},
+    {"ticker": "TSLA", "name": "Tesla, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "TSLA", "value": "TSLA"},
+]
+
+
+def fetch_yahoo_search_quote(query: str):
+    if not query:
+        return None
+    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={quote_plus(query)}"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json, text/plain, */*",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            quotes = payload.get("quotes") or []
+            if quotes:
+                return quotes[0]
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/api/search")
+@router.get("/search")
+@router.get("/openbb/search")
+async def search_tickers(
+    q: Optional[str] = Query(None),
+    db: DatabaseService = Depends(get_database_service),
+):
+    if not q or not q.strip():
+        return {"results": SEARCH_TOP_RESULTS}
+
+    query_str = q.strip().lower()
+
+    filtered = [
+        r
+        for r in SEARCH_TOP_RESULTS
+        if query_str in r["ticker"].lower() or query_str in r["name"].lower()
+    ]
+
+    try:
+        listings = await run_sync(db.find_listings, ticker=q.strip().upper(), limit=10)
+        for listing in listings:
+            dict_item = db._listing_to_dict(listing)
+            if dict_item and dict_item.get("ticker"):
+                t = dict_item.get("ticker")
+                if not any(f["ticker"] == t for f in filtered):
+                    filtered.append({
+                        "ticker": t,
+                        "name": dict_item.get("name") or t,
+                        "quote_type": "STOCK",
+                        "exchange": dict_item.get("exchange") or "UNKNOWN",
+                        "label": t,
+                        "value": t,
+                    })
+    except Exception:
+        pass
+
+    if len(filtered) < 5:
+        try:
+            quote = await run_sync(fetch_yahoo_search_quote, query_str)
+            if quote and quote.get("symbol"):
+                sym = quote.get("symbol")
+                if not any(f["ticker"] == sym for f in filtered):
+                    filtered.append({
+                        "ticker": sym,
+                        "name": quote.get("shortname") or quote.get("longname") or sym,
+                        "quote_type": quote.get("quoteType") or "STOCK",
+                        "exchange": quote.get("exchange") or "UNKNOWN",
+                        "label": sym,
+                        "value": sym,
+                    })
+        except Exception:
+            pass
+
+    return {"results": filtered}
 
 
 @router.get("/assets/by-isin/{isin}")

@@ -477,35 +477,23 @@ async def index():
 
 @app.get("/widgets.json", include_in_schema=False)
 async def get_openbb_widgets(request: Request):
-    """Serve the widget definitions for OpenBB Workspace.
-
-    Loaded once at startup from integrations/openbb/widgets.json.
-    ``include_in_schema=False`` keeps this out of the public OpenAPI docs.
-    """
-    widgets = getattr(request.app.state, "openbb_widgets", None)
-    if not widgets:
-        _openbb_path = Path(__file__).parent / "integrations" / "openbb" / "widgets.json"
-        try:
-            widgets = json.loads(_openbb_path.read_text(encoding="utf-8"))
-            request.app.state.openbb_widgets = widgets
-        except FileNotFoundError:
-            widgets = {}
+    """Serve the widget definitions for OpenBB Workspace."""
+    _openbb_path = Path(__file__).parent / "integrations" / "openbb" / "widgets.json"
+    try:
+        widgets = json.loads(_openbb_path.read_text(encoding="utf-8"))
+        request.app.state.openbb_widgets = widgets
+    except FileNotFoundError:
+        widgets = getattr(request.app.state, "openbb_widgets", {}) or {}
     return JSONResponse(content=widgets)
 
 
 @app.get("/apps.json", include_in_schema=False)
 async def get_openbb_apps(request: Request):
-    """Serve the pre-assembled app definitions for OpenBB Workspace.
-
-    Loaded once at startup from integrations/openbb/apps.json.
-    ``include_in_schema=False`` keeps this out of the public OpenAPI docs.
-    """
-    apps = getattr(request.app.state, "openbb_apps", None)
-    if not apps:
-        _openbb_path = Path(__file__).parent / "integrations" / "openbb" / "apps.json"
-        try:
-            apps = json.loads(_openbb_path.read_text(encoding="utf-8"))
-            request.app.state.openbb_apps = apps
-        except FileNotFoundError:
-            apps = []
+    """Serve the pre-assembled app definitions for OpenBB Workspace."""
+    _openbb_path = Path(__file__).parent / "integrations" / "openbb" / "apps.json"
+    try:
+        apps = json.loads(_openbb_path.read_text(encoding="utf-8"))
+        request.app.state.openbb_apps = apps
+    except FileNotFoundError:
+        apps = getattr(request.app.state, "openbb_apps", []) or []
     return JSONResponse(content=apps)

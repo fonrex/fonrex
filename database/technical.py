@@ -123,6 +123,32 @@ class SqlAlchemyTechnicalRepository:
                     )
                     if asset:
                         return asset.id
+
+                # Auto-create asset record for valid ticker if missing in database
+                clean_ticker = normalized
+                new_asset = Asset(
+                    ticker=clean_ticker,
+                    name=f"{clean_ticker} Corporation",
+                    exchange="EURONEXT" if clean_ticker.endswith(".PA") else "NASDAQ",
+                    currency="EUR" if clean_ticker.endswith(".PA") else "USD",
+                    is_active=True,
+                )
+                session.add(new_asset)
+                session.flush()
+
+                new_listing = AssetListing(
+                    asset_id=new_asset.id,
+                    ticker=clean_ticker,
+                    exchange=new_asset.exchange,
+                    currency=new_asset.currency,
+                    is_primary=True,
+                    is_active=True,
+                )
+                session.add(new_listing)
+                session.commit()
+                return new_asset.id
+            except Exception as e:
+                session.rollback()
                 return None
             finally:
                 if close_session:

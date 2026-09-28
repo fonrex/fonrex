@@ -122,6 +122,22 @@ class TechnicalIndicatorService:
             limit=limit,
         )
         if df.empty:
+            try:
+                if self._market_data and hasattr(self._market_data, "_database"):
+                    from historical.ingestion_service import HistoricalIngestionService
+                    ingester = HistoricalIngestionService(self._market_data._database)
+                    await ingester.ingest(ticker=ticker, resolution=resolution, source="auto")
+                    df = await self._load_ohlcv_dataframe(
+                        asset_id=asset_id,
+                        resolution=resolution,
+                        from_date=from_date,
+                        to_date=to_date,
+                        limit=limit,
+                    )
+            except Exception as exc:
+                logger.warning("Auto-ingestion attempt for %s failed: %s", ticker, exc)
+
+        if df.empty:
             raise TechnicalDataNotFound(f"No historical data found for {ticker}")
 
         # 6. Validate minimum periods
@@ -231,6 +247,22 @@ class TechnicalIndicatorService:
 
         indicator_results = {}
         errors = {}
+
+        if df.empty:
+            try:
+                if self._market_data and hasattr(self._market_data, "_database"):
+                    from historical.ingestion_service import HistoricalIngestionService
+                    ingester = HistoricalIngestionService(self._market_data._database)
+                    await ingester.ingest(ticker=ticker, resolution=resolution, source="auto")
+                    df = await self._load_ohlcv_dataframe(
+                        asset_id=asset_id,
+                        resolution=resolution,
+                        from_date=from_date,
+                        to_date=to_date,
+                        limit=limit,
+                    )
+            except Exception as exc:
+                logger.warning("Auto-ingestion attempt for %s failed: %s", ticker, exc)
 
         if df.empty:
             return MultiIndicatorResult(

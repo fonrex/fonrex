@@ -178,21 +178,28 @@ def format_candlestick_chart(
         }
     ]
 
-    layout: Dict[str, Any] = {
-        "title": title or f"{ticker} OHLCV",
+    dark_layout = {
+        "paper_bgcolor": "#121214",
+        "plot_bgcolor": "#121214",
+        "font": {"color": "#f4f4f5"},
+        "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         "xaxis": {
             "rangeslider": {"visible": False},
             "type": "date",
+            "gridcolor": "#27272a",
         },
         "yaxis": {
             "title": "Price",
+            "gridcolor": "#27272a",
         },
-        "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
     }
 
     return {
         "data": data_traces,
-        "layout": layout,
+        "layout": {
+            "title": title or f"{ticker} OHLCV",
+            **dark_layout,
+        },
     }
 
 
@@ -232,8 +239,11 @@ def format_indicator_chart(
         "data": data_traces,
         "layout": {
             "title": f"{ticker} {indicator_name.upper()}",
-            "xaxis": {"rangeslider": {"visible": False}},
-            "yaxis": {"title": indicator_name.upper()},
+            "paper_bgcolor": "#121214",
+            "plot_bgcolor": "#121214",
+            "font": {"color": "#f4f4f5"},
+            "xaxis": {"rangeslider": {"visible": False}, "gridcolor": "#27272a"},
+            "yaxis": {"title": indicator_name.upper(), "gridcolor": "#27272a"},
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         },
     }
@@ -279,8 +289,11 @@ def format_technical_multi_chart(
         "data": data_traces,
         "layout": {
             "title": f"{ticker} Technical Indicators",
-            "xaxis": {"rangeslider": {"visible": False}},
-            "yaxis": {"title": "Value"},
+            "paper_bgcolor": "#121214",
+            "plot_bgcolor": "#121214",
+            "font": {"color": "#f4f4f5"},
+            "xaxis": {"rangeslider": {"visible": False}, "gridcolor": "#27272a"},
+            "yaxis": {"title": "Value", "gridcolor": "#27272a"},
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         },
     }
@@ -322,8 +335,11 @@ def format_technical_chart_overlay(
         "data": data_traces,
         "layout": {
             "title": f"{ticker} Technical Chart",
-            "xaxis": {"rangeslider": {"visible": False}},
-            "yaxis": {"title": "Price"},
+            "paper_bgcolor": "#121214",
+            "plot_bgcolor": "#121214",
+            "font": {"color": "#f4f4f5"},
+            "xaxis": {"rangeslider": {"visible": False}, "gridcolor": "#27272a"},
+            "yaxis": {"title": "Price", "gridcolor": "#27272a"},
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         },
     }

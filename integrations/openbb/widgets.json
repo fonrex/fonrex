@@ -285,34 +285,19 @@
     ]
   },
   "fonrex_technical_chart": {
-    "name": "Fonrex Technical Chart",
-    "description": "OHLCV candlestick data with overlaid technical indicators, chart-ready",
+    "name": "Charting",
+    "description": "Full interactive TradingView technical charting with drawing tools, volume SMA, indicators, and range selectors",
     "category": "Technical",
-    "type": "chart",
-    "endpoint": "openbb/technical/{ticker}/chart",
+    "type": "iframe",
+    "endpoint": "static/charting.html",
     "gridData": {
       "w": 24,
-      "h": 10
+      "h": 16
     },
     "source": [
       "Fonrex"
     ],
-    "params": [
-      {
-        "paramName": "ticker",
-        "value": "AAPL",
-        "label": "Ticker",
-        "type": "text",
-        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
-      },
-      {
-        "paramName": "indicators",
-        "value": "sma_20,rsi_14",
-        "label": "Indicators",
-        "type": "text",
-        "description": "Comma-separated indicator list (e.g. sma_20, bbands_20, macd)"
-      }
-    ]
+    "params": []
   },
   "fonrex_screener": {
     "name": "Fonrex Technical Screener",
@@ -581,6 +566,21 @@
     "gridData": {
       "w": 24,
       "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
+  },
+  "fonrex_charting": {
+    "name": "Charting",
+    "description": "Full interactive TradingView technical charting with drawing tools, volume SMA, indicators, and range selectors",
+    "category": "Technical",
+    "type": "iframe",
+    "endpoint": "static/charting.html",
+    "gridData": {
+      "w": 24,
+      "h": 16
     },
     "source": [
       "Fonrex"

@@ -137,31 +137,14 @@
         "name": "Technical Analysis",
         "layout": [
           {
-            "i": "fonrex_technical_chart",
+            "i": "fonrex_charting",
             "x": 0,
             "y": 0,
-            "w": 16,
-            "h": 10,
+            "w": 24,
+            "h": 16,
             "state": {
               "params": {
-                "ticker": "AIR.PA",
-                "indicators": "sma_20,rsi_14"
-              }
-            },
-            "groups": [
-              "Group 1"
-            ]
-          },
-          {
-            "i": "fonrex_technical_multi",
-            "x": 16,
-            "y": 0,
-            "w": 8,
-            "h": 10,
-            "state": {
-              "params": {
-                "ticker": "AIR.PA",
-                "indicators": "sma_20,ema_50,rsi_14"
+                "ticker": "AAPL"
               }
             },
             "groups": [
@@ -292,7 +275,8 @@
           "fonrex_ticker_profile",
           "fonrex_price_performance",
           "fonrex_key_metrics",
-          "fonrex_share_statistics"
+          "fonrex_share_statistics",
+          "fonrex_charting"
         ]
       }
     ]

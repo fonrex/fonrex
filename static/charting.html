@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Charting</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #121214;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #tv_chart_container {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+</head>
+<body>
+  <div id="tv_chart_container"></div>
+
+  <script>
+    function getTvSymbol(raw) {
+      if (!raw) return "NASDAQ:AAPL";
+      raw = raw.trim().toUpperCase();
+      if (raw.includes(":")) return raw;
+      if (raw.endsWith(".PA")) return "EURONEXT:" + raw.replace(".PA", "");
+      if (raw.endsWith(".MC")) return "BME:" + raw.replace(".MC", "");
+      if (raw.endsWith(".DE")) return "XETR:" + raw.replace(".DE", "");
+      if (raw.endsWith(".L")) return "LSE:" + raw.replace(".L", "");
+      return raw;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const ticker = urlParams.get('ticker') || urlParams.get('symbol') || 'AAPL';
+    const tvSymbol = getTvSymbol(ticker);
+
+    new TradingView.widget({
+      "autosize": true,
+      "symbol": tvSymbol,
+      "interval": "D",
+      "timezone": "Etc/UTC",
+      "theme": "dark",
+      "style": "1",
+      "locale": "en",
+      "toolbar_bg": "#121214",
+      "enable_publishing": false,
+      "withdateranges": true,
+      "hide_side_toolbar": false,
+      "allow_symbol_change": true,
+      "show_popup_button": true,
+      "popup_width": "1000",
+      "popup_height": "650",
+      "backgroundColor": "#121214",
+      "gridColor": "#27272a",
+      "studies": [
+        "MASimple@tv-basicstudies",
+        "RSI@tv-basicstudies"
+      ],
+      "container_id": "tv_chart_container"
+    });
+  </script>
+</body>
+</html>

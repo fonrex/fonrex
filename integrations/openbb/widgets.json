@@ -134,6 +134,29 @@
     ],
     "params": []
   },
+  "fonrex_quote_metric": {
+    "name": "Fonrex Quote",
+    "description": "Latest real-time price snapshot from WebSocket stream with Redis cache",
+    "category": "Market Data",
+    "type": "metric",
+    "endpoint": "openbb/quote/{ticker}",
+    "gridData": {
+      "w": 8,
+      "h": 4
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      }
+    ]
+  },
   "fonrex_ticker_info": {
     "name": "Ticker Information",
     "description": "Ticker Information block with price, day change, area chart and ticker search",
@@ -285,19 +308,34 @@
     ]
   },
   "fonrex_technical_chart": {
-    "name": "Charting",
-    "description": "Full interactive TradingView technical charting with drawing tools, volume SMA, indicators, and range selectors",
+    "name": "Fonrex Technical Chart",
+    "description": "OHLCV candlestick data with overlaid technical indicators, chart-ready",
     "category": "Technical",
-    "type": "iframe",
-    "endpoint": "static/charting.html",
+    "type": "chart",
+    "endpoint": "openbb/technical/{ticker}/chart",
     "gridData": {
       "w": 24,
-      "h": 16
+      "h": 10
     },
     "source": [
       "Fonrex"
     ],
-    "params": []
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AIR.PA, AAPL)"
+      },
+      {
+        "paramName": "indicators",
+        "value": "sma_20,rsi_14",
+        "label": "Indicators",
+        "type": "text",
+        "description": "Comma-separated indicator list (e.g. sma_20, bbands_20, macd)"
+      }
+    ]
   },
   "fonrex_screener": {
     "name": "Fonrex Technical Screener",
@@ -586,5 +624,35 @@
       "Fonrex"
     ],
     "params": []
+  },
+  "fonrex_revenue_geography": {
+    "name": "Revenue Per Geography",
+    "description": "Geographic revenue segmentation over fiscal years (stacked bar chart)",
+    "category": "Fundamentals",
+    "type": "chart",
+    "endpoint": "openbb/fundamental/{ticker}/revenue-geography",
+    "gridData": {
+      "w": 24,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AAPL, MSFT)"
+      },
+      {
+        "paramName": "period",
+        "value": "FY",
+        "label": "Period",
+        "type": "text",
+        "description": "Reporting period (FY or quarterly)"
+      }
+    ]
   }
 }

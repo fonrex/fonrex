@@ -606,6 +606,76 @@ class AssetRepository(DatabaseComponent):
             "mappings": deduped_mappings,
         }
 
+    def ensure_asset(self, ticker=None, isin=None, exchange=None, currency=None, name=None):
+        """
+        S'assure qu'un actif existe en base de données pour un ticker donné.
+        S'il n'existe pas, il est créé avec un listing primaire par défaut.
+        """
+        if not ticker and not isin:
+            return None
+
+        asset = self.get_asset_by_identity(
+            ticker=ticker, isin=isin, exchange=exchange, currency=currency, include_mappings=True
+        )
+        if asset:
+            return asset
+
+        clean_ticker = (ticker or isin or "").strip().upper()
+        if not clean_ticker:
+            return None
+
+        determined_exchange = exchange or ("EURONEXT" if clean_ticker.endswith(".PA") else "NASDAQ")
+        determined_currency = currency or ("EUR" if clean_ticker.endswith(".PA") else "USD")
+        asset_name = name or f"{clean_ticker} Corporation"
+
+        session = self.get_session()
+        try:
+            new_asset = Asset(
+                ticker=clean_ticker,
+                name=asset_name,
+                exchange=determined_exchange,
+                currency=determined_currency,
+                isin=isin.strip().upper() if isin else None,
+                is_active=True,
+            )
+            session.add(new_asset)
+            session.flush()
+
+            new_listing = AssetListing(
+                asset_id=new_asset.id,
+                ticker=clean_ticker,
+                exchange=determined_exchange,
+                currency=determined_currency,
+                is_primary=True,
+                is_active=True,
+            )
+            session.add(new_listing)
+            session.commit()
+            return new_asset
+        except Exception as e:
+            session.rollback()
+            logger.warning("ensure_asset rollback pour %s: %s", clean_ticker, e)
+            return None
+        finally:
+            session.close()
+
+    def ensure_asset_context(self, ticker=None, isin=None, exchange=None, currency=None, name=None):
+        """
+        Garantit l'existence d'un actif et retourne son contexte complet.
+        """
+        context = self.get_asset_context(
+            ticker=ticker, isin=isin, exchange=exchange, currency=currency
+        )
+        if context:
+            return context
+
+        self.ensure_asset(
+            ticker=ticker, isin=isin, exchange=exchange, currency=currency, name=name
+        )
+        return self.get_asset_context(
+            ticker=ticker, isin=isin, exchange=exchange, currency=currency
+        )
+
     def get_asset_mappings(self, ticker=None, isin=None, exchange=None, currency=None):
         """Return an asset with its mapping relationships eagerly loaded.
 

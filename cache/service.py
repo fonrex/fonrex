@@ -53,6 +53,8 @@ class CacheService:
         "dcf_sensitivity": 21600,  # 6h — matrice sensibilité
         # Macro Rates (Phase 13)
         "macro_rates": 21600,  # 6h — taux FRED
+        # Geographic revenue segments (SEC 10-K)
+        "geographic_revenue": 2592000,  # 30j — ventilation géographique du CA
     }
 
     def __init__(self, redis_url=None, ttl=300, ttl_by_type=None):

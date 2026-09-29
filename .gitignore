@@ -122,7 +122,10 @@ logs/
 tmp/
 temp/
 
+# Static files
 static/*
+!static/*.html
+!static/logos/
 
 # Node
 node_modules/

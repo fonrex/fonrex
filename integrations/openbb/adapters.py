@@ -345,6 +345,103 @@ def format_technical_chart_overlay(
     }
 
 
+_SEGMENT_COLORS = [
+    "#3b82f6",  # blue (Americas)
+    "#f97316",  # orange (Europe)
+    "#22c55e",  # green (Greater China)
+    "#06b6d4",  # cyan (Japan)
+    "#eab308",  # yellow (Rest of Asia Pacific)
+    "#a855f7",  # purple (Other Countries)
+    "#ec4899",  # pink
+    "#14b8a6",  # teal
+    "#6366f1",  # indigo
+    "#84cc16",  # lime
+]
+
+
+def format_revenue_geography_chart(
+    ticker: str,
+    data: Any,
+    title: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Format geographic revenue breakdown into a Plotly stacked bar chart figure."""
+    dict_data = _to_dict(data)
+    breakdown: Dict[str, Dict[str, float]] = dict_data.get("breakdown", {})
+
+    if not breakdown:
+        return {
+            "data": [],
+            "layout": {
+                "title": title or f"Revenue Per Geography — {ticker}",
+                "barmode": "stack",
+                "paper_bgcolor": "#121214",
+                "plot_bgcolor": "#121214",
+                "font": {"color": "#f4f4f5"},
+            },
+        }
+
+    def _period_sort_key(p: str) -> tuple:
+        import re
+
+        nums = re.findall(r"\d+", p)
+        return (int(nums[0]), p) if nums else (0, p)
+
+    sorted_periods = sorted(breakdown.keys(), key=_period_sort_key)
+
+    unique_segments: List[str] = []
+    for p in reversed(sorted_periods):
+        for seg in breakdown[p].keys():
+            if seg not in unique_segments:
+                unique_segments.append(seg)
+
+    data_traces: List[Dict[str, Any]] = []
+    for idx, seg in enumerate(unique_segments):
+        ys = []
+        for p in sorted_periods:
+            val = breakdown.get(p, {}).get(seg, 0.0)
+            ys.append(round(val / 1e9, 2) if val else 0.0)
+
+        color = _SEGMENT_COLORS[idx % len(_SEGMENT_COLORS)]
+        data_traces.append(
+            {
+                "type": "bar",
+                "name": seg,
+                "x": sorted_periods,
+                "y": ys,
+                "marker": {"color": color},
+            }
+        )
+
+    dark_layout = {
+        "title": title or f"Revenue Per Geography — {ticker}",
+        "barmode": "stack",
+        "paper_bgcolor": "#121214",
+        "plot_bgcolor": "#121214",
+        "font": {"color": "#f4f4f5"},
+        "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
+        "xaxis": {
+            "gridcolor": "#27272a",
+            "type": "category",
+        },
+        "yaxis": {
+            "ticksuffix": " B",
+            "gridcolor": "#27272a",
+        },
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+        },
+    }
+
+    return {
+        "data": data_traces,
+        "layout": dark_layout,
+    }
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Table Adapters (type: "table" -> list[dict])
 # ──────────────────────────────────────────────────────────────────────────────

@@ -106,6 +106,12 @@ class DatabaseService:
     def get_asset_context(self, *args, **kwargs):
         return self.assets.get_asset_context(*args, **kwargs)
 
+    def ensure_asset(self, *args, **kwargs):
+        return self.assets.ensure_asset(*args, **kwargs)
+
+    def ensure_asset_context(self, *args, **kwargs):
+        return self.assets.ensure_asset_context(*args, **kwargs)
+
     def get_asset_mappings(self, *args, **kwargs):
         return self.assets.get_asset_mappings(*args, **kwargs)
 

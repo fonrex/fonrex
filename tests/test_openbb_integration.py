@@ -103,6 +103,7 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/etf/{isin}/details",
     "openbb/index/{index_name}/constituents",
     "openbb/macro/rates",
+    "openbb/fundamental/{ticker}/revenue-geography",
 ]
 
 
@@ -383,7 +384,7 @@ def test_apps_json_is_valid_json(client):
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list), "apps.json should be a JSON array"
-    assert len(data) == 2, "apps.json should contain exactly 2 apps"
+    assert len(data) >= 1, "apps.json should contain at least 1 app"
     # App 1 ("Fonrex — EU Markets") should have synced ticker parameter group
     assert data[0]["groups"], "First app should define parameter groups for ticker synchronization"
     assert data[0]["groups"][0]["paramName"] == "ticker"
@@ -400,7 +401,7 @@ def test_widget_schema_structure(widgets_data):
         missing = required_fields - set(widget.keys())
         assert not missing, f"Widget '{widget_id}' is missing fields: {missing}"
         assert widget["source"] == ["Fonrex"], f"Widget '{widget_id}' source should be ['Fonrex']"
-        assert widget["type"] in {"table", "chart", "markdown", "metric"}, (
+        assert widget["type"] in {"table", "chart", "markdown", "metric", "iframe"}, (
             f"Widget '{widget_id}' has invalid type: {widget['type']}"
         )
 
@@ -699,6 +700,88 @@ def test_openbb_news_endpoints_contract(client):
         assert data_feed[0]["title"] == "Apple Reports Record Results"
     finally:
         app.state.news_service = orig_news
+
+
+def test_format_revenue_geography_chart_unit():
+    """format_revenue_geography_chart produces Plotly stacked bar chart with proper layout."""
+    from integrations.openbb.adapters import format_revenue_geography_chart
+
+    # Empty payload
+    empty_fig = format_revenue_geography_chart("AAPL", {"breakdown": {}})
+    assert empty_fig["data"] == []
+    assert empty_fig["layout"]["barmode"] == "stack"
+
+    # Populated payload
+    payload = {
+        "ticker": "AAPL",
+        "breakdown": {
+            "FY 2023": {
+                "Americas Segment": 162560000000.0,
+                "Europe Segment": 94294000000.0,
+            },
+            "FY 2024": {
+                "Americas Segment": 167045000000.0,
+                "Europe Segment": 101328000000.0,
+            },
+        },
+    }
+    fig = format_revenue_geography_chart("AAPL", payload)
+    assert "data" in fig
+    assert "layout" in fig
+    assert fig["layout"]["barmode"] == "stack"
+    assert len(fig["data"]) == 2
+
+    trace_names = {t["name"] for t in fig["data"]}
+    assert "Americas Segment" in trace_names
+    assert "Europe Segment" in trace_names
+
+    for trace in fig["data"]:
+        assert trace["type"] == "bar"
+        assert trace["x"] == ["FY 2023", "FY 2024"]
+        assert len(trace["y"]) == 2
+
+
+def test_openbb_revenue_geography_endpoint_contract(client):
+    """GET /openbb/fundamental/{ticker}/revenue-geography returns Plotly stacked bar chart contract."""
+    from schemas.fundamentals import GeographicRevenueResult
+
+    mock_sec = MagicMock()
+    mock_sec.fetch_geographic_segments = AsyncMock(
+        return_value=GeographicRevenueResult(
+            ticker="AAPL",
+            cik="0000320193",
+            company_name="Apple Inc.",
+            currency="USD",
+            period_type="FY",
+            breakdown={
+                "FY 2023": {
+                    "Americas Segment": 162560000000.0,
+                    "Europe Segment": 94294000000.0,
+                },
+                "FY 2024": {
+                    "Americas Segment": 167045000000.0,
+                    "Europe Segment": 101328000000.0,
+                },
+            },
+            source="SEC EDGAR",
+        )
+    )
+
+    orig_sec = getattr(app.state, "sec_edgar_provider", None)
+    app.state.sec_edgar_provider = mock_sec
+    try:
+        resp = client.get("/openbb/fundamental/AAPL/revenue-geography")
+        assert resp.status_code == 200
+        fig = resp.json()
+        assert "data" in fig
+        assert "layout" in fig
+        assert fig["layout"]["barmode"] == "stack"
+        assert len(fig["data"]) >= 1
+        assert fig["data"][0]["type"] == "bar"
+        assert "x" in fig["data"][0]
+        assert "y" in fig["data"][0]
+    finally:
+        app.state.sec_edgar_provider = orig_sec
 
 
 

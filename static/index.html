@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fonrex Market Overview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #121214;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .tradingview-widget-container {
+      width: 100%;
+      height: 100%;
+    }
+    .tradingview-widget-container__widget {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="tradingview-widget-container">
+    <div class="tradingview-widget-container__widget"></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js" async>
+    {
+      "colorTheme": "dark",
+      "dateRange": "12M",
+      "showChart": true,
+      "locale": "en",
+      "largeChartUrl": "",
+      "isTransparent": true,
+      "showSymbolLogo": true,
+      "showFloatingTooltip": true,
+      "width": "100%",
+      "height": "100%",
+      "plotLineColorGrowing": "rgba(41, 98, 255, 1)",
+      "plotLineColorFalling": "rgba(255, 74, 104, 1)",
+      "gridLineColor": "rgba(240, 243, 250, 0)",
+      "scaleFontColor": "rgba(120, 123, 134, 1)",
+      "belowLineFillColorGrowing": "rgba(41, 98, 255, 0.12)",
+      "belowLineFillColorFalling": "rgba(255, 74, 104, 0.12)",
+      "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
+      "tabs": [
+        {
+          "title": "US Indices",
+          "symbols": [
+            { "s": "FOREXCOM:SPXUSD", "d": "S&P 500" },
+            { "s": "FOREXCOM:NSXUSD", "d": "Nasdaq 100" },
+            { "s": "FOREXCOM:DJI", "d": "Dow 30" },
+            { "s": "INDEX:RUT", "d": "Russell 2000" }
+          ]
+        },
+        {
+          "title": "Europe",
+          "symbols": [
+            { "s": "INDEX:CAC40", "d": "CAC 40" },
+            { "s": "INDEX:DAX", "d": "DAX 40" },
+            { "s": "INDEX:SX5E", "d": "Euro Stoxx 50" },
+            { "s": "INDEX:UKX", "d": "FTSE 100" }
+          ]
+        },
+        {
+          "title": "Commodities & Crypto",
+          "symbols": [
+            { "s": "OANDA:XAUUSD", "d": "Gold" },
+            { "s": "OANDA:BCOUSD", "d": "Brent Oil" },
+            { "s": "BINANCE:BTCUSDT", "d": "Bitcoin" },
+            { "s": "BINANCE:ETHUSDT", "d": "Ethereum" }
+          ]
+        }
+      ]
+    }
+    </script>
+  </div>
+</body>
+</html>

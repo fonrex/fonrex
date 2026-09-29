@@ -29,6 +29,7 @@ from integrations.openbb.adapters import (
     format_indicator_chart,
     format_macro_rates_metric,
     format_quote_metric,
+    format_revenue_geography_chart,
     format_technical_chart_overlay,
     format_technical_multi_chart,
 )
@@ -59,6 +60,7 @@ from routers.realtime import (
 )
 from routers.specialized import (
     get_etf_details,
+    get_geographic_revenue,
     get_index_constituents,
     get_index_name_enum,
     get_index_provider,
@@ -276,6 +278,25 @@ async def get_openbb_technical_chart(
         service=service,
     )
     return format_technical_chart_overlay(ticker.upper(), chart_payload)
+
+
+@router.get("/fundamental/{ticker}/revenue-geography")
+async def get_openbb_revenue_geography(
+    ticker: str,
+    period: str = "FY",
+    refresh: bool = False,
+    provider=Depends(get_sec_edgar_provider),
+    cache=Depends(get_cache_service),
+) -> Dict[str, Any]:
+    """Return geographic revenue segmentation formatted as a Plotly stacked bar chart."""
+    data = await get_geographic_revenue(
+        ticker=ticker,
+        refresh=refresh,
+        period=period,
+        provider=provider,
+        cache=cache,
+    )
+    return format_revenue_geography_chart(ticker.upper(), data)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

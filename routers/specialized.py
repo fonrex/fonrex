@@ -7,6 +7,7 @@ from routers.errors import raise_http_error
 from use_cases.errors import UseCaseError
 from use_cases.specialized import (
     GetEtfDetails,
+    GetGeographicRevenue,
     GetIndexConstituents,
     GetInsiderTransactions,
 )
@@ -67,6 +68,22 @@ async def get_index_constituents(
     try:
         return await GetIndexConstituents(provider, index_name_enum, cache).execute(
             index_name, refresh
+        )
+    except UseCaseError as error:
+        raise_http_error(error)
+
+
+@router.get("/fundamental/{ticker}/revenue-geography")
+async def get_geographic_revenue(
+    ticker: str,
+    refresh: bool = False,
+    period: str = "FY",
+    provider=Depends(get_sec_edgar_provider),
+    cache=Depends(get_cache_service),
+):
+    try:
+        return await GetGeographicRevenue(provider, cache).execute(
+            ticker=ticker, refresh=refresh, period=period
         )
     except UseCaseError as error:
         raise_http_error(error)

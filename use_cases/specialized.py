@@ -135,3 +135,42 @@ class GetIndexConstituents:
                 cache_type="index_constituents",
             )
         return data
+
+
+class GetGeographicRevenue:
+    def __init__(self, provider, cache=None):
+        self.provider = provider
+        self.cache = cache
+
+    async def execute(self, ticker: str, refresh: bool = False, period: str = "FY"):
+        if not self.provider:
+            raise DependencyUnavailable("Provider SECEdgar non disponible")
+
+        cache_key = (
+            self.cache.generate_key(f"{ticker.upper()}:{period}", cache_type="geographic_revenue")
+            if self.cache
+            else None
+        )
+        if cache_key and self.cache.enabled and not refresh:
+            cached = await run_sync(self.cache.get, cache_key)
+            if cached:
+                return cached
+
+        try:
+            result = await self.provider.fetch_geographic_segments(ticker=ticker)
+        except Exception as exc:
+            logger.error("Erreur récupération segmentation géographique %s: %s", ticker, exc)
+            raise UpstreamFailure(str(exc)) from exc
+
+        if result is None:
+            raise ResourceNotFound(f"Données de segmentation géographique introuvables pour {ticker}")
+
+        data = result.model_dump(mode="json")
+        if cache_key and self.cache:
+            await run_sync(
+                self.cache.set,
+                cache_key,
+                data,
+                cache_type="geographic_revenue",
+            )
+        return data

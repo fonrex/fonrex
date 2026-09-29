@@ -14,11 +14,13 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
+from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
 from financials.providers.base import BaseFinancialProvider
+from schemas.fundamentals import GeographicRevenueResult
 
 logger = logging.getLogger(__name__)
 
@@ -299,3 +301,160 @@ class SECEdgarProvider(BaseFinancialProvider):
             except Exception as exc:
                 logger.debug("[SECEdgar] nonDerivativeTxn parse: %s", exc)
         return transactions
+
+    async def fetch_geographic_segments(
+        self,
+        ticker: str,
+        num_filings: int = 6,
+    ) -> Optional[GeographicRevenueResult]:
+        """Fetch historical geographic revenue breakdown from 10-K filings."""
+        if not ticker:
+            return None
+        try:
+            cik = await self._resolve_cik(ticker)
+            if not cik:
+                return None
+
+            sub_url = f"{self.BASE_URL}/submissions/CIK{cik.zfill(10)}.json"
+            sub_data = await self._get_json(sub_url, headers=self._sec_headers())
+            if not sub_data:
+                return None
+
+            company_name = sub_data.get("name")
+            recent = sub_data.get("filings", {}).get("recent", {})
+            forms = recent.get("form", [])
+            accns = recent.get("accessionNumber", [])
+            ten_k_indices = [i for i, f in enumerate(forms) if f == "10-K"][:num_filings]
+
+            cik_num = str(int(cik))
+            breakdown: Dict[str, Dict[str, float]] = {}
+
+            for idx in ten_k_indices:
+                accn = accns[idx]
+                accn_clean = accn.replace("-", "")
+                summary_url = (
+                    f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accn_clean}/FilingSummary.xml"
+                )
+                xml_text = await self._get(summary_url, headers=self._sec_headers())
+                if not xml_text:
+                    continue
+
+                try:
+                    root = ET.fromstring(xml_text)
+                except Exception:
+                    continue
+
+                found_report = None
+                for report in root.iter("Report"):
+                    sn = report.find("ShortName")
+                    fn = report.find("HtmlFileName")
+                    if sn is not None and fn is not None and sn.text:
+                        txt = sn.text.lower()
+                        if (
+                            (
+                                "segment information" in txt
+                                or "reportable segment" in txt
+                                or "geographic data" in txt
+                                or "segment data" in txt
+                            )
+                            and "details" in txt
+                            and "reconciliation" not in txt
+                            and "long-lived" not in txt
+                            and "countries" not in txt
+                        ):
+                            found_report = fn.text
+                            break
+
+                if not found_report:
+                    continue
+
+                report_url = (
+                    f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accn_clean}/{found_report}"
+                )
+                html_text = await self._get(report_url, headers=self._sec_headers())
+                if not html_text:
+                    continue
+
+                self._parse_segment_report_html(html_text, breakdown)
+
+            return GeographicRevenueResult(
+                ticker=ticker.upper(),
+                cik=cik,
+                company_name=company_name,
+                currency="USD",
+                period_type="FY",
+                breakdown=breakdown,
+                source="SEC EDGAR",
+            )
+        except Exception as exc:
+            logger.error("[SECEdgar] Erreur fetch_geographic_segments(%s): %s", ticker, exc)
+            return None
+
+    def _parse_segment_report_html(
+        self, html_text: str, breakdown: Dict[str, Dict[str, float]]
+    ) -> None:
+        """Parse 10-K segment details HTML table and populate breakdown dict."""
+        soup = BeautifulSoup(html_text, "html.parser")
+        table = soup.find("table", {"class": "report"})
+        if not table:
+            return
+
+        # Multiplier
+        top_text = table.get_text()
+        multiplier = 1_000_000
+        if "in thousands" in top_text.lower():
+            multiplier = 1_000
+        elif "in billions" in top_text.lower():
+            multiplier = 1_000_000_000
+
+        # Date headers
+        date_headers: List[str] = []
+        for tr in table.find_all("tr")[:4]:
+            th_cells = tr.find_all("th", {"class": "th"})
+            if th_cells:
+                for th in th_cells:
+                    m = re.search(r"(20\d\d)", th.get_text())
+                    if m:
+                        date_headers.append(f"FY {m.group(1)}")
+                if date_headers:
+                    break
+
+        if not date_headers:
+            return
+
+        cur_segment: Optional[str] = None
+        for tr in table.find_all("tr"):
+            tds = tr.find_all("td")
+            if not tds:
+                continue
+            first_cell = tds[0].get_text(strip=True)
+            if "rh" in tr.get("class", []):
+                cur_segment = first_cell
+                continue
+
+            if any(term in first_cell.lower() for term in ["net sales", "revenue", "revenues"]):
+                if not cur_segment:
+                    continue
+                seg_lower = cur_segment.lower()
+                if any(x in seg_lower for x in ["consolidated", "total", "corporate", "eliminations"]):
+                    continue
+
+                clean_name = re.sub(
+                    r"\s*\|\s*operating segments.*", "", cur_segment, flags=re.IGNORECASE
+                )
+                clean_name = re.sub(r"\s*\|\s*segment.*", "", clean_name, flags=re.IGNORECASE)
+                clean_name = clean_name.replace("Member", "").strip()
+                if not clean_name.lower().endswith("segment"):
+                    clean_name = f"{clean_name} Segment"
+
+                for col_idx, td in enumerate(tds[1 : len(date_headers) + 1]):
+                    fy = date_headers[col_idx]
+                    val_str = td.get_text(strip=True).replace("$", "").replace(",", "")
+                    try:
+                        val = float(val_str) * multiplier
+                        if fy not in breakdown:
+                            breakdown[fy] = {}
+                        if clean_name not in breakdown[fy]:
+                            breakdown[fy][clean_name] = val
+                    except (ValueError, TypeError):
+                        pass

@@ -315,3 +315,20 @@ class EODHDFundamentalResponse(BaseModel):
     etf_data: Optional[dict] = Field(None, alias="ETF_Data")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class GeographicRevenueResult(BaseModel):
+    """
+    Historical geographic revenue breakdown (e.g. from SEC 10-K filings or FMP).
+    """
+
+    ticker: str
+    cik: Optional[str] = None
+    company_name: Optional[str] = None
+    currency: str = "USD"
+    period_type: str = "FY"
+    # period (e.g. "FY 2024") -> { segment_name (e.g. "Americas Segment"): revenue_in_usd }
+    breakdown: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    source: str = "SEC EDGAR"
+
+    model_config = ConfigDict(from_attributes=True)

@@ -46,15 +46,19 @@ directly inside OpenBB.
 | `fonrex_etf_details` | Fonrex ETF Details | Fundamentals | table | UCITS ETF details from JustETF |
 | `fonrex_index_constituents` | Fonrex Index Constituents | Market Data | table | Index constituents (S&P 500, CAC 40, NASDAQ 100, DAX) |
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates (FRED API) |
+| `fonrex_revenue_geography` | Revenue Per Geography | Fundamentals | chart | Historical geographic revenue segmentation (stacked bar chart) |
 
 ## Pre-assembled Apps
 
 ### Fonrex — EU Markets
 A comprehensive dashboard for analyzing a single ticker:
-- **Overview** tab: Quote, deep fundamentals, EOD chart
-- **Valuation** tab: DCF valuation + sensitivity matrix
-- **Technical** tab: Full technical chart with indicators
-- **News** tab: Latest news from 7 providers
+- **Overview** tab: TradingView Market Overview, Ticker Information, Key Metrics, Share Statistics, Ticker Profile, and Real-Time Price Performance
+- **Financials** tab: Deep fundamentals, fundamentals overview, and Revenue Per Geography (stacked bar chart)
+- **Technical Analysis** tab: Full interactive TradingView charting with drawing tools and indicators
+- **Comparison Analysis** tab: DCF models comparison & sensitivity matrix
+- **Ownership** tab: SEC insider transactions
+- **Company Calendar** tab: Historical EOD price and volume
+- **Estimates** tab: DCF valuation model with dynamic WACC
 
 ### Fonrex — Screener & Macro
 An idea-generation dashboard:

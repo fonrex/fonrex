@@ -24,59 +24,7 @@ CACHE_TTL_VALUATION_MULTIPLES = 21600  # 6 hours
 # In-memory CIK cache to avoid repeated requests to SEC EDGAR
 _CIK_CACHE: Dict[str, str] = {}
 
-# Historical annual baseline milestones for major tickers prior to XBRL (pre-2006)
-# Format: (date, revenue, net_income, split_adjusted_shares, ebitda, equity)
-AAPL_HISTORICAL_BASELINE = [
-    ("1980-09-30", 117.12e6, 11.70e6, 12.3e9, 10.0e6, 60.0e6),
-    ("1981-09-30", 335.19e6, 39.42e6, 12.5e9, 45.0e6, 175.0e6),
-    ("1982-09-30", 583.06e6, 61.31e6, 12.8e9, 75.0e6, 260.0e6),
-    ("1983-09-30", 982.77e6, 76.71e6, 13.2e9, 110.0e6, 350.0e6),
-    ("1984-09-30", 1515.9e6, 64.06e6, 13.5e9, 100.0e6, 420.0e6),
-    ("1985-09-30", 1918.3e6, 61.22e6, 13.8e9, 90.0e6, 500.0e6),
-    ("1986-09-30", 1901.9e6, 153.96e6, 14.1e9, 210.0e6, 650.0e6),
-    ("1987-09-30", 2661.1e6, 217.50e6, 14.3e9, 320.0e6, 850.0e6),
-    ("1988-09-30", 4071.4e6, 400.26e6, 14.2e9, 580.0e6, 1150.0e6),
-    ("1989-09-30", 5284.0e6, 454.03e6, 13.9e9, 650.0e6, 1400.0e6),
-    ("1990-09-30", 5558.4e6, 474.90e6, 13.6e9, 680.0e6, 1600.0e6),
-    ("1991-09-30", 6308.8e6, 309.84e6, 13.4e9, 450.0e6, 1800.0e6),
-    ("1992-09-30", 7086.5e6, 530.37e6, 13.5e9, 780.0e6, 2100.0e6),
-    ("1993-09-30", 7976.9e6, 86.59e6, 13.2e9, 130.0e6, 2000.0e6),
-    ("1994-09-30", 9188.7e6, 310.18e6, 13.3e9, 460.0e6, 2200.0e6),
-    ("1995-09-30", 11062.0e6, 424.00e6, 13.7e9, 620.0e6, 2500.0e6),
-    ("1996-09-30", 9833.0e6, -816.00e6, 14.0e9, -700.0e6, 1900.0e6),
-    ("1997-09-30", 7081.0e6, -1045.00e6, 14.3e9, -900.0e6, 1200.0e6),
-    ("1998-09-30", 5941.0e6, 309.00e6, 14.8e9, 450.0e6, 1600.0e6),
-    ("1999-09-30", 6134.0e6, 601.00e6, 15.6e9, 880.0e6, 2300.0e6),
-    ("2000-09-30", 7983.0e6, 786.00e6, 16.5e9, 1150.0e6, 3100.0e6),
-    ("2001-09-30", 5363.0e6, -37.00e6, 17.1e9, -50.0e6, 3900.0e6),
-    ("2002-09-30", 5742.0e6, 65.00e6, 17.8e9, 80.0e6, 4100.0e6),
-    ("2003-09-30", 6207.0e6, 68.00e6, 18.2e9, 90.0e6, 4300.0e6),
-    ("2004-09-30", 8279.0e6, 276.00e6, 18.9e9, 390.0e6, 5100.0e6),
-    ("2005-09-30", 13931.0e6, 1328.00e6, 19.5e9, 1850.0e6, 7500.0e6),
-]
 
-MSFT_HISTORICAL_BASELINE = [
-    ("1986-06-30", 197.5e6, 39.3e6, 19.8e9, 58.0e6, 120.0e6),
-    ("1987-06-30", 345.9e6, 71.9e6, 20.0e9, 105.0e6, 220.0e6),
-    ("1988-06-30", 590.8e6, 123.9e6, 20.2e9, 180.0e6, 400.0e6),
-    ("1989-06-30", 804.5e6, 170.5e6, 20.1e9, 250.0e6, 560.0e6),
-    ("1990-06-30", 1183.0e6, 279.0e6, 20.3e9, 410.0e6, 850.0e6),
-    ("1991-06-30", 1843.0e6, 463.0e6, 20.4e9, 680.0e6, 1300.0e6),
-    ("1992-06-30", 2758.0e6, 708.0e6, 20.6e9, 1040.0e6, 2000.0e6),
-    ("1993-06-30", 3753.0e6, 953.0e6, 20.8e9, 1400.0e6, 2800.0e6),
-    ("1994-06-30", 4649.0e6, 1146.0e6, 21.0e9, 1700.0e6, 3600.0e6),
-    ("1995-06-30", 5937.0e6, 1453.0e6, 21.2e9, 2200.0e6, 5300.0e6),
-    ("1996-06-30", 8671.0e6, 2195.0e6, 21.4e9, 3300.0e6, 6900.0e6),
-    ("1997-06-30", 11358.0e6, 3454.0e6, 21.6e9, 5200.0e6, 10700.0e6),
-    ("1998-06-30", 14484.0e6, 4490.0e6, 21.8e9, 6800.0e6, 16600.0e6),
-    ("1999-06-30", 19747.0e6, 7785.0e6, 22.0e9, 11800.0e6, 28400.0e6),
-    ("2000-06-30", 22956.0e6, 9421.0e6, 21.6e9, 11000.0e6, 41300.0e6),
-    ("2001-06-30", 25296.0e6, 7346.0e6, 21.4e9, 11700.0e6, 47300.0e6),
-    ("2002-06-30", 28365.0e6, 7829.0e6, 21.6e9, 12000.0e6, 52100.0e6),
-    ("2003-06-30", 32187.0e6, 7531.0e6, 21.8e9, 13200.0e6, 61000.0e6),
-    ("2004-06-30", 36835.0e6, 8168.0e6, 21.5e9, 11100.0e6, 64800.0e6),
-    ("2005-06-30", 39788.0e6, 12254.0e6, 21.4e9, 16400.0e6, 48100.0e6),
-]
 
 
 class ValuationMultiplesService:
@@ -146,15 +94,7 @@ class ValuationMultiplesService:
         except Exception as exc:
             logger.debug("Failed to fetch yfinance price history for %s: %s", ticker, exc)
 
-        # 1. Baseline inception data for major stocks (1980-2005)
-        try:
-            baseline_points = self._compute_from_historical_baseline(ticker, period, close_series)
-            for pt in baseline_points:
-                points_map[pt["date"]] = pt
-        except Exception as exc:
-            logger.debug("Multiples baseline computation failed for %s: %s", ticker, exc)
-
-        # 2. SEC EDGAR Company Facts (2006 to today)
+        # 1. SEC EDGAR Company Facts (2006 to today for any US ticker)
         try:
             sec_points = self._compute_from_sec_edgar(ticker, period, close_series, splits)
             for pt in sec_points:
@@ -168,7 +108,7 @@ class ValuationMultiplesService:
         except Exception as exc:
             logger.debug("Multiples SEC EDGAR computation failed for %s: %s", ticker, exc)
 
-        # 3. Local PostgreSQL database if available
+        # 2. Local PostgreSQL database if available
         if self.db_service is not None:
             try:
                 db_points = self._compute_from_db(ticker, period)
@@ -183,7 +123,7 @@ class ValuationMultiplesService:
             except Exception as exc:
                 logger.debug("Multiples DB computation failed for %s: %s", ticker, exc)
 
-        # 4. yfinance valuation measures and recent financial statements
+        # 3. yfinance valuation measures and recent financial statements
         try:
             yf_points = self._compute_from_yfinance(ticker, period)
             for pt in yf_points:
@@ -197,7 +137,7 @@ class ValuationMultiplesService:
         except Exception as exc:
             logger.warning("Multiples yfinance computation failed for %s: %s", ticker, exc)
 
-        # 5. Sort chronologically from inception to now
+        # 4. Sort chronologically from oldest to now
         sorted_dates = sorted(points_map.keys())
         series: List[ValuationMultiplesPoint] = []
         for dt in sorted_dates:
@@ -220,51 +160,6 @@ class ValuationMultiplesService:
             series=series,
             source="Fonrex",
         )
-
-    def _compute_from_historical_baseline(
-        self, ticker: str, period: str, close_series: Optional[pd.Series] = None
-    ) -> List[Dict[str, Any]]:
-        """Compute multiples from pre-2006 historical milestone financials (starting at IPO)."""
-        if period not in ("FY", "TTM"):
-            return []
-
-        base_data = None
-        if ticker == "AAPL":
-            base_data = AAPL_HISTORICAL_BASELINE
-        elif ticker == "MSFT":
-            base_data = MSFT_HISTORICAL_BASELINE
-
-        if not base_data or close_series is None or close_series.empty:
-            return []
-
-        results: List[Dict[str, Any]] = []
-        for dt_str, rev, ni, sh, eb, eq in base_data:
-            try:
-                ts = pd.to_datetime(dt_str).tz_localize(close_series.index.tz)
-                prior = close_series[close_series.index <= ts]
-                px = float(prior.iloc[-1]) if not prior.empty else float(close_series.iloc[0])
-
-                mcap = px * sh
-                pe = round(mcap / ni, 2) if ni and ni > 0 else None
-                ps = round(mcap / rev, 2) if rev and rev > 0 else None
-                pb = round(mcap / eq, 2) if eq and eq > 0 else None
-                ev_s = round(mcap / rev, 2) if rev and rev > 0 else None
-                ev_eb = round(mcap / eb, 2) if eb and eb > 0 else None
-
-                results.append(
-                    {
-                        "date": dt_str,
-                        "pe_ratio": pe,
-                        "ps_ratio": ps,
-                        "pb_ratio": pb,
-                        "ev_sales_ratio": ev_s,
-                        "ev_ebitda": ev_eb,
-                    }
-                )
-            except Exception:
-                continue
-
-        return results
 
     def _compute_from_sec_edgar(
         self,

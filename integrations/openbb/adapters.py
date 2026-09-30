@@ -482,6 +482,7 @@ def format_valuation_multiples_chart(
             "name": "P/E Ratio",
             "x": dates,
             "y": pe_vals,
+            "connectgaps": True,
             "line": {"color": "#3b82f6", "width": 2},
         },
         {
@@ -490,6 +491,7 @@ def format_valuation_multiples_chart(
             "name": "P/S Ratio",
             "x": dates,
             "y": ps_vals,
+            "connectgaps": True,
             "line": {"color": "#f97316", "width": 2},
         },
         {
@@ -498,6 +500,7 @@ def format_valuation_multiples_chart(
             "name": "P/B Ratio",
             "x": dates,
             "y": pb_vals,
+            "connectgaps": True,
             "line": {"color": "#22c55e", "width": 2},
         },
         {
@@ -506,6 +509,7 @@ def format_valuation_multiples_chart(
             "name": "EV/Sales Ratio",
             "x": dates,
             "y": ev_sales_vals,
+            "connectgaps": True,
             "line": {"color": "#06b6d4", "width": 2},
         },
         {
@@ -514,6 +518,7 @@ def format_valuation_multiples_chart(
             "name": "EV/EBITDA",
             "x": dates,
             "y": ev_ebitda_vals,
+            "connectgaps": True,
             "line": {"color": "#eab308", "width": 2},
         },
     ]
@@ -526,8 +531,8 @@ def format_valuation_multiples_chart(
         "margin": {"l": 50, "r": 20, "t": 30, "b": 60},
         "xaxis": {
             "gridcolor": "#27272a",
-            "type": "category",
-            "tickangle": -35,
+            "type": "date",
+            "rangeslider": {"visible": False},
         },
         "yaxis": {
             "gridcolor": "#27272a",

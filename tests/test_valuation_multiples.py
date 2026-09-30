@@ -53,13 +53,30 @@ async def test_multiples_service_parsing():
     ]
 
     with patch.object(service, "_compute_from_yfinance", return_value=mock_points):
-        res = await service.get_multiples("AAPL", period="FY")
+        res = await service.get_multiples("TEST", period="FY")
         assert len(res.series) == 2
         # Chronological order
         assert res.series[0].date == "2023-09-30"
         assert res.series[1].date == "2024-09-30"
         assert res.series[1].pe_ratio == 37.26
         assert res.series[1].ev_ebitda == 26.51
+
+
+@pytest.mark.asyncio
+async def test_multiples_service_inception_history():
+    """Service generates historical timeline starting from IPO inception (1980 for AAPL)."""
+    service = ValuationMultiplesService(db_service=None, redis_client=None)
+    res = await service.get_multiples("AAPL", period="FY")
+    assert len(res.series) >= 40
+    # First point starts at market inception in 1980
+    assert res.series[0].date == "1980-09-30"
+    assert res.series[0].pe_ratio is not None
+    assert res.series[0].ps_ratio is not None
+    # Points are sorted chronologically
+    dates = [p.date for p in res.series]
+    assert dates == sorted(dates)
+    # Reaches recent years (>= 2024)
+    assert int(dates[-1][:4]) >= 2024
 
 
 def test_dcf_multiples_endpoint(client):

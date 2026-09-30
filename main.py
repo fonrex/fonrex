@@ -55,6 +55,7 @@ from routers.specialized import router as specialized_router
 from routers.technical import router as technical_router
 from routers.valuation import router as valuation_router
 from valuation.dcf_service import DCFService
+from valuation.multiples_service import ValuationMultiplesService
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -73,15 +74,27 @@ async def app_lifespan(_app: FastAPI):
 
 app = FastAPI(title="FonRex API", version="2.0.0", lifespan=app_lifespan)
 
-# CORS — restrict to OpenBB Workspace origin (configurable for Enterprise)
-_openbb_origins = [
+# CORS — OpenBB Workspace origins (configurable for Enterprise)
+_default_origins = [
+    "https://pro.openbb.co",
+    "https://my.openbb.co",
+    "https://workspace.openbb.co",
+    "https://openbb.co",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+]
+_env_origins = [
     origin.strip()
-    for origin in os.environ.get("OPENBB_ALLOWED_ORIGIN", "https://pro.openbb.co").split(",")
+    for origin in os.environ.get("OPENBB_ALLOWED_ORIGIN", "").split(",")
     if origin.strip()
 ]
+_openbb_origins = list(dict.fromkeys(_default_origins + _env_origins))
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_openbb_origins,
+    allow_origin_regex=r"^https:\/\/([a-zA-Z0-9-]+\.)?openbb\.(co|dev|io)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -277,6 +290,7 @@ def configure_application_state(application: FastAPI):
         "realtime_worker",
         "news_service",
         "dcf_service",
+        "multiples_service",
         "canary_monitor",
         "canary_scheduler",
         "fred_service",
@@ -363,6 +377,13 @@ async def startup_event(application: FastAPI):
         logger.warning("⚠️ DCFService not started: %s", exc)
 
     try:
+        state.multiples_service = ValuationMultiplesService(state.db_service, state.redis_client)
+        logger.info("📈 ValuationMultiplesService started")
+    except Exception as exc:
+        state.multiples_service = None
+        logger.warning("⚠️ ValuationMultiplesService not started: %s", exc)
+
+    try:
         if async_resources:
             monitoring_repository = SqlAlchemyMonitoringRepository(async_resources.session_factory)
             state.validation_layer = ValidationLayer(monitoring_repository)
@@ -446,6 +467,7 @@ async def shutdown_event(application: FastAPI):
         "realtime_worker",
         "news_service",
         "dcf_service",
+        "multiples_service",
         "technical_service",
         "ingestion_service",
         "financials_service",

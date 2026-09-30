@@ -332,3 +332,26 @@ class GeographicRevenueResult(BaseModel):
     source: str = "SEC EDGAR"
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ValuationMultiplesPoint(BaseModel):
+    """A single date point containing valuation multiples."""
+
+    date: str
+    pe_ratio: Optional[float] = None
+    ps_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    ev_sales_ratio: Optional[float] = None
+    ev_ebitda: Optional[float] = None
+
+
+class ValuationMultiplesResult(BaseModel):
+    """Historical valuation multiples series over time."""
+
+    ticker: str
+    period: str = "FY"  # "FY" | "QTR" | "TTM"
+    currency: str = "USD"
+    series: List[ValuationMultiplesPoint] = Field(default_factory=list)
+    source: str = "Fonrex"
+
+    model_config = ConfigDict(from_attributes=True)

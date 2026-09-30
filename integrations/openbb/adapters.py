@@ -442,6 +442,111 @@ def format_revenue_geography_chart(
     }
 
 
+def format_valuation_multiples_chart(
+    ticker: str,
+    data: Any,
+    period: str = "FY",
+    title: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Format historical valuation multiples into a multi-trace Plotly line chart
+    matching the OpenBB 'Valuation Multiples' widget contract.
+    Traces: P/E Ratio, P/S Ratio, P/B Ratio, EV/Sales Ratio, EV/EBITDA.
+    """
+    dict_data = _to_dict(data)
+    series = dict_data.get("series", [])
+
+    dates = []
+    pe_vals = []
+    ps_vals = []
+    pb_vals = []
+    ev_sales_vals = []
+    ev_ebitda_vals = []
+
+    for pt in series:
+        pt_dict = _to_dict(pt)
+        dt = pt_dict.get("date")
+        if not dt:
+            continue
+        dates.append(str(dt))
+        pe_vals.append(_to_plain_value(pt_dict.get("pe_ratio")))
+        ps_vals.append(_to_plain_value(pt_dict.get("ps_ratio")))
+        pb_vals.append(_to_plain_value(pt_dict.get("pb_ratio")))
+        ev_sales_vals.append(_to_plain_value(pt_dict.get("ev_sales_ratio")))
+        ev_ebitda_vals.append(_to_plain_value(pt_dict.get("ev_ebitda")))
+
+    traces = [
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "P/E Ratio",
+            "x": dates,
+            "y": pe_vals,
+            "line": {"color": "#3b82f6", "width": 2},
+        },
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "P/S Ratio",
+            "x": dates,
+            "y": ps_vals,
+            "line": {"color": "#f97316", "width": 2},
+        },
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "P/B Ratio",
+            "x": dates,
+            "y": pb_vals,
+            "line": {"color": "#22c55e", "width": 2},
+        },
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "EV/Sales Ratio",
+            "x": dates,
+            "y": ev_sales_vals,
+            "line": {"color": "#06b6d4", "width": 2},
+        },
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "EV/EBITDA",
+            "x": dates,
+            "y": ev_ebitda_vals,
+            "line": {"color": "#eab308", "width": 2},
+        },
+    ]
+
+    dark_layout = {
+        "title": title or "",
+        "paper_bgcolor": "#121214",
+        "plot_bgcolor": "#121214",
+        "font": {"color": "#f4f4f5"},
+        "margin": {"l": 50, "r": 20, "t": 30, "b": 60},
+        "xaxis": {
+            "gridcolor": "#27272a",
+            "type": "category",
+            "tickangle": -35,
+        },
+        "yaxis": {
+            "gridcolor": "#27272a",
+        },
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "center",
+            "x": 0.5,
+        },
+    }
+
+    return {
+        "data": traces,
+        "layout": dark_layout,
+    }
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Table Adapters (type: "table" -> list[dict])
 # ──────────────────────────────────────────────────────────────────────────────

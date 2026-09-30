@@ -32,6 +32,7 @@ from integrations.openbb.adapters import (
     format_revenue_geography_chart,
     format_technical_chart_overlay,
     format_technical_multi_chart,
+    format_valuation_multiples_chart,
 )
 from routers.assets import get_eod
 from routers.dependencies import (
@@ -41,6 +42,7 @@ from routers.dependencies import (
     get_query_service,
     get_redis_client,
     get_technical_service,
+    get_valuation_multiples_service,
 )
 from routers.fundamentals import (
     get_all_information,
@@ -297,6 +299,34 @@ async def get_openbb_revenue_geography(
         cache=cache,
     )
     return format_revenue_geography_chart(ticker.upper(), data)
+
+
+@router.get("/valuation/{ticker}/multiples")
+async def get_openbb_valuation_multiples(
+    ticker: str,
+    period: str = "FY",
+    refresh: bool = False,
+    service=Depends(get_valuation_multiples_service),
+) -> Dict[str, Any]:
+    """Return historical valuation multiples (P/E, P/S, P/B, EV/Sales, EV/EBITDA) formatted as a Plotly line chart."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    data = await service.get_multiples(ticker=clean_ticker, period=period, refresh=refresh)
+    return format_valuation_multiples_chart(clean_ticker.upper(), data, period=period)
+
+
+@router.get("/valuation/multiples")
+async def get_openbb_valuation_multiples_query(
+    ticker: str = "AAPL",
+    period: str = "FY",
+    refresh: bool = False,
+    service=Depends(get_valuation_multiples_service),
+) -> Dict[str, Any]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_valuation_multiples(
+        ticker=ticker, period=period, refresh=refresh, service=service
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────

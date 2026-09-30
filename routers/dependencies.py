@@ -18,6 +18,7 @@ __all__ = [
     "get_technical_service",
     "get_cache_service",
     "get_redis_client",
+    "get_valuation_multiples_service",
 ]
 
 
@@ -54,3 +55,15 @@ def get_cache_service(request: Request):
 
 def get_redis_client(request: Request):
     return getattr(request.app.state, "redis_client", None)
+
+
+def get_valuation_multiples_service(request: Request):
+    service = getattr(request.app.state, "multiples_service", None)
+    if service is None:
+        from valuation.multiples_service import ValuationMultiplesService
+
+        db_service = getattr(request.app.state, "db_service", None)
+        redis_client = getattr(request.app.state, "redis_client", None)
+        service = ValuationMultiplesService(db_service=db_service, redis_client=redis_client)
+        request.app.state.multiples_service = service
+    return service

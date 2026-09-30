@@ -654,5 +654,35 @@
         "description": "Reporting period (FY or quarterly)"
       }
     ]
+  },
+  "fonrex_valuation_multiples": {
+    "name": "Valuation Multiples",
+    "description": "Historical valuation multiples: P/E, P/S, P/B, EV/Sales, and EV/EBITDA over fiscal years, quarters, or TTM",
+    "category": "Valuation",
+    "type": "chart",
+    "endpoint": "openbb/valuation/{ticker}/multiples",
+    "gridData": {
+      "w": 24,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AAPL, AIR.PA, MSFT)"
+      },
+      {
+        "paramName": "period",
+        "value": "FY",
+        "label": "Period",
+        "type": "text",
+        "description": "Reporting period (FY, QTR, or TTM)"
+      }
+    ]
   }
 }

@@ -104,6 +104,7 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/index/{index_name}/constituents",
     "openbb/macro/rates",
     "openbb/fundamental/{ticker}/revenue-geography",
+    "openbb/valuation/{ticker}/multiples",
 ]
 
 
@@ -782,6 +783,113 @@ def test_openbb_revenue_geography_endpoint_contract(client):
         assert "y" in fig["data"][0]
     finally:
         app.state.sec_edgar_provider = orig_sec
+
+
+def test_format_valuation_multiples_chart_unit():
+    """format_valuation_multiples_chart produces Plotly 5-line chart matching OpenBB contract."""
+    from integrations.openbb.adapters import format_valuation_multiples_chart
+
+    # Empty payload
+    empty_fig = format_valuation_multiples_chart("AAPL", {"series": []})
+    assert empty_fig["layout"]["paper_bgcolor"] == "#121214"
+    assert len(empty_fig["data"]) == 5
+    assert [t["name"] for t in empty_fig["data"]] == [
+        "P/E Ratio",
+        "P/S Ratio",
+        "P/B Ratio",
+        "EV/Sales Ratio",
+        "EV/EBITDA",
+    ]
+
+    # Non-empty payload
+    payload = {
+        "ticker": "AAPL",
+        "period": "FY",
+        "series": [
+            {
+                "date": "2023-09-30",
+                "pe_ratio": 27.08,
+                "ps_ratio": 6.85,
+                "pb_ratio": 42.27,
+                "ev_sales_ratio": 7.07,
+                "ev_ebitda": 21.52,
+            },
+            {
+                "date": "2024-09-30",
+                "pe_ratio": 37.26,
+                "ps_ratio": 8.93,
+                "pb_ratio": 61.33,
+                "ev_sales_ratio": 9.13,
+                "ev_ebitda": 26.51,
+            },
+        ],
+    }
+    fig = format_valuation_multiples_chart("AAPL", payload, period="FY")
+    assert len(fig["data"]) == 5
+    pe_trace = fig["data"][0]
+    assert pe_trace["name"] == "P/E Ratio"
+    assert pe_trace["x"] == ["2023-09-30", "2024-09-30"]
+    assert pe_trace["y"] == [27.08, 37.26]
+    assert pe_trace["line"]["color"] == "#3b82f6"
+
+    pb_trace = fig["data"][2]
+    assert pb_trace["name"] == "P/B Ratio"
+    assert pb_trace["y"] == [42.27, 61.33]
+    assert pb_trace["line"]["color"] == "#22c55e"
+
+
+def test_openbb_valuation_multiples_endpoint_contract(client):
+    """GET /openbb/valuation/{ticker}/multiples returns Plotly line chart contract."""
+    from schemas.fundamentals import ValuationMultiplesPoint, ValuationMultiplesResult
+
+    mock_service = MagicMock()
+    mock_service.get_multiples = AsyncMock(
+        return_value=ValuationMultiplesResult(
+            ticker="AAPL",
+            period="FY",
+            currency="USD",
+            series=[
+                ValuationMultiplesPoint(
+                    date="2023-09-30",
+                    pe_ratio=27.08,
+                    ps_ratio=6.85,
+                    pb_ratio=42.27,
+                    ev_sales_ratio=7.07,
+                    ev_ebitda=21.52,
+                ),
+                ValuationMultiplesPoint(
+                    date="2024-09-30",
+                    pe_ratio=37.26,
+                    ps_ratio=8.93,
+                    pb_ratio=61.33,
+                    ev_sales_ratio=9.13,
+                    ev_ebitda=26.51,
+                ),
+            ],
+            source="Fonrex",
+        )
+    )
+
+    orig_service = getattr(app.state, "multiples_service", None)
+    app.state.multiples_service = mock_service
+    try:
+        resp = client.get("/openbb/valuation/AAPL/multiples?period=FY")
+        assert resp.status_code == 200
+        fig = resp.json()
+        assert "data" in fig
+        assert "layout" in fig
+        assert len(fig["data"]) == 5
+        trace_names = [t["name"] for t in fig["data"]]
+        assert "P/E Ratio" in trace_names
+        assert "P/S Ratio" in trace_names
+        assert "P/B Ratio" in trace_names
+        assert "EV/Sales Ratio" in trace_names
+        assert "EV/EBITDA" in trace_names
+        assert fig["data"][0]["x"] == ["2023-09-30", "2024-09-30"]
+        assert fig["data"][0]["y"] == [27.08, 37.26]
+    finally:
+        app.state.multiples_service = orig_service
+
 
 
 

@@ -93,6 +93,22 @@
             "groups": [
               "Group 1"
             ]
+          },
+          {
+            "i": "fonrex_valuation_multiples",
+            "x": 0,
+            "y": 42,
+            "w": 24,
+            "h": 12,
+            "state": {
+              "params": {
+                "ticker": "AAPL",
+                "period": "FY"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
           }
         ]
       },
@@ -293,7 +309,8 @@
           "fonrex_key_metrics",
           "fonrex_share_statistics",
           "fonrex_charting",
-          "fonrex_revenue_geography"
+          "fonrex_revenue_geography",
+          "fonrex_valuation_multiples"
         ]
       }
     ]

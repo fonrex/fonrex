@@ -47,12 +47,13 @@ directly inside OpenBB.
 | `fonrex_index_constituents` | Fonrex Index Constituents | Market Data | table | Index constituents (S&P 500, CAC 40, NASDAQ 100, DAX) |
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates (FRED API) |
 | `fonrex_revenue_geography` | Revenue Per Geography | Fundamentals | chart | Historical geographic revenue segmentation (stacked bar chart) |
+| `fonrex_valuation_multiples` | Valuation Multiples | Valuation | chart | Historical valuation multiples (P/E, P/S, P/B, EV/Sales, EV/EBITDA) over FY, QTR, TTM |
 
 ## Pre-assembled Apps
 
 ### Fonrex — EU Markets
 A comprehensive dashboard for analyzing a single ticker:
-- **Overview** tab: TradingView Market Overview, Ticker Information, Key Metrics, Share Statistics, Ticker Profile, and Real-Time Price Performance
+- **Overview** tab: TradingView Market Overview, Ticker Information, Key Metrics, Share Statistics, Ticker Profile, Real-Time Price Performance, and Historical Valuation Multiples chart
 - **Financials** tab: Deep fundamentals, fundamentals overview, and Revenue Per Geography (stacked bar chart)
 - **Technical Analysis** tab: Full interactive TradingView charting with drawing tools and indicators
 - **Comparison Analysis** tab: DCF models comparison & sensitivity matrix

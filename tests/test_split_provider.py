@@ -1,8 +1,9 @@
 """Tests for SplitProvider and split calculation logic."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
+import pytest
 
 from financials.providers.split_provider import SplitProvider, calculate_split_ratio
 from integrations.openbb.adapters import format_stock_splits_table

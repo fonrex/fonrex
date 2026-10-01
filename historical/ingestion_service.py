@@ -29,7 +29,7 @@ class HistoricalIngestionService:
     def __init__(
         self,
         db_service: DatabaseService,
-        query_service: QueryService,
+        query_service: Optional[QueryService] = None,
         redis_client: Optional[Any] = None,
         market_data_fetcher: HistoricalMarketDataFetcher | None = None,
     ):

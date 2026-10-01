@@ -14,9 +14,10 @@ from financials.enrichment.adapters import (
     YFinanceAssetProfileEnricher,
     YFinanceDeepFundamentalsEnricher,
 )
-from use_cases.errors import DependencyUnavailable, UpstreamFailure
+from use_cases.errors import DependencyUnavailable, ResourceNotFound, UpstreamFailure
 from use_cases.specialized import (
     GetEtfDetails,
+    GetGeographicRevenue,
     GetIndexConstituents,
     GetInsiderTransactions,
 )
@@ -291,3 +292,64 @@ async def test_index_constituents_reports_missing_enum_and_upstream_failures():
     provider.fetch.side_effect = RuntimeError("upstream")
     with pytest.raises(UpstreamFailure):
         await GetIndexConstituents(provider, lambda value: value).execute("CAC40")
+
+
+@pytest.mark.asyncio
+async def test_geographic_revenue_fetches_and_caches_payload():
+    cache = _cache()
+    provider = SimpleNamespace(fetch_geographic_segments=AsyncMock(return_value=DumpModel({"US": 100})))
+    result = await GetGeographicRevenue(provider, cache).execute("AAPL", period="FY")
+    assert result == {"US": 100}
+    cache.set.assert_called_once_with("cache-key", result, cache_type="geographic_revenue")
+
+
+@pytest.mark.asyncio
+async def test_geographic_revenue_handles_failures():
+    with pytest.raises(DependencyUnavailable):
+        await GetGeographicRevenue(None).execute("AAPL")
+
+    provider = SimpleNamespace(fetch_geographic_segments=AsyncMock(return_value=None))
+    with pytest.raises(ResourceNotFound):
+        await GetGeographicRevenue(provider).execute("AAPL")
+
+    provider.fetch_geographic_segments.side_effect = RuntimeError("upstream")
+    with pytest.raises(UpstreamFailure):
+        await GetGeographicRevenue(provider).execute("AAPL")
+
+
+@pytest.mark.asyncio
+async def test_technical_repository_auto_creates_missing_asset():
+    session = MagicMock()
+    query_mock = MagicMock()
+    query_mock.filter.return_value.order_by.return_value.first.return_value = None
+    query_mock.filter.return_value.first.return_value = None
+    session.query.return_value = query_mock
+
+    # Mock new asset id after flush
+    def fake_add(obj):
+        if hasattr(obj, "ticker"):
+            obj.id = 99
+
+    session.add.side_effect = fake_add
+
+    repo = SqlAlchemyTechnicalRepository(lambda: session)
+    asset_id = await repo.resolve_asset_id("NEWTICKER")
+    assert asset_id == 99
+    session.commit.assert_called_once()
+    session.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_technical_indicator_service_validations():
+    from technical.errors import TechnicalDataNotFound, UnsupportedIndicatorResolution
+    from technical.indicator_service import TechnicalIndicatorService
+
+    market_data = SimpleNamespace(resolve_asset_id=AsyncMock(return_value=None))
+    service = TechnicalIndicatorService(market_data)
+
+    with pytest.raises(TechnicalDataNotFound):
+        await service.calculate("UNKNOWN", "sma")
+
+    with pytest.raises(UnsupportedIndicatorResolution):
+        await service.calculate("AAPL", "vwap", resolution="1D", asset_id=1)
+

@@ -1,6 +1,7 @@
 """Unit tests for EarningsProvider and format_earnings_history_table."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 import pytest
 
@@ -8,10 +9,7 @@ from financials.providers.earnings_provider import (
     EarningsProvider,
     _format_financial_amount,
 )
-from integrations.openbb.adapters import (
-    _format_amount,
-    format_earnings_history_table,
-)
+from integrations.openbb.adapters import format_earnings_history_table
 
 
 def test_format_financial_amount():

@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -452,12 +452,39 @@ class TestTechnicalIndicatorService:
                 ticker="AIR.PA",
                 indicators=["sma_20", "ema_50", "rsi_14", "macd", "bbands_20"],
                 resolution="1D",
+                from_date=date(2024, 1, 1),
+                to_date=date(2024, 4, 10),
             )
 
             mock_load.assert_called_once()
             assert len(res.indicators) == 5
             assert "sma_20" in res.indicators
             assert "macd" in res.indicators
+            assert res.from_date is not None
+            assert res.to_date is not None
+            assert res.ohlcv is not None
+
+    @pytest.mark.asyncio
+    async def test_calculate_with_date_range_period_override_and_params(self):
+        service = TechnicalIndicatorService(MagicMock())
+        df = make_ohlcv_df(60, trend="sine")
+
+        with (
+            patch.object(service, "_resolve_asset_id", return_value=1),
+            patch.object(service, "_load_ohlcv_dataframe", return_value=df),
+        ):
+            # Test period override
+            res_period = await service.calculate(
+                "AAPL", "sma", period=20, from_date=date(2024, 1, 1), to_date=date(2024, 3, 1)
+            )
+            assert res_period.params == {"length": 20}
+            assert res_period.from_date is not None
+
+            # Test params override
+            res_params = await service.calculate(
+                "AAPL", "rsi", params={"length": 21}, from_date=date(2024, 1, 1), to_date=date(2024, 3, 1)
+            )
+            assert res_params.params == {"length": 21}
 
     @pytest.mark.asyncio
     async def test_parse_indicator_name(self):
@@ -601,3 +628,40 @@ class TestTechnicalIndicatorService:
                 os.environ.pop("TECHNICAL_CACHE_ENABLED", None)
             else:
                 os.environ["TECHNICAL_CACHE_ENABLED"] = original_env
+
+    @pytest.mark.asyncio
+    async def test_auto_ingestion_on_empty_df(self):
+        mock_market_data = MagicMock()
+        mock_market_data._database = MagicMock()
+        mock_market_data.resolve_asset_id = AsyncMock(return_value=1)
+        df_full = make_ohlcv_df(50, trend="sine")
+        mock_market_data.load_ohlcv = AsyncMock(
+            side_effect=[pd.DataFrame(), df_full, pd.DataFrame(), df_full]
+        )
+
+        fake_redis = AsyncFakeRedis()
+        cache = RedisTechnicalCache(fake_redis)
+        service = TechnicalIndicatorService(mock_market_data, cache=cache)
+
+        with patch(
+            "historical.ingestion_service.HistoricalIngestionService.ingest",
+            new_callable=AsyncMock,
+        ) as mock_ingest:
+            mock_ingest.return_value = MagicMock(status="success")
+
+            res1 = await service.calculate("AAPL", "rsi")
+            assert len(res1.series) > 0
+
+            original_env = os.environ.get("TECHNICAL_CACHE_ENABLED")
+            os.environ["TECHNICAL_CACHE_ENABLED"] = "true"
+            try:
+                res2 = await service.calculate_multi(
+                    "AAPL", indicators=["sma_20", "rsi_14"]
+                )
+                assert len(res2.indicators) == 2
+                await asyncio.sleep(0)
+            finally:
+                if original_env is None:
+                    os.environ.pop("TECHNICAL_CACHE_ENABLED", None)
+                else:
+                    os.environ["TECHNICAL_CACHE_ENABLED"] = original_env

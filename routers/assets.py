@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import unicodedata
+import urllib.error
+import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
-
-import json
-import logging
-import urllib.request
-from urllib.parse import quote_plus
-
-logger = logging.getLogger(__name__)
+from sqlalchemy.exc import SQLAlchemyError
 
 from cache.service import CacheService
 from concurrency import run_sync
@@ -26,6 +26,8 @@ from routers.dependencies import (
     get_ingestion_service,
     get_query_service,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Assets"])
 VALID_PERIODS = {
@@ -63,9 +65,6 @@ SEARCH_TOP_RESULTS = [
 ]
 
 
-import unicodedata
-
-
 def strip_accents(text: str) -> str:
     """Normalize text by stripping diacritics/accents (e.g. Crédit -> Credit)."""
     if not text:
@@ -91,7 +90,7 @@ def fetch_yahoo_search_quotes(query: str, limit: int = 10) -> list[dict]:
             payload = json.loads(response.read().decode("utf-8"))
             quotes = payload.get("quotes") or []
             return quotes[:limit]
-    except Exception:
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, ValueError):
         pass
     return []
 
@@ -126,7 +125,7 @@ async def search_tickers(
             if sym and sym not in seen_tickers:
                 seen_tickers.add(sym)
                 filtered.append(item)
-    except Exception as exc:
+    except (SQLAlchemyError, ValueError, RuntimeError) as exc:
         logger.warning("Erreur recherche assets text db: %s", exc)
 
     # 2. Résultats statiques prédéfinis
@@ -184,7 +183,7 @@ async def search_tickers(
                     "value": sym,
                     "source": "yahoo",
                 })
-        except Exception as exc:
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, ValueError, RuntimeError) as exc:
             logger.debug("Erreur fallback Yahoo quotes: %s", exc)
 
     return {"results": filtered}

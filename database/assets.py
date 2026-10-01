@@ -1,8 +1,9 @@
 """Asset identity, listing and profile persistence operations."""
 
 import logging
+import unicodedata
 
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
@@ -760,7 +761,7 @@ class AssetRepository(DatabaseComponent):
             session.add(new_listing)
             session.commit()
             return new_asset
-        except Exception as e:
+        except SQLAlchemyError as e:
             session.rollback()
             logger.warning("ensure_asset rollback pour %s: %s", clean_ticker, e)
             return None

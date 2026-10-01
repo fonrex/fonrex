@@ -9,6 +9,7 @@ from typing import Protocol, TypeAlias
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from concurrency import run_sync
@@ -147,7 +148,7 @@ class SqlAlchemyTechnicalRepository:
                 session.add(new_listing)
                 session.commit()
                 return new_asset.id
-            except Exception as e:
+            except SQLAlchemyError:
                 session.rollback()
                 return None
             finally:

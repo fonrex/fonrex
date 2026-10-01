@@ -207,6 +207,13 @@
       text-transform: uppercase;
       font-weight: 500;
     }
+    .ticker-status-row {
+      padding: 12px 14px;
+      color: #71717a;
+      font-size: 11.5px;
+      text-align: center;
+      font-style: italic;
+    }
 
     /* Period Pill & Popover (Matching Screenshot 3) */
     .period-dropdown-container {
@@ -509,6 +516,7 @@
     function renderTickerRow(item) {
       const row = document.createElement('div');
       row.className = 'ticker-row';
+      row._tickerItem = item;
       row.innerHTML = `
         <span class="ticker-row-sym">${item.sym}</span>
         <span class="ticker-row-name">${item.name}</span>
@@ -522,29 +530,129 @@
       return row;
     }
 
+    let searchDebounceTimer = null;
+    let currentSearchAbortController = null;
+
     function populateTickerLists(filterQuery = '') {
-      const q = filterQuery.trim().toUpperCase();
+      const trimmedQuery = filterQuery.trim();
+      const q = trimmedQuery.toUpperCase();
+
+      // If empty query: display RECENT + default TOP RESULTS immediately
+      if (!trimmedQuery) {
+        if (currentSearchAbortController) {
+          currentSearchAbortController.abort();
+          currentSearchAbortController = null;
+        }
+        recentList.innerHTML = '';
+        topList.innerHTML = '';
+
+        const recents = getRecentTickers();
+        recents.forEach(item => {
+          recentList.appendChild(renderTickerRow(item));
+        });
+        document.getElementById('recent-header').style.display = recents.length ? 'block' : 'none';
+
+        const topHeader = document.getElementById('top-header');
+        topHeader.textContent = 'TOP RESULTS';
+        topHeader.style.display = 'block';
+
+        TOP_TICKERS.forEach(item => {
+          topList.appendChild(renderTickerRow(item));
+        });
+        return;
+      }
+
+      // Filter query provided:
+      // 1. Instantly filter RECENT list
       recentList.innerHTML = '';
-      topList.innerHTML = '';
-
       const recents = getRecentTickers();
-      const filteredRecents = q
-        ? recents.filter(r => r.sym.toUpperCase().includes(q) || r.name.toUpperCase().includes(q))
-        : recents;
-
+      const filteredRecents = recents.filter(r =>
+        r.sym.toUpperCase().includes(q) || r.name.toUpperCase().includes(q)
+      );
       filteredRecents.forEach(item => {
         recentList.appendChild(renderTickerRow(item));
       });
       document.getElementById('recent-header').style.display = filteredRecents.length ? 'block' : 'none';
 
-      const filteredTops = q
-        ? TOP_TICKERS.filter(t => t.sym.toUpperCase().includes(q) || t.name.toUpperCase().includes(q))
-        : TOP_TICKERS;
+      // 2. Immediate local feedback while API searches
+      topList.innerHTML = '';
+      const topHeader = document.getElementById('top-header');
+      topHeader.textContent = 'SEARCH RESULTS';
+      topHeader.style.display = 'block';
 
-      filteredTops.forEach(item => {
+      const localMatches = TOP_TICKERS.filter(t =>
+        t.sym.toUpperCase().includes(q) || t.name.toUpperCase().includes(q)
+      );
+      localMatches.forEach(item => {
         topList.appendChild(renderTickerRow(item));
       });
-      document.getElementById('top-header').style.display = filteredTops.length ? 'block' : 'none';
+
+      if (localMatches.length === 0 && filteredRecents.length === 0) {
+        const hint = document.createElement('div');
+        hint.className = 'ticker-status-row';
+        hint.textContent = 'Searching...';
+        topList.appendChild(hint);
+      }
+
+      // 3. Debounce API call to Fonrex /api/search
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      if (currentSearchAbortController) currentSearchAbortController.abort();
+
+      searchDebounceTimer = setTimeout(async () => {
+        currentSearchAbortController = new AbortController();
+        try {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}`, {
+            signal: currentSearchAbortController.signal
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const results = data.results || [];
+
+          // Guard against out-of-order response
+          if (tickerSearchInput.value.trim() !== trimmedQuery) return;
+
+          topList.innerHTML = '';
+
+          const seen = new Set();
+          const combined = [];
+
+          results.forEach(r => {
+            const sym = (r.ticker || r.symbol || r.value || '').toUpperCase();
+            if (sym && !seen.has(sym)) {
+              seen.add(sym);
+              combined.push({
+                sym: sym,
+                name: r.name || sym,
+                type: r.quote_type || 'STOCK',
+                exch: r.exchange || ''
+              });
+            }
+          });
+
+          // Also keep any local top matches that match the query
+          localMatches.forEach(m => {
+            if (!seen.has(m.sym)) {
+              seen.add(m.sym);
+              combined.push(m);
+            }
+          });
+
+          if (combined.length === 0 && filteredRecents.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'ticker-status-row';
+            empty.textContent = `No tickers found for "${trimmedQuery}"`;
+            topList.appendChild(empty);
+            return;
+          }
+
+          combined.forEach(item => {
+            topList.appendChild(renderTickerRow(item));
+          });
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          console.warn('Ticker search error:', err);
+        }
+      }, 150);
     }
 
     function selectTicker(sym, itemObj = null) {
@@ -589,9 +697,14 @@
 
     tickerSearchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        const val = tickerSearchInput.value.trim().toUpperCase();
-        if (val) {
-          selectTicker(val);
+        const firstRow = topList.querySelector('.ticker-row') || recentList.querySelector('.ticker-row');
+        if (firstRow && firstRow._tickerItem) {
+          selectTicker(firstRow._tickerItem.sym, firstRow._tickerItem);
+        } else {
+          const val = tickerSearchInput.value.trim().toUpperCase();
+          if (val) {
+            selectTicker(val);
+          }
         }
       }
     });

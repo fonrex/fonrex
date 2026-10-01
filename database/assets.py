@@ -449,6 +449,114 @@ class AssetRepository(DatabaseComponent):
         finally:
             session.close()
 
+    def search_assets_by_text(self, query: str, limit: int = 10) -> list[dict]:
+        """
+        Recherche textuelle d'actifs en base locale Fonrex par nom d'entreprise, ticker ou ISIN.
+        Permet de retrouver les instruments déjà présents en base de données avant tout appel externe.
+        """
+        if not query or not query.strip():
+            return []
+
+        clean_query = query.strip()
+        stripped_query = "".join(
+            c for c in unicodedata.normalize("NFD", clean_query) if unicodedata.category(c) != "Mn"
+        )
+        patterns = [f"%{clean_query}%"]
+        if stripped_query.lower() != clean_query.lower():
+            patterns.append(f"%{stripped_query}%")
+
+        session = self.get_session()
+        try:
+            conds = []
+            for p in patterns:
+                conds.extend([
+                    AssetListing.ticker.ilike(p),
+                    Asset.ticker.ilike(p),
+                    Asset.name.ilike(p),
+                    Asset.display_name.ilike(p),
+                    Asset.official_symbol.ilike(p),
+                    Asset.isin.ilike(p),
+                ])
+
+            rows = (
+                session.query(AssetListing, Asset)
+                .join(Asset, AssetListing.asset_id == Asset.id)
+                .filter(AssetListing.is_active.is_(True))
+                .filter(or_(*conds))
+                .order_by(
+                    # Exact ticker match first
+                    (AssetListing.ticker == clean_query.upper()).desc(),
+                    # Starts with ticker
+                    AssetListing.ticker.ilike(f"{clean_query}%").desc(),
+                    AssetListing.is_primary.desc(),
+                    AssetListing.ticker.asc(),
+                )
+                .limit(limit)
+                .all()
+            )
+
+            results = []
+            seen_tickers = set()
+
+            for listing, asset in rows:
+                sym = listing.ticker or asset.ticker
+                if sym in seen_tickers:
+                    continue
+                seen_tickers.add(sym)
+
+                comp_name = asset.display_name or asset.name or sym
+                exch = listing.exchange or asset.exchange or "UNKNOWN"
+                q_type = asset.quote_type or "STOCK"
+
+                results.append({
+                    "ticker": sym,
+                    "name": comp_name,
+                    "quote_type": q_type,
+                    "exchange": exch,
+                    "label": sym,
+                    "value": sym,
+                    "source": "database",
+                })
+
+            if len(results) < limit:
+                remaining = limit - len(results)
+                asset_conds = []
+                for p in patterns:
+                    asset_conds.extend([
+                        Asset.ticker.ilike(p),
+                        Asset.name.ilike(p),
+                        Asset.display_name.ilike(p),
+                        Asset.isin.ilike(p),
+                    ])
+                unlisted = (
+                    session.query(Asset)
+                    .filter(Asset.is_active.is_(True))
+                    .filter(or_(*asset_conds))
+                    .limit(remaining)
+                    .all()
+                )
+                for asset in unlisted:
+                    sym = asset.ticker
+                    if sym in seen_tickers:
+                        continue
+                    seen_tickers.add(sym)
+                    results.append({
+                        "ticker": sym,
+                        "name": asset.display_name or asset.name or sym,
+                        "quote_type": asset.quote_type or "STOCK",
+                        "exchange": asset.exchange or "UNKNOWN",
+                        "label": sym,
+                        "value": sym,
+                        "source": "database",
+                    })
+
+            return results
+        except SQLAlchemyError as e:
+            logger.error(f"Erreur recherche assets text query='{query}': {e}")
+            return []
+        finally:
+            session.close()
+
     def get_listing_by_identity(
         self, ticker=None, isin=None, exchange=None, currency=None, include_mappings=False
     ):

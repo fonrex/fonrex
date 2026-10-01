@@ -15,7 +15,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from starlette.responses import JSONResponse
 
+from concurrency import run_sync
 from database.query import QueryService
+from database.service import DatabaseService
 from historical.ingestion_service import HistoricalIngestionService
 from integrations.openbb.adapters import (
     format_batch_quotes_table,
@@ -37,7 +39,7 @@ from integrations.openbb.adapters import (
     format_technical_multi_chart,
     format_valuation_multiples_chart,
 )
-from routers.assets import get_eod
+from routers.assets import fetch_yahoo_search_quotes, get_eod, strip_accents
 from routers.dependencies import (
     get_cache_service,
     get_database_service,
@@ -293,6 +295,7 @@ async def get_openbb_technical_chart(
 async def get_openbb_tickers(
     q: Optional[str] = Query(None),
     query: Optional[str] = Query(None),
+    db: DatabaseService = Depends(get_database_service),
 ) -> List[Dict[str, Any]]:
     """Return searchable ticker options with symbol, name, and exchange for OpenBB Workspace."""
     all_tickers = [
@@ -315,22 +318,72 @@ async def get_openbb_tickers(
         {"ticker": "SAN.PA", "name": "Sanofi", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "SAN.PA", "value": "SAN.PA"},
     ]
 
-    search_term = (q or query or "").strip().upper()
-    if not search_term:
+    search_raw = (q or query or "").strip()
+    if not search_raw:
         return all_tickers
 
-    filtered = [
-        item for item in all_tickers
-        if search_term in item["ticker"].upper() or search_term in item["name"].upper()
-    ]
-    if not any(f["value"] == search_term for f in filtered):
-        filtered.insert(0, {
-            "ticker": search_term,
-            "name": search_term,
+    search_clean = strip_accents(search_raw).lower()
+    search_upper = search_raw.upper()
+    filtered = []
+    seen = set()
+
+    # 1. Base locale Fonrex en priorité (database-first)
+    try:
+        db_results = await run_sync(db.search_assets_by_text, search_raw, limit=10)
+        for item in db_results:
+            sym = item.get("ticker")
+            if sym and sym not in seen:
+                seen.add(sym)
+                filtered.append({
+                    "ticker": sym,
+                    "name": item.get("name") or sym,
+                    "quote_type": item.get("quote_type") or "STOCK",
+                    "exchange": item.get("exchange") or "UNKNOWN",
+                    "label": sym,
+                    "value": sym,
+                })
+    except Exception:
+        pass
+
+    # 2. Tickers prédéfinis du catalogue
+    for item in all_tickers:
+        sym = item["ticker"]
+        if sym in seen:
+            continue
+        if search_clean in strip_accents(sym).lower() or search_clean in strip_accents(item["name"]).lower():
+            seen.add(sym)
+            filtered.append(dict(item))
+
+    # 3. Fallback externe Yahoo si moins de 5 résultats
+    if len(filtered) < 5:
+        try:
+            quotes = await run_sync(fetch_yahoo_search_quotes, search_raw, limit=8)
+            for quote in quotes:
+                sym = quote.get("symbol")
+                if sym and sym not in seen:
+                    seen.add(sym)
+                    q_type = quote.get("quoteType") or "STOCK"
+                    if q_type == "EQUITY":
+                        q_type = "STOCK"
+                    filtered.append({
+                        "ticker": sym,
+                        "name": quote.get("shortname") or quote.get("longname") or sym,
+                        "quote_type": q_type,
+                        "exchange": quote.get("exchange") or "UNKNOWN",
+                        "label": sym,
+                        "value": sym,
+                    })
+        except Exception:
+            pass
+
+    if search_upper not in seen:
+        filtered.append({
+            "ticker": search_upper,
+            "name": search_upper,
             "quote_type": "STOCK",
             "exchange": "CUSTOM",
-            "label": search_term,
-            "value": search_term,
+            "label": search_upper,
+            "value": search_upper,
         })
     return filtered
 

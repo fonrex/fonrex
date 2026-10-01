@@ -9,8 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 import json
+import logging
 import urllib.request
 from urllib.parse import quote_plus
+
+logger = logging.getLogger(__name__)
 
 from cache.service import CacheService
 from concurrency import run_sync
@@ -60,10 +63,22 @@ SEARCH_TOP_RESULTS = [
 ]
 
 
-def fetch_yahoo_search_quote(query: str):
+import unicodedata
+
+
+def strip_accents(text: str) -> str:
+    """Normalize text by stripping diacritics/accents (e.g. Crédit -> Credit)."""
+    if not text:
+        return ""
+    return "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
+
+
+def fetch_yahoo_search_quotes(query: str, limit: int = 10) -> list[dict]:
+    """Search Yahoo Finance for quotes matching query with accent normalization."""
     if not query:
-        return None
-    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={quote_plus(query)}"
+        return []
+    clean_query = strip_accents(query.strip())
+    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={quote_plus(clean_query)}"
     request = urllib.request.Request(
         url,
         headers={
@@ -75,11 +90,16 @@ def fetch_yahoo_search_quote(query: str):
         with urllib.request.urlopen(request, timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8"))
             quotes = payload.get("quotes") or []
-            if quotes:
-                return quotes[0]
+            return quotes[:limit]
     except Exception:
         pass
-    return None
+    return []
+
+
+def fetch_yahoo_search_quote(query: str) -> Optional[dict]:
+    """Backward-compatible helper returning first matching quote."""
+    quotes = fetch_yahoo_search_quotes(query, limit=1)
+    return quotes[0] if quotes else None
 
 
 @router.get("/api/search")
@@ -92,50 +112,83 @@ async def search_tickers(
     if not q or not q.strip():
         return {"results": SEARCH_TOP_RESULTS}
 
-    query_str = q.strip().lower()
+    query_raw = q.strip()
+    query_clean = strip_accents(query_raw).lower()
 
-    filtered = [
-        r
-        for r in SEARCH_TOP_RESULTS
-        if query_str in r["ticker"].lower() or query_str in r["name"].lower()
-    ]
+    filtered = []
+    seen_tickers = set()
 
+    # 1. Base locale Fonrex en priorité (recherche par nom d'entreprise, ticker ou ISIN)
     try:
-        listings = await run_sync(db.find_listings, ticker=q.strip().upper(), limit=10)
-        for listing in listings:
-            dict_item = db._listing_to_dict(listing)
-            if dict_item and dict_item.get("ticker"):
-                t = dict_item.get("ticker")
-                if not any(f["ticker"] == t for f in filtered):
-                    filtered.append({
-                        "ticker": t,
-                        "name": dict_item.get("name") or t,
-                        "quote_type": "STOCK",
-                        "exchange": dict_item.get("exchange") or "UNKNOWN",
-                        "label": t,
-                        "value": t,
-                    })
-    except Exception:
-        pass
+        db_results = await run_sync(db.search_assets_by_text, query_raw, limit=10)
+        for item in db_results:
+            sym = item.get("ticker")
+            if sym and sym not in seen_tickers:
+                seen_tickers.add(sym)
+                filtered.append(item)
+    except Exception as exc:
+        logger.warning("Erreur recherche assets text db: %s", exc)
 
+    # 2. Résultats statiques prédéfinis
+    for r in SEARCH_TOP_RESULTS:
+        r_ticker = r["ticker"]
+        if r_ticker in seen_tickers:
+            continue
+        if query_clean in strip_accents(r_ticker).lower() or query_clean in strip_accents(r["name"]).lower():
+            seen_tickers.add(r_ticker)
+            item = dict(r)
+            item["source"] = item.get("source", "catalog")
+            filtered.append(item)
+
+    # 3. Fallback externe Yahoo Finance si moins de 5 résultats trouvés localement
     if len(filtered) < 5:
         try:
-            quote = await run_sync(fetch_yahoo_search_quote, query_str)
-            if quote and quote.get("symbol"):
+            quotes = await run_sync(fetch_yahoo_search_quotes, query_raw, 10)
+            exchange_names = {
+                "PAR": "EURONEXT PARIS",
+                "EPA": "EURONEXT PARIS",
+                "AMS": "EURONEXT AMSTERDAM",
+                "BRU": "EURONEXT BRUSSELS",
+                "LIS": "EURONEXT LISBON",
+                "GER": "XETRA",
+                "FRA": "XETRA",
+                "ETR": "XETRA",
+                "LSE": "LSE",
+                "MC": "BME",
+                "MIL": "BORSA ITALIANA",
+                "SWX": "SIX SWISS",
+                "NMS": "NASDAQ",
+                "NGS": "NASDAQ",
+                "NCM": "NASDAQ",
+                "NYQ": "NYSE",
+            }
+            for quote in quotes:
                 sym = quote.get("symbol")
-                if not any(f["ticker"] == sym for f in filtered):
-                    filtered.append({
-                        "ticker": sym,
-                        "name": quote.get("shortname") or quote.get("longname") or sym,
-                        "quote_type": quote.get("quoteType") or "STOCK",
-                        "exchange": quote.get("exchange") or "UNKNOWN",
-                        "label": sym,
-                        "value": sym,
-                    })
-        except Exception:
-            pass
+                if not sym or sym in seen_tickers:
+                    continue
+                seen_tickers.add(sym)
+
+                raw_type = (quote.get("quoteType") or "STOCK").upper()
+                if raw_type == "EQUITY":
+                    raw_type = "STOCK"
+
+                raw_exch = quote.get("exchange") or "UNKNOWN"
+                exch_name = exchange_names.get(raw_exch.upper(), raw_exch)
+
+                filtered.append({
+                    "ticker": sym,
+                    "name": quote.get("shortname") or quote.get("longname") or sym,
+                    "quote_type": raw_type,
+                    "exchange": exch_name,
+                    "label": sym,
+                    "value": sym,
+                    "source": "yahoo",
+                })
+        except Exception as exc:
+            logger.debug("Erreur fallback Yahoo quotes: %s", exc)
 
     return {"results": filtered}
+
 
 
 @router.get("/assets/by-isin/{isin}")

@@ -97,6 +97,9 @@ class DatabaseService:
     def find_listings(self, *args, **kwargs):
         return self.assets.find_listings(*args, **kwargs)
 
+    def search_assets_by_text(self, *args, **kwargs):
+        return self.assets.search_assets_by_text(*args, **kwargs)
+
     def get_listing_by_identity(self, *args, **kwargs):
         return self.assets.get_listing_by_identity(*args, **kwargs)
 

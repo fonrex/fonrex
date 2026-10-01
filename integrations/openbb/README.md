@@ -48,6 +48,8 @@ directly inside OpenBB.
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates (FRED API) |
 | `fonrex_revenue_geography` | Revenue Per Geography | Fundamentals | chart | Historical geographic revenue segmentation (stacked bar chart) |
 | `fonrex_valuation_multiples` | Valuation Multiples | Valuation | chart | Historical valuation multiples (P/E, P/S, P/B, EV/Sales, EV/EBITDA) over FY, QTR, TTM |
+| `fonrex_dividend_payment` | Dividend Payment | Calendar | table | Historical dividend payments with declaration, ex-dividend, record, and payment dates |
+| `fonrex_earnings_history` | Earnings History | Calendar | table | Historical and upcoming earnings reports (Date, Reported EPS, EPS Est., Revenue, Revenue Est., Transcripts) |
 
 ## Pre-assembled Apps
 
@@ -58,7 +60,7 @@ A comprehensive dashboard for analyzing a single ticker:
 - **Technical Analysis** tab: Full interactive TradingView charting with drawing tools and indicators
 - **Comparison Analysis** tab: DCF models comparison & sensitivity matrix
 - **Ownership** tab: SEC insider transactions
-- **Company Calendar** tab: Historical EOD price and volume
+- **Company Calendar** tab: Earnings History (EPS and revenue actual vs estimates) and Dividend Payment calendar
 - **Estimates** tab: DCF valuation model with dynamic WACC
 
 ### Fonrex — Screener & Macro

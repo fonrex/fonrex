@@ -258,6 +258,18 @@ def configure_application_state(application: FastAPI):
             "financials.providers.index_constituents",
             "IndexConstituentsProvider",
         ),
+        (
+            "dividend_provider",
+            "DividendProvider",
+            "financials.providers.dividend_provider",
+            "DividendProvider",
+        ),
+        (
+            "earnings_provider",
+            "EarningsProvider",
+            "financials.providers.earnings_provider",
+            "EarningsProvider",
+        ),
     )
     for state_name, label, module_name, class_name in specialized_specs:
         try:

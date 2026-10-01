@@ -23,6 +23,8 @@ from integrations.openbb.adapters import (
     format_dcf_compare_table,
     format_dcf_sensitivity_table,
     format_dcf_table,
+    format_dividends_table,
+    format_earnings_history_table,
     format_etf_details_table,
     format_fundamentals_deep_table,
     format_fundamentals_table,
@@ -38,6 +40,8 @@ from routers.assets import get_eod
 from routers.dependencies import (
     get_cache_service,
     get_database_service,
+    get_dividend_provider,
+    get_earnings_provider,
     get_ingestion_service,
     get_query_service,
     get_redis_client,
@@ -569,3 +573,68 @@ async def get_openbb_index_constituents(
     if isinstance(res, dict):
         return res.get("constituents", [])
     return getattr(res, "constituents", []) or []
+
+
+@router.get("/dividends/{ticker}")
+async def get_openbb_dividends(
+    ticker: str,
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_dividend_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Return historical dividend payments formatted as an OpenBB AgGrid table."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    records = await provider.get_dividends(
+        ticker=clean_ticker, limit=limit, refresh=refresh, cache=cache
+    )
+    return format_dividends_table(records)
+
+
+@router.get("/calendar/dividends")
+async def get_openbb_calendar_dividends_query(
+    ticker: str = "AAPL",
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_dividend_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_dividends(
+        ticker=ticker, limit=limit, refresh=refresh, provider=provider, cache=cache
+    )
+
+
+@router.get("/earnings/{ticker}")
+async def get_openbb_earnings(
+    ticker: str,
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_earnings_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Return historical and upcoming earnings data formatted as an OpenBB AgGrid table."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    records = await provider.get_earnings_history(
+        ticker=clean_ticker, limit=limit, refresh=refresh, cache=cache
+    )
+    return format_earnings_history_table(records)
+
+
+@router.get("/calendar/earnings")
+async def get_openbb_calendar_earnings_query(
+    ticker: str = "AAPL",
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_earnings_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_earnings(
+        ticker=ticker, limit=limit, refresh=refresh, provider=provider, cache=cache
+    )
+

@@ -684,5 +684,51 @@
         "description": "Reporting period (FY, QTR, or TTM)"
       }
     ]
+  },
+  "fonrex_dividend_payment": {
+    "name": "Dividend Payment",
+    "description": "Historical dividend payments with declaration, ex-dividend, record, and payment dates",
+    "category": "Calendar",
+    "type": "table",
+    "endpoint": "openbb/dividends/{ticker}",
+    "gridData": {
+      "w": 24,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AAPL, AIR.PA, MSFT)"
+      }
+    ]
+  },
+  "fonrex_earnings_history": {
+    "name": "Earnings History",
+    "description": "Historical and upcoming earnings reports with actual vs estimated EPS, revenue, and transcripts",
+    "category": "Calendar",
+    "type": "table",
+    "endpoint": "openbb/earnings/{ticker}",
+    "gridData": {
+      "w": 24,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AAPL, AIR.PA, MSFT)"
+      }
+    ]
   }
 }

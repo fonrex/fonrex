@@ -886,3 +886,141 @@ def format_etf_details_table(etf_data: Any) -> List[Dict[str, Any]]:
             rows.append({"metric": label, "value": _to_plain_value(val)})
 
     return rows
+
+
+def format_dividends_table(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Format dividend payment records into OpenBB AgGrid table rows.
+
+    Matches OpenBB 'Dividend Payment' table columns:
+    Date | Adjusted Dividend | Dividend | Record Date | Payment Date | Declaration Date
+    """
+    rows: List[Dict[str, Any]] = []
+    for r in records:
+        r_dict = _to_dict(r)
+        adj_div = r_dict.get("adjusted_dividend")
+        div = r_dict.get("dividend")
+        if adj_div is not None:
+            try:
+                adj_div = round(float(adj_div), 4)
+                if adj_div == round(adj_div, 2):
+                    adj_div = round(adj_div, 2)
+            except (ValueError, TypeError):
+                pass
+        if div is not None:
+            try:
+                div = round(float(div), 4)
+                if div == round(div, 2):
+                    div = round(div, 2)
+            except (ValueError, TypeError):
+                pass
+
+        row = {
+            "Date": r_dict.get("date") or r_dict.get("Date") or "N/A",
+            "Adjusted Dividend": adj_div,
+            "Dividend": div,
+            "Record Date": r_dict.get("record_date") or r_dict.get("Record Date") or "-",
+            "Payment Date": r_dict.get("payment_date") or r_dict.get("Payment Date") or "-",
+            "Declaration Date": r_dict.get("declaration_date") or r_dict.get("Declaration Date") or "-",
+            "currency": r_dict.get("currency") or r_dict.get("Currency") or "USD",
+        }
+        rows.append(row)
+    return rows
+
+
+def _format_amount(val: Optional[Any]) -> str:
+    """Format large numbers into B/M/K representation with suffix."""
+    if val is None or str(val).strip() in ("-", "None", ""):
+        return "-"
+    try:
+        val_f = float(val)
+    except (ValueError, TypeError):
+        return str(val)
+
+    if val_f == 0:
+        return "-"
+
+    abs_val = abs(val_f)
+    if abs_val >= 1e12:
+        return f"{val_f / 1e12:.3f} T"
+    elif abs_val >= 1e9:
+        num = val_f / 1e9
+        s = f"{num:.3f}"
+        if s.endswith("0") and len(s.split(".")[1]) > 2:
+            s = f"{num:.2f}"
+        return f"{s} B"
+    elif abs_val >= 1e6:
+        return f"{val_f / 1e6:.2f} M"
+    elif abs_val >= 1e3:
+        return f"{val_f / 1e3:.2f} K"
+    return f"{val_f:.2f}"
+
+
+def format_earnings_history_table(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Format earnings history records into OpenBB AgGrid table rows.
+
+    Matches OpenBB 'Earnings History' table columns:
+    Date | EPS | EPS Est. | Revenue | Revenue Est. | Transcript
+    """
+    rows: List[Dict[str, Any]] = []
+    for r in records:
+        r_dict = _to_dict(r)
+
+        # EPS
+        eps = r_dict.get("eps") if "eps" in r_dict else r_dict.get("EPS")
+        if eps is not None and str(eps).strip() not in ("-", "None", ""):
+            try:
+                eps_val = round(float(eps), 4)
+            except (ValueError, TypeError):
+                eps_val = eps
+        else:
+            eps_val = "-"
+
+        # EPS Est.
+        eps_est = (
+            r_dict.get("eps_estimate")
+            if "eps_estimate" in r_dict
+            else (r_dict.get("eps_est") if "eps_est" in r_dict else r_dict.get("EPS Est."))
+        )
+        if eps_est is not None and str(eps_est).strip() not in ("-", "None", ""):
+            try:
+                eps_est_val = round(float(eps_est), 4)
+            except (ValueError, TypeError):
+                eps_est_val = eps_est
+        else:
+            eps_est_val = "-"
+
+        # Revenue
+        rev = r_dict.get("revenue") if "revenue" in r_dict else r_dict.get("Revenue")
+        rev_val = _format_amount(rev)
+
+        # Revenue Est.
+        rev_est = (
+            r_dict.get("revenue_estimate")
+            if "revenue_estimate" in r_dict
+            else (r_dict.get("revenue_est") if "revenue_est" in r_dict else r_dict.get("Revenue Est."))
+        )
+        rev_est_val = _format_amount(rev_est)
+
+        # Transcript
+        transcript = (
+            r_dict.get("transcript")
+            if "transcript" in r_dict
+            else r_dict.get("Transcript")
+        )
+        if not transcript or str(transcript).strip() in ("-", "None", ""):
+            transcript_val = "" if eps_val == "-" else "View transcript"
+        else:
+            transcript_val = str(transcript)
+
+        row = {
+            "Date": r_dict.get("date") or r_dict.get("Date") or "N/A",
+            "EPS": eps_val,
+            "EPS Est.": eps_est_val,
+            "Revenue": rev_val,
+            "Revenue Est.": rev_est_val,
+            "Transcript": transcript_val,
+            "currency": r_dict.get("currency") or r_dict.get("Currency") or "USD",
+        }
+        rows.append(row)
+    return rows
+

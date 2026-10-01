@@ -19,6 +19,8 @@ __all__ = [
     "get_cache_service",
     "get_redis_client",
     "get_valuation_multiples_service",
+    "get_dividend_provider",
+    "get_earnings_provider",
 ]
 
 
@@ -67,3 +69,25 @@ def get_valuation_multiples_service(request: Request):
         service = ValuationMultiplesService(db_service=db_service, redis_client=redis_client)
         request.app.state.multiples_service = service
     return service
+
+
+def get_dividend_provider(request: Request):
+    provider = getattr(request.app.state, "dividend_provider", None)
+    if provider is None:
+        from financials.providers.dividend_provider import DividendProvider
+
+        provider = DividendProvider()
+        request.app.state.dividend_provider = provider
+    return provider
+
+
+def get_earnings_provider(request: Request):
+    provider = getattr(request.app.state, "earnings_provider", None)
+    if provider is None:
+        from financials.providers.earnings_provider import EarningsProvider
+
+        db_service = getattr(request.app.state, "db_service", None)
+        provider = EarningsProvider(db_service=db_service)
+        request.app.state.earnings_provider = provider
+    return provider
+

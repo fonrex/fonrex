@@ -105,6 +105,8 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/macro/rates",
     "openbb/fundamental/{ticker}/revenue-geography",
     "openbb/valuation/{ticker}/multiples",
+    "openbb/dividends/{ticker}",
+    "openbb/earnings/{ticker}",
 ]
 
 
@@ -889,6 +891,126 @@ def test_openbb_valuation_multiples_endpoint_contract(client):
         assert fig["data"][0]["y"] == [27.08, 37.26]
     finally:
         app.state.multiples_service = orig_service
+
+
+def test_openbb_dividends_endpoint_contract(client):
+    """GET /openbb/dividends/{ticker} returns OpenBB AgGrid table contract."""
+    mock_provider = MagicMock()
+    mock_provider.get_dividends = AsyncMock(
+        return_value=[
+            {
+                "date": "2026-08-10",
+                "adjusted_dividend": 0.27,
+                "dividend": 0.27,
+                "record_date": "2026-08-10",
+                "payment_date": "2026-08-13",
+                "declaration_date": "2026-07-30",
+                "currency": "USD",
+            },
+            {
+                "date": "2026-05-11",
+                "adjusted_dividend": 0.27,
+                "dividend": 0.27,
+                "record_date": "2026-05-11",
+                "payment_date": "2026-05-14",
+                "declaration_date": "2026-04-30",
+                "currency": "USD",
+            },
+        ]
+    )
+
+    orig_provider = getattr(app.state, "dividend_provider", None)
+    app.state.dividend_provider = mock_provider
+    try:
+        resp = client.get("/openbb/dividends/AAPL")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert isinstance(rows, list)
+        assert len(rows) == 2
+        first_row = rows[0]
+        assert "Date" in first_row
+        assert "Adjusted Dividend" in first_row
+        assert "Dividend" in first_row
+        assert "Record Date" in first_row
+        assert "Payment Date" in first_row
+        assert "Declaration Date" in first_row
+        assert first_row["Date"] == "2026-08-10"
+        assert first_row["Adjusted Dividend"] == 0.27
+        assert first_row["Dividend"] == 0.27
+        assert first_row["Record Date"] == "2026-08-10"
+        assert first_row["Payment Date"] == "2026-08-13"
+        assert first_row["Declaration Date"] == "2026-07-30"
+
+        # Also test fallback query endpoint
+        resp_q = client.get("/openbb/calendar/dividends?ticker=AAPL")
+        assert resp_q.status_code == 200
+        assert len(resp_q.json()) == 2
+    finally:
+        app.state.dividend_provider = orig_provider
+
+
+def test_openbb_earnings_endpoint_contract(client):
+    """GET /openbb/earnings/{ticker} returns OpenBB AgGrid table contract."""
+    mock_provider = MagicMock()
+    mock_provider.get_earnings_history = AsyncMock(
+        return_value=[
+            {
+                "date": "2026-10-29",
+                "eps": None,
+                "eps_estimate": 1.98,
+                "revenue": None,
+                "revenue_estimate": 113210000000.0,
+                "surprise_pct": None,
+                "transcript": "",
+                "currency": "USD",
+            },
+            {
+                "date": "2026-07-30",
+                "eps": 2.02,
+                "eps_estimate": 1.89,
+                "revenue": 109417000000.0,
+                "revenue_estimate": 109040000000.0,
+                "surprise_pct": 6.74,
+                "transcript": "View transcript",
+                "currency": "USD",
+            },
+        ]
+    )
+
+    orig_provider = getattr(app.state, "earnings_provider", None)
+    app.state.earnings_provider = mock_provider
+    try:
+        resp = client.get("/openbb/earnings/AAPL")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert isinstance(rows, list)
+        assert len(rows) == 2
+
+        # Check upcoming row
+        r1 = rows[0]
+        assert r1["Date"] == "2026-10-29"
+        assert r1["EPS"] == "-"
+        assert r1["EPS Est."] == 1.98
+        assert r1["Revenue"] == "-"
+        assert r1["Revenue Est."] == "113.21 B"
+        assert r1["Transcript"] == ""
+
+        # Check reported row
+        r2 = rows[1]
+        assert r2["Date"] == "2026-07-30"
+        assert r2["EPS"] == 2.02
+        assert r2["EPS Est."] == 1.89
+        assert r2["Revenue"] == "109.417 B"
+        assert r2["Revenue Est."] == "109.04 B"
+        assert r2["Transcript"] == "View transcript"
+
+        # Also test fallback query endpoint
+        resp_q = client.get("/openbb/calendar/earnings?ticker=AAPL")
+        assert resp_q.status_code == 200
+        assert len(resp_q.json()) == 2
+    finally:
+        app.state.earnings_provider = orig_provider
+
 
 
 

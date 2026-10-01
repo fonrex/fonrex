@@ -247,15 +247,29 @@
         "name": "Company Calendar",
         "layout": [
           {
-            "i": "fonrex_eod",
+            "i": "fonrex_earnings_history",
             "x": 0,
             "y": 0,
             "w": 24,
             "h": 10,
             "state": {
               "params": {
-                "ticker": "AIR.PA",
-                "period": "1y"
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_dividend_payment",
+            "x": 0,
+            "y": 10,
+            "w": 24,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
               }
             },
             "groups": [
@@ -310,7 +324,9 @@
           "fonrex_share_statistics",
           "fonrex_charting",
           "fonrex_revenue_geography",
-          "fonrex_valuation_multiples"
+          "fonrex_valuation_multiples",
+          "fonrex_earnings_history",
+          "fonrex_dividend_payment"
         ]
       }
     ]

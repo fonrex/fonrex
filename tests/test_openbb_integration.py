@@ -784,8 +784,68 @@ def test_openbb_revenue_geography_endpoint_contract(client):
         assert fig["data"][0]["type"] == "bar"
         assert "x" in fig["data"][0]
         assert "y" in fig["data"][0]
+
+        # Test query fallback route
+        fallback_resp = client.get("/openbb/fundamental/revenue-geography?ticker=AAPL&period=FY")
+        assert fallback_resp.status_code == 200
+        fallback_fig = fallback_resp.json()
+        assert fallback_fig["layout"]["barmode"] == "stack"
     finally:
         app.state.sec_edgar_provider = orig_sec
+
+
+def test_openbb_revenue_geography_period_options_endpoint(client):
+    """GET /openbb/fundamental/revenue-geography/period-options returns FY and QTR options."""
+    resp = client.get("/openbb/fundamental/revenue-geography/period-options")
+    assert resp.status_code == 200
+    options = resp.json()
+    assert isinstance(options, list)
+    assert len(options) == 2
+    assert options[0] == {"label": "FY", "value": "FY"}
+    assert options[1] == {"label": "QTR", "value": "QTR"}
+
+
+def test_openbb_tickers_endpoint(client):
+    """GET /openbb/tickers returns searchable options with symbol, name, and exchange."""
+    resp = client.get("/openbb/tickers")
+    assert resp.status_code == 200
+    tickers = resp.json()
+    assert isinstance(tickers, list)
+    assert len(tickers) >= 10
+    aapl = next((t for t in tickers if t["value"] == "AAPL"), None)
+    assert aapl is not None
+    assert aapl["label"] == "AAPL"
+    assert "Apple" in aapl["name"]
+
+    # Filtered search
+    filter_resp = client.get("/openbb/tickers?q=NVDA")
+    assert filter_resp.status_code == 200
+    filtered = filter_resp.json()
+    assert any(t["value"] == "NVDA" for t in filtered)
+
+
+def test_openbb_revenue_geography_widget_configuration(widgets_data, client):
+    """fonrex_revenue_geography is configured as iframe widget serving revenue_geography.html with exact interactive UI."""
+    w = widgets_data["fonrex_revenue_geography"]
+    assert w["type"] == "iframe"
+    assert w["endpoint"] == "static/revenue_geography.html"
+    assert w["params"] == []
+
+    # Verify static HTML is served correctly
+    html_resp = client.get("/static/revenue_geography.html")
+    assert html_resp.status_code == 200
+    assert "Revenue Per Geography" in html_resp.text
+    assert "ticker-search-input" in html_resp.text
+    assert "period-menu" in html_resp.text
+
+
+def test_openbb_valuation_multiples_widget_configuration(widgets_data):
+    """fonrex_valuation_multiples has valid OpenBB chart params without unsupported types."""
+    w = widgets_data["fonrex_valuation_multiples"]
+    assert w["type"] == "chart"
+    param_types = [p["type"] for p in w["params"]]
+    assert all(t in ["text", "number", "endpoint", "date", "boolean"] for t in param_types)
+
 
 
 def test_format_valuation_multiples_chart_unit():

@@ -46,7 +46,7 @@ directly inside OpenBB.
 | `fonrex_etf_details` | Fonrex ETF Details | Fundamentals | table | UCITS ETF details from JustETF |
 | `fonrex_index_constituents` | Fonrex Index Constituents | Market Data | table | Index constituents (S&P 500, CAC 40, NASDAQ 100, DAX) |
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates (FRED API) |
-| `fonrex_revenue_geography` | Revenue Per Geography | Fundamentals | chart | Historical geographic revenue segmentation (stacked bar chart) |
+| `fonrex_revenue_geography` | Revenue Per Geography | Fundamentals | iframe | Historical geographic revenue segmentation (stacked bar chart with ticker search and period switcher) |
 | `fonrex_valuation_multiples` | Valuation Multiples | Valuation | chart | Historical valuation multiples (P/E, P/S, P/B, EV/Sales, EV/EBITDA) over FY, QTR, TTM |
 | `fonrex_dividend_payment` | Dividend Payment | Calendar | table | Historical dividend payments with declaration, ex-dividend, record, and payment dates |
 | `fonrex_earnings_history` | Earnings History | Calendar | table | Historical and upcoming earnings reports (Date, Reported EPS, EPS Est., Revenue, Revenue Est., Transcripts) |

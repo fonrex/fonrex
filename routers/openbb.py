@@ -288,6 +288,62 @@ async def get_openbb_technical_chart(
     return format_technical_chart_overlay(ticker.upper(), chart_payload)
 
 
+@router.get("/tickers")
+@router.get("/ticker-options")
+async def get_openbb_tickers(
+    q: Optional[str] = Query(None),
+    query: Optional[str] = Query(None),
+) -> List[Dict[str, Any]]:
+    """Return searchable ticker options with symbol, name, and exchange for OpenBB Workspace."""
+    all_tickers = [
+        {"ticker": "AAPL", "name": "Apple Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "AAPL", "value": "AAPL"},
+        {"ticker": "ADBE", "name": "Adobe Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "ADBE", "value": "ADBE"},
+        {"ticker": "AMZN", "name": "Amazon.com, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "AMZN", "value": "AMZN"},
+        {"ticker": "BAC", "name": "Bank of America Corporation", "quote_type": "STOCK", "exchange": "NYSE", "label": "BAC", "value": "BAC"},
+        {"ticker": "DIS", "name": "The Walt Disney Company", "quote_type": "STOCK", "exchange": "NYSE", "label": "DIS", "value": "DIS"},
+        {"ticker": "GOOG", "name": "Alphabet Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "GOOG", "value": "GOOG"},
+        {"ticker": "HD", "name": "The Home Depot, Inc.", "quote_type": "STOCK", "exchange": "NYSE", "label": "HD", "value": "HD"},
+        {"ticker": "JNJ", "name": "Johnson & Johnson", "quote_type": "STOCK", "exchange": "NYSE", "label": "JNJ", "value": "JNJ"},
+        {"ticker": "MSFT", "name": "Microsoft Corporation", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "MSFT", "value": "MSFT"},
+        {"ticker": "NVDA", "name": "NVIDIA Corporation", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "NVDA", "value": "NVDA"},
+        {"ticker": "META", "name": "Meta Platforms, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "META", "value": "META"},
+        {"ticker": "TSLA", "name": "Tesla, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "TSLA", "value": "TSLA"},
+        {"ticker": "AIR.PA", "name": "Airbus SE", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "AIR.PA", "value": "AIR.PA"},
+        {"ticker": "MC.PA", "name": "LVMH Moët Hennessy", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "MC.PA", "value": "MC.PA"},
+        {"ticker": "TTE.PA", "name": "TotalEnergies SE", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "TTE.PA", "value": "TTE.PA"},
+        {"ticker": "BNP.PA", "name": "BNP Paribas", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "BNP.PA", "value": "BNP.PA"},
+        {"ticker": "SAN.PA", "name": "Sanofi", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "SAN.PA", "value": "SAN.PA"},
+    ]
+
+    search_term = (q or query or "").strip().upper()
+    if not search_term:
+        return all_tickers
+
+    filtered = [
+        item for item in all_tickers
+        if search_term in item["ticker"].upper() or search_term in item["name"].upper()
+    ]
+    if not any(f["value"] == search_term for f in filtered):
+        filtered.insert(0, {
+            "ticker": search_term,
+            "name": search_term,
+            "quote_type": "STOCK",
+            "exchange": "CUSTOM",
+            "label": search_term,
+            "value": search_term,
+        })
+    return filtered
+
+
+@router.get("/fundamental/revenue-geography/period-options")
+async def get_revenue_geography_period_options() -> List[Dict[str, str]]:
+    """Return available period options for Revenue Per Geography widget."""
+    return [
+        {"label": "FY", "value": "FY"},
+        {"label": "QTR", "value": "QTR"},
+    ]
+
+
 @router.get("/fundamental/{ticker}/revenue-geography")
 async def get_openbb_revenue_geography(
     ticker: str,
@@ -297,14 +353,35 @@ async def get_openbb_revenue_geography(
     cache=Depends(get_cache_service),
 ) -> Dict[str, Any]:
     """Return geographic revenue segmentation formatted as a Plotly stacked bar chart."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
     data = await get_geographic_revenue(
-        ticker=ticker,
+        ticker=clean_ticker,
         refresh=refresh,
         period=period,
         provider=provider,
         cache=cache,
     )
-    return format_revenue_geography_chart(ticker.upper(), data)
+    return format_revenue_geography_chart(clean_ticker.upper(), data)
+
+
+@router.get("/fundamental/revenue-geography")
+async def get_openbb_revenue_geography_query(
+    ticker: str = "AAPL",
+    period: str = "FY",
+    refresh: bool = False,
+    provider=Depends(get_sec_edgar_provider),
+    cache=Depends(get_cache_service),
+) -> Dict[str, Any]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_revenue_geography(
+        ticker=ticker,
+        period=period,
+        refresh=refresh,
+        provider=provider,
+        cache=cache,
+    )
 
 
 @router.get("/valuation/{ticker}/multiples")

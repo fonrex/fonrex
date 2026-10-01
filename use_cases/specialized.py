@@ -157,7 +157,12 @@ class GetGeographicRevenue:
                 return cached
 
         try:
-            result = await self.provider.fetch_geographic_segments(ticker=ticker)
+            import inspect
+            sig = inspect.signature(self.provider.fetch_geographic_segments)
+            if "period" in sig.parameters:
+                result = await self.provider.fetch_geographic_segments(ticker=ticker, period=period)
+            else:
+                result = await self.provider.fetch_geographic_segments(ticker=ticker)
         except Exception as exc:
             logger.error("Erreur récupération segmentation géographique %s: %s", ticker, exc)
             raise UpstreamFailure(str(exc)) from exc

@@ -306,8 +306,9 @@ class SECEdgarProvider(BaseFinancialProvider):
         self,
         ticker: str,
         num_filings: int = 6,
+        period: str = "FY",
     ) -> Optional[GeographicRevenueResult]:
-        """Fetch historical geographic revenue breakdown from 10-K filings."""
+        """Fetch historical geographic revenue breakdown from 10-K or 10-Q filings."""
         if not ticker:
             return None
         try:
@@ -324,12 +325,19 @@ class SECEdgarProvider(BaseFinancialProvider):
             recent = sub_data.get("filings", {}).get("recent", {})
             forms = recent.get("form", [])
             accns = recent.get("accessionNumber", [])
-            ten_k_indices = [i for i, f in enumerate(forms) if f == "10-K"][:num_filings]
+
+            is_quarterly = (period or "").upper() in ("QTR", "QUARTERLY", "Q")
+            target_form = "10-Q" if is_quarterly else "10-K"
+            filing_indices = [i for i, f in enumerate(forms) if f == target_form][:num_filings]
+            if not filing_indices and is_quarterly:
+                # Fallback to 10-K if 10-Q not found
+                target_form = "10-K"
+                filing_indices = [i for i, f in enumerate(forms) if f == "10-K"][:num_filings]
 
             cik_num = str(int(cik))
             breakdown: Dict[str, Dict[str, float]] = {}
 
-            for idx in ten_k_indices:
+            for idx in filing_indices:
                 accn = accns[idx]
                 accn_clean = accn.replace("-", "")
                 summary_url = (
@@ -375,14 +383,14 @@ class SECEdgarProvider(BaseFinancialProvider):
                 if not html_text:
                     continue
 
-                self._parse_segment_report_html(html_text, breakdown)
+                self._parse_segment_report_html(html_text, breakdown, period=period)
 
             return GeographicRevenueResult(
                 ticker=ticker.upper(),
                 cik=cik,
                 company_name=company_name,
                 currency="USD",
-                period_type="FY",
+                period_type="QTR" if is_quarterly else "FY",
                 breakdown=breakdown,
                 source="SEC EDGAR",
             )
@@ -391,9 +399,12 @@ class SECEdgarProvider(BaseFinancialProvider):
             return None
 
     def _parse_segment_report_html(
-        self, html_text: str, breakdown: Dict[str, Dict[str, float]]
+        self,
+        html_text: str,
+        breakdown: Dict[str, Dict[str, float]],
+        period: str = "FY",
     ) -> None:
-        """Parse 10-K segment details HTML table and populate breakdown dict."""
+        """Parse segment details HTML table and populate breakdown dict."""
         soup = BeautifulSoup(html_text, "html.parser")
         table = soup.find("table", {"class": "report"})
         if not table:
@@ -408,14 +419,21 @@ class SECEdgarProvider(BaseFinancialProvider):
             multiplier = 1_000_000_000
 
         # Date headers
+        is_quarterly = (period or "").upper() in ("QTR", "QUARTERLY", "Q")
         date_headers: List[str] = []
         for tr in table.find_all("tr")[:4]:
             th_cells = tr.find_all("th", {"class": "th"})
             if th_cells:
                 for th in th_cells:
-                    m = re.search(r"(20\d\d)", th.get_text())
-                    if m:
-                        date_headers.append(f"FY {m.group(1)}")
+                    txt = th.get_text()
+                    qm = re.search(r"Q([1-4])\s*(20\d\d)", txt, re.IGNORECASE)
+                    if qm:
+                        date_headers.append(f"Q{qm.group(1)} {qm.group(2)}")
+                    else:
+                        m = re.search(r"(20\d\d)", txt)
+                        if m:
+                            prefix = "QTR" if is_quarterly else "FY"
+                            date_headers.append(f"{prefix} {m.group(1)}")
                 if date_headers:
                     break
 

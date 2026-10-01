@@ -627,7 +627,22 @@
   },
   "fonrex_revenue_geography": {
     "name": "Revenue Per Geography",
-    "description": "Geographic revenue segmentation over fiscal years (stacked bar chart)",
+    "description": "Historical geographic revenue segmentation stacked bar chart with interactive ticker search and period switcher",
+    "category": "Fundamentals",
+    "type": "iframe",
+    "endpoint": "static/revenue_geography.html",
+    "gridData": {
+      "w": 24,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": []
+  },
+  "fonrex_revenue_geography_chart": {
+    "name": "Revenue Per Geography (Chart)",
+    "description": "Geographic revenue segmentation over fiscal years (stacked bar chart endpoint)",
     "category": "Fundamentals",
     "type": "chart",
     "endpoint": "openbb/fundamental/{ticker}/revenue-geography",
@@ -651,7 +666,7 @@
         "value": "FY",
         "label": "Period",
         "type": "text",
-        "description": "Reporting period (FY or quarterly)"
+        "description": "Reporting period (FY or QTR)"
       }
     ]
   },

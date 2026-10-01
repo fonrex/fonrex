@@ -21,6 +21,7 @@ __all__ = [
     "get_valuation_multiples_service",
     "get_dividend_provider",
     "get_earnings_provider",
+    "get_split_provider",
 ]
 
 
@@ -89,5 +90,15 @@ def get_earnings_provider(request: Request):
         db_service = getattr(request.app.state, "db_service", None)
         provider = EarningsProvider(db_service=db_service)
         request.app.state.earnings_provider = provider
+    return provider
+
+
+def get_split_provider(request: Request):
+    provider = getattr(request.app.state, "split_provider", None)
+    if provider is None:
+        from financials.providers.split_provider import SplitProvider
+
+        provider = SplitProvider()
+        request.app.state.split_provider = provider
     return provider
 

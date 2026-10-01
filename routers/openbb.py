@@ -32,6 +32,7 @@ from integrations.openbb.adapters import (
     format_macro_rates_metric,
     format_quote_metric,
     format_revenue_geography_chart,
+    format_stock_splits_table,
     format_technical_chart_overlay,
     format_technical_multi_chart,
     format_valuation_multiples_chart,
@@ -45,6 +46,7 @@ from routers.dependencies import (
     get_ingestion_service,
     get_query_service,
     get_redis_client,
+    get_split_provider,
     get_technical_service,
     get_valuation_multiples_service,
 )
@@ -635,6 +637,38 @@ async def get_openbb_calendar_earnings_query(
 ) -> List[Dict[str, Any]]:
     """Fallback query-parameter route for OpenBB test requests."""
     return await get_openbb_earnings(
+        ticker=ticker, limit=limit, refresh=refresh, provider=provider, cache=cache
+    )
+
+
+@router.get("/splits/{ticker}")
+async def get_openbb_splits(
+    ticker: str,
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_split_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Return historical stock splits formatted as an OpenBB AgGrid table."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    records = await provider.get_stock_splits(
+        ticker=clean_ticker, limit=limit, refresh=refresh, cache=cache
+    )
+    return format_stock_splits_table(records)
+
+
+@router.get("/calendar/splits")
+async def get_openbb_calendar_splits_query(
+    ticker: str = "AAPL",
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_split_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_splits(
         ticker=ticker, limit=limit, refresh=refresh, provider=provider, cache=cache
     )
 

@@ -265,7 +265,22 @@
             "i": "fonrex_dividend_payment",
             "x": 0,
             "y": 10,
-            "w": 24,
+            "w": 14,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_stock_splits",
+            "x": 14,
+            "y": 10,
+            "w": 10,
             "h": 10,
             "state": {
               "params": {
@@ -326,7 +341,8 @@
           "fonrex_revenue_geography",
           "fonrex_valuation_multiples",
           "fonrex_earnings_history",
-          "fonrex_dividend_payment"
+          "fonrex_dividend_payment",
+          "fonrex_stock_splits"
         ]
       }
     ]

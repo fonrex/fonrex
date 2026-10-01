@@ -1024,3 +1024,41 @@ def format_earnings_history_table(records: List[Dict[str, Any]]) -> List[Dict[st
         rows.append(row)
     return rows
 
+
+def format_stock_splits_table(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Format stock split records into OpenBB AgGrid table rows.
+
+    Matches OpenBB 'Stock Splits' table columns:
+    Execution Date | Split From | Split To
+    """
+    rows: List[Dict[str, Any]] = []
+    for r in records:
+        r_dict = _to_dict(r)
+        exec_date = (
+            r_dict.get("execution_date")
+            or r_dict.get("Execution Date")
+            or r_dict.get("date")
+            or r_dict.get("Date")
+            or "N/A"
+        )
+        split_from = (
+            r_dict.get("split_from")
+            if "split_from" in r_dict
+            else (r_dict.get("Split From") if "Split From" in r_dict else 1)
+        )
+        split_to = (
+            r_dict.get("split_to")
+            if "split_to" in r_dict
+            else (r_dict.get("Split To") if "Split To" in r_dict else 1)
+        )
+
+        rows.append(
+            {
+                "Execution Date": exec_date,
+                "Split From": split_from,
+                "Split To": split_to,
+            }
+        )
+    return rows
+
+

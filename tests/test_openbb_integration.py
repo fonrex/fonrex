@@ -107,6 +107,7 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/valuation/{ticker}/multiples",
     "openbb/dividends/{ticker}",
     "openbb/earnings/{ticker}",
+    "openbb/splits/{ticker}",
 ]
 
 
@@ -1010,6 +1011,58 @@ def test_openbb_earnings_endpoint_contract(client):
         assert len(resp_q.json()) == 2
     finally:
         app.state.earnings_provider = orig_provider
+
+
+def test_openbb_splits_endpoint_contract(client):
+    """GET /openbb/splits/{ticker} returns OpenBB AgGrid table contract."""
+    mock_provider = MagicMock()
+    mock_provider.get_stock_splits = AsyncMock(
+        return_value=[
+            {
+                "execution_date": "2020-08-31",
+                "split_from": 1,
+                "split_to": 4,
+                "ratio": 4.0,
+            },
+            {
+                "execution_date": "2014-06-09",
+                "split_from": 1,
+                "split_to": 7,
+                "ratio": 7.0,
+            },
+        ]
+    )
+
+    orig_provider = getattr(app.state, "split_provider", None)
+    app.state.split_provider = mock_provider
+    try:
+        resp = client.get("/openbb/splits/AAPL")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert isinstance(rows, list)
+        assert len(rows) == 2
+
+        # Check row 1
+        r1 = rows[0]
+        assert "Execution Date" in r1
+        assert "Split From" in r1
+        assert "Split To" in r1
+        assert r1["Execution Date"] == "2020-08-31"
+        assert r1["Split From"] == 1
+        assert r1["Split To"] == 4
+
+        # Check row 2
+        r2 = rows[1]
+        assert r2["Execution Date"] == "2014-06-09"
+        assert r2["Split From"] == 1
+        assert r2["Split To"] == 7
+
+        # Also test fallback query endpoint
+        resp_q = client.get("/openbb/calendar/splits?ticker=AAPL")
+        assert resp_q.status_code == 200
+        assert len(resp_q.json()) == 2
+    finally:
+        app.state.split_provider = orig_provider
 
 
 

@@ -50,6 +50,7 @@ directly inside OpenBB.
 | `fonrex_valuation_multiples` | Valuation Multiples | Valuation | chart | Historical valuation multiples (P/E, P/S, P/B, EV/Sales, EV/EBITDA) over FY, QTR, TTM |
 | `fonrex_dividend_payment` | Dividend Payment | Calendar | table | Historical dividend payments with declaration, ex-dividend, record, and payment dates |
 | `fonrex_earnings_history` | Earnings History | Calendar | table | Historical and upcoming earnings reports (Date, Reported EPS, EPS Est., Revenue, Revenue Est., Transcripts) |
+| `fonrex_stock_splits` | Stock Splits | Calendar | table | Historical stock splits and reverse splits with execution dates and split ratios |
 
 ## Pre-assembled Apps
 
@@ -60,7 +61,7 @@ A comprehensive dashboard for analyzing a single ticker:
 - **Technical Analysis** tab: Full interactive TradingView charting with drawing tools and indicators
 - **Comparison Analysis** tab: DCF models comparison & sensitivity matrix
 - **Ownership** tab: SEC insider transactions
-- **Company Calendar** tab: Earnings History (EPS and revenue actual vs estimates) and Dividend Payment calendar
+- **Company Calendar** tab: Earnings History (EPS and revenue actual vs estimates), Dividend Payment calendar, and Stock Splits
 - **Estimates** tab: DCF valuation model with dynamic WACC
 
 ### Fonrex — Screener & Macro

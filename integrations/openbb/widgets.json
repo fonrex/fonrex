@@ -730,5 +730,28 @@
         "description": "Stock ticker (e.g. AAPL, AIR.PA, MSFT)"
       }
     ]
+  },
+  "fonrex_stock_splits": {
+    "name": "Stock Splits",
+    "description": "Historical stock splits and reverse splits with execution dates and split ratios",
+    "category": "Calendar",
+    "type": "table",
+    "endpoint": "openbb/splits/{ticker}",
+    "gridData": {
+      "w": 24,
+      "h": 10
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Stock ticker (e.g. AAPL, AIR.PA, MSFT)"
+      }
+    ]
   }
 }

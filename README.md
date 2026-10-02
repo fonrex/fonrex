@@ -523,6 +523,8 @@ Fonrex integrates natively with [OpenBB Workspace](https://openbb.co) —
 connect your self-hosted instance to access fundamentals, DCF valuations,
 technical indicators and news directly inside OpenBB's dashboard environment.
 
+![OpenBB Workspace Example](static/openBB-Workspace-example.png)
+
 👉 See [integrations/openbb/README.md](integrations/openbb/README.md) for
 setup instructions and the full list of 19 available widgets.
 

@@ -363,6 +363,6 @@ class BaseFinancialProvider(ABC):
             return default
 
 
-# ── Backward compatibility ────────────────────────────────────────────────────
-# All existing providers import BaseProvider from this module.
+# ── Backward compatibility alias ────────────────────────────────────────────────
 BaseProvider = BaseFinancialProvider
+

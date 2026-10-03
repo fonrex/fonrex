@@ -21,6 +21,9 @@ with warnings.catch_warnings():
     from fastapi.staticfiles import StaticFiles
 
 from auth.dependencies import (
+    get_configured_api_keys,
+    get_full_access_api_keys,
+    get_read_only_api_keys,
     is_auth_enforced,
     require_api_key,
 )
@@ -54,6 +57,7 @@ from routers.realtime import router as realtime_router
 from routers.specialized import router as specialized_router
 from routers.technical import router as technical_router
 from routers.valuation import router as valuation_router
+from usage_recorder import UsageRecorder, is_logged_path, stored_ip, stored_user_agent
 from valuation.dcf_service import DCFService
 
 # Logging configuration
@@ -109,7 +113,10 @@ app.include_router(openbb_router)
 
 @app.middleware("http")
 async def api_key_auth_middleware(request: Request, call_next):
-    """Enforces API key authentication on protected routes when configured in environment.
+    """Enforces API key authentication on protected routes.
+
+    Authentication is on by default; it is only skipped when explicitly disabled with
+    ``FONREX_AUTH_REQUIRED=false`` and no API key is configured.
 
     Note: WebSocket connections (e.g. /ws/realtime/{ticker}) do not pass through HTTP
     middleware and enforce API key validation during the WebSocket handshake in their
@@ -144,7 +151,11 @@ async def api_key_auth_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def usage_logging_middleware(request: Request, call_next):
-    """Logs API calls without interrupting the user response."""
+    """Record API calls in the usage log without delaying the response.
+
+    The entry is queued in memory; a background task writes it to the database
+    (see usage_recorder.py).
+    """
     start_time = time.perf_counter()
     status_code = 500
     response = None
@@ -153,26 +164,23 @@ async def usage_logging_middleware(request: Request, call_next):
         response = await call_next(request)
         status_code = response.status_code
     finally:
-        service = None
-        if getattr(request.app.state, "db_available", True) is not False:
-            service = getattr(request.app.state, "db_service", None)
-
-        if service:
-            latency_ms = int((time.perf_counter() - start_time) * 1000)
-            api_key_id = getattr(request.state, "api_key_id", None)
+        recorder = getattr(request.app.state, "usage_recorder", None)
+        path = request.url.path
+        if recorder is not None and is_logged_path(path):
             try:
-                await run_sync(
-                    service.log_usage,
-                    endpoint=request.url.path,
-                    method=request.method,
-                    status_code=status_code,
-                    latency_ms=latency_ms,
-                    api_key_id=api_key_id,
-                    provider_used=getattr(request.state, "provider_used", None),
-                    cache_hit=getattr(request.state, "cache_hit", False),
-                    cost_bucket=getattr(request.state, "cost_bucket", None),
-                    ip_address=request.client.host if request.client else None,
-                    user_agent=request.headers.get("User-Agent"),
+                recorder.record(
+                    {
+                        "endpoint": path[:255],
+                        "method": request.method,
+                        "status_code": status_code,
+                        "latency_ms": int((time.perf_counter() - start_time) * 1000),
+                        "api_key_id": getattr(request.state, "api_key_id", None),
+                        "provider_used": getattr(request.state, "provider_used", None),
+                        "cache_hit": getattr(request.state, "cache_hit", False),
+                        "cost_bucket": getattr(request.state, "cost_bucket", None),
+                        "ip_address": stored_ip(request.client.host if request.client else None),
+                        "user_agent": stored_user_agent(request.headers.get("User-Agent")),
+                    }
                 )
             except Exception as e:
                 logger.warning(f"Usage log skipped: {e}")
@@ -180,79 +188,81 @@ async def usage_logging_middleware(request: Request, call_next):
     return response
 
 
+def usage_log_database(application: FastAPI):
+    """Return the database service the usage log is written to, or None."""
+    if getattr(application.state, "db_available", True) is False:
+        return None
+    return getattr(application.state, "db_service", None)
+
+
 # Redis configuration
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CACHE_TTL = int(os.environ.get("CACHE_TTL", 300))
 
 
+# Providers queried for fundamentals: (public name, module, class).
+PROVIDER_SPECS = (
+    ("ZoneBourse", "financials.providers.ZoneBourse_provider", "ZoneBourseProvider"),
+    ("GoogleFinance", "financials.providers.GoogleFinance_provider", "GoogleFinanceProvider"),
+    ("Boursorama", "financials.providers.boursorama_provider", "BoursoramaProvider"),
+    ("Barrons", "financials.providers.Barrons_provider", "BarronsProvider"),
+    (
+        "wallStreetJournal",
+        "financials.providers.wallStreetJournal_provider",
+        "WallStreetJournalProvider",
+    ),
+    ("Marketwatch", "financials.providers.Marketwatch_provider", "MarketwatchProvider"),
+    ("MorningStar", "financials.providers.MorningStar_provider", "MorningStarProvider"),
+    ("Investing", "financials.providers.Investing_provider", "InvestingProvider"),
+    ("Gurufocus", "financials.providers.Gurufocus_provider", "GurufocusProvider"),
+    ("Fortuneo", "financials.providers.Fortuneo_provider", "FortuneoProvider"),
+    ("BourseDirect", "financials.providers.BourseDirect_provider", "BourseDirectProvider"),
+    ("Msn", "financials.providers.Msn_provider", "MsnProvider"),
+    (
+        "InvestirLesEchos",
+        "financials.providers.InvestirLesEchos_provider",
+        "InvestirLesEchosProvider",
+    ),
+    ("YahooFinance", "financials.providers.yfinance_provider", "YFinanceProvider"),
+)
+
+# Specialised providers: (application state slot, public name, module, class).
+SPECIALIZED_PROVIDER_SPECS = (
+    ("sec_edgar_provider", "SECEdgar", "financials.providers.sec_edgar", "SECEdgarProvider"),
+    ("justetf_provider", "JustETF", "financials.providers.justetf", "JustETFProvider"),
+    ("openfigi_provider", "OpenFIGI", "financials.providers.openfigi", "OpenFIGIProvider"),
+    (
+        "index_provider",
+        "IndexConstituents",
+        "financials.providers.index_constituents",
+        "IndexConstituentsProvider",
+    ),
+)
+
+
 def configure_application_state(application: FastAPI):
     """Configure provider definitions and empty runtime service slots."""
     providers = {}
-    provider_specs = (
-        ("ZoneBourse", "financials.providers.ZoneBourse_provider", "ZoneBourseProvider"),
-        ("GoogleFinance", "financials.providers.GoogleFinance_provider", "GoogleFinanceProvider"),
-        ("Boursorama", "financials.providers.boursorama_provider", "BoursoramaProvider"),
-        ("Barrons", "financials.providers.Barrons_provider", "BarronsProvider"),
-        (
-            "wallStreetJournal",
-            "financials.providers.wallStreetJournal_provider",
-            "WallStreetJournalProvider",
-        ),
-        ("Marketwatch", "financials.providers.Marketwatch_provider", "MarketwatchProvider"),
-        ("MorningStar", "financials.providers.MorningStar_provider", "MorningStarProvider"),
-        ("Investing", "financials.providers.Investing_provider", "InvestingProvider"),
-        ("Gurufocus", "financials.providers.Gurufocus_provider", "GurufocusProvider"),
-        ("Fortuneo", "financials.providers.Fortuneo_provider", "FortuneoProvider"),
-        ("BourseDirect", "financials.providers.BourseDirect_provider", "BourseDirectProvider"),
-        ("Msn", "financials.providers.Msn_provider", "MsnProvider"),
-        (
-            "InvestirLesEchos",
-            "financials.providers.InvestirLesEchos_provider",
-            "InvestirLesEchosProvider",
-        ),
-        ("YahooFinance", "financials.providers.yfinance_provider", "YFinanceProvider"),
-    )
-    for name, module_name, class_name in provider_specs:
+    # A provider that cannot be imported is left out; the reason is kept so that
+    # /health reports it instead of the provider silently disappearing.
+    unavailable = {}
+    for name, module_name, class_name in PROVIDER_SPECS:
         try:
             provider_class = getattr(importlib.import_module(module_name), class_name)
             providers[name] = {"type": "async", "class": provider_class}
             logger.info("✅ Provider Async %s loaded", name)
         except (ImportError, AttributeError) as exc:
+            unavailable[name] = f"{type(exc).__name__}: {exc}"
             logger.warning("⚠️ Provider Async %s unavailable: %s", name, exc)
 
-    specialized_specs = (
-        (
-            "sec_edgar_provider",
-            "SECEdgar",
-            "financials.providers.sec_edgar",
-            "SECEdgarProvider",
-        ),
-        (
-            "justetf_provider",
-            "JustETF",
-            "financials.providers.justetf",
-            "JustETFProvider",
-        ),
-        (
-            "openfigi_provider",
-            "OpenFIGI",
-            "financials.providers.openfigi",
-            "OpenFIGIProvider",
-        ),
-        (
-            "index_provider",
-            "IndexConstituents",
-            "financials.providers.index_constituents",
-            "IndexConstituentsProvider",
-        ),
-    )
-    for state_name, label, module_name, class_name in specialized_specs:
+    for state_name, label, module_name, class_name in SPECIALIZED_PROVIDER_SPECS:
         try:
             provider_class = getattr(importlib.import_module(module_name), class_name)
             setattr(application.state, state_name, provider_class())
             logger.info("✅ Provider %s loaded", label)
         except (ImportError, AttributeError) as exc:
             setattr(application.state, state_name, None)
+            unavailable[label] = f"{type(exc).__name__}: {exc}"
             logger.warning("⚠️ Provider %s unavailable: %s", label, exc)
 
     try:
@@ -261,6 +271,7 @@ def configure_application_state(application: FastAPI):
     except (ImportError, AttributeError):
         application.state.index_name_enum = None
 
+    application.state.providers_unavailable = unavailable
     application.state.providers_available = providers
     application.state.ws_manager = ConnectionManager()
     application.state.db_available = None
@@ -281,6 +292,7 @@ def configure_application_state(application: FastAPI):
         "canary_scheduler",
         "fred_service",
         "validation_layer",
+        "usage_recorder",
     ):
         setattr(application.state, state_name, None)
     application.state.openbb_widgets = {}
@@ -290,8 +302,36 @@ def configure_application_state(application: FastAPI):
 configure_application_state(app)
 
 
+def log_authentication_mode() -> None:
+    """Make the effective authentication mode visible in the startup logs."""
+    if not is_auth_enforced():
+        logger.warning(
+            "⚠️ Authentication is DISABLED (FONREX_AUTH_REQUIRED=false): every route, "
+            "including cache and database administration, is open. Never expose this instance."
+        )
+    elif not get_configured_api_keys():
+        logger.warning(
+            "🔒 Authentication is enforced but no API key is configured: protected routes "
+            "will reject every request. Set FONREX_API_KEY (or FONREX_AUTH_REQUIRED=false "
+            "for local-only use)."
+        )
+    else:
+        full_access, read_only = get_full_access_api_keys(), get_read_only_api_keys()
+        logger.info(
+            "🔒 API key authentication enabled (%d full-access key(s), %d read-only key(s))",
+            len(full_access),
+            len(read_only),
+        )
+        if not full_access:
+            logger.warning(
+                "🔒 Only read-only API keys are configured: administration routes "
+                "(cache, database, ingestion) cannot be called. Set FONREX_API_KEY to use them."
+            )
+
+
 async def startup_event(application: FastAPI):
     """Build process resources and publish them through application state."""
+    log_authentication_mode()
     state = application.state
     state.async_db_resources = AsyncDatabaseResources.create()
     async_resources = state.async_db_resources
@@ -304,6 +344,9 @@ async def startup_event(application: FastAPI):
     state.db_available = await run_sync(state.db_service.check_connection)
     if state.db_available:
         state.db_available = await run_sync(state.db_service.check_migrations)
+
+    state.usage_recorder = UsageRecorder(lambda: usage_log_database(application))
+    await state.usage_recorder.start()
 
     state.redis_client = redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
     state.cache_service = await run_sync(CacheService, redis_url=REDIS_URL, ttl=CACHE_TTL)
@@ -428,6 +471,12 @@ async def shutdown_event(application: FastAPI):
             await state.realtime_worker.stop()
         except Exception as exc:
             logger.warning("Error stopping RealtimeWorker: %s", exc)
+    if state.usage_recorder:
+        try:
+            # Writes what is still pending, before the database service is closed.
+            await state.usage_recorder.stop()
+        except Exception as exc:
+            logger.warning("Error stopping UsageRecorder: %s", exc)
     if state.query_service:
         await state.query_service.close()
     if state.redis_client:
@@ -456,6 +505,7 @@ async def shutdown_event(application: FastAPI):
         "async_session_factory",
         "async_db_resources",
         "fred_service",
+        "usage_recorder",
     ):
         setattr(state, state_name, None)
     state.openbb_widgets = {}

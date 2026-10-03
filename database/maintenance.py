@@ -7,9 +7,15 @@ from sqlalchemy import desc, func
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.component import DatabaseComponent
+from database.price_series import session_date, session_timestamp
 from models import Asset, AssetListing, IngestLog, PriceEOD, PriceIntraday, UsageLog
 
 logger = logging.getLogger(__name__)
+
+# Bounds of a cleanup. Below the minimum, one call deletes (almost) the whole
+# price history; the maximum only keeps the date computation within the calendar.
+MIN_DAYS_TO_KEEP = 30
+MAX_DAYS_TO_KEEP = 36500
 
 
 class DatabaseMaintenance(DatabaseComponent):
@@ -131,10 +137,10 @@ class DatabaseMaintenance(DatabaseComponent):
                 tickers_data.append(
                     {
                         "ticker": r.ticker,
-                        "earliest_date": r.earliest_date.date().isoformat()
+                        "earliest_date": session_date(r.earliest_date).isoformat()
                         if r.earliest_date
                         else None,
-                        "latest_date": r.latest_date.date().isoformat() if r.latest_date else None,
+                        "latest_date": session_date(r.latest_date).isoformat() if r.latest_date else None,
                         "total_records": r.total_records,
                         "last_sync_at": log.created_at.isoformat() if log else None,
                         "last_sync_success": (log.status == "success") if log else True,
@@ -148,57 +154,67 @@ class DatabaseMaintenance(DatabaseComponent):
         finally:
             session.close()
 
-    def cleanup_old_data(self, days_to_keep=730):
+    def cleanup_old_data(self, days_to_keep=730, dry_run=False):
         """
-        Nettoie les anciennes données.
+        Delete the prices older than ``days_to_keep`` days and the logs older than 30 days.
 
-        Args:
-            days_to_keep (int): Nombre de jours de données à conserver
+        ``days_to_keep`` is bounded (``MIN_DAYS_TO_KEEP`` .. ``MAX_DAYS_TO_KEEP``):
+        zero or a negative number would delete the whole price history in one call.
+        With ``dry_run`` nothing is deleted: the result counts what would be.
 
         Returns:
             tuple: (success, result_dict, error_msg)
         """
-        return self._cleanup_old_data(days_to_keep)
+        return self._cleanup_old_data(days_to_keep, dry_run)
 
-    def _cleanup_old_data(self, days_to_keep=730):
+    def _cleanup_old_data(self, days_to_keep=730, dry_run=False):
         """Implémentation interne du nettoyage."""
+        if (
+            isinstance(days_to_keep, bool)
+            or not isinstance(days_to_keep, int)
+            or not MIN_DAYS_TO_KEEP <= days_to_keep <= MAX_DAYS_TO_KEEP
+        ):
+            return (
+                False,
+                None,
+                f"days_to_keep must be a whole number between {MIN_DAYS_TO_KEEP} "
+                f"and {MAX_DAYS_TO_KEEP}",
+            )
+
         session = self.get_session()
         try:
-            cutoff_date = datetime.combine(
-                date.today() - timedelta(days=days_to_keep), datetime.min.time()
-            )
-
-            # Supprimer les données anciennes de prices_eod
-            deleted_count = (
-                session.query(PriceEOD)
-                .filter(PriceEOD.timestamp < cutoff_date)
-                .delete(synchronize_session=False)
-            )
-
-            # Supprimer les logs anciens (garder 30 jours)
+            # A bar is dated by its session, at midnight UTC: the limit is too.
+            cutoff_date = session_timestamp(date.today() - timedelta(days=days_to_keep))
+            # Logs: 30 days are kept.
             log_cutoff = datetime.now(UTC) - timedelta(days=30)
-            deleted_usage_logs = (
-                session.query(UsageLog)
-                .filter(UsageLog.created_at < log_cutoff)
-                .delete(synchronize_session=False)
-            )
 
-            deleted_ingest_logs = (
-                session.query(IngestLog)
-                .filter(IngestLog.created_at < log_cutoff)
-                .delete(synchronize_session=False)
-            )
+            old_prices = session.query(PriceEOD).filter(PriceEOD.timestamp < cutoff_date)
+            old_usage_logs = session.query(UsageLog).filter(UsageLog.created_at < log_cutoff)
+            old_ingest_logs = session.query(IngestLog).filter(IngestLog.created_at < log_cutoff)
 
-            session.commit()
+            if dry_run:
+                deleted_count = old_prices.count()
+                deleted_usage_logs = old_usage_logs.count()
+                deleted_ingest_logs = old_ingest_logs.count()
+            else:
+                deleted_count = old_prices.delete(synchronize_session=False)
+                deleted_usage_logs = old_usage_logs.delete(synchronize_session=False)
+                deleted_ingest_logs = old_ingest_logs.delete(synchronize_session=False)
+                session.commit()
 
             logger.info(
-                f"🧹 Nettoyage BDD: {deleted_count} prix EOD, {deleted_usage_logs} logs d'usage, et {deleted_ingest_logs} logs d'ingestion supprimés"
+                "🧹 Nettoyage BDD%s: %s prix EOD, %s logs d'usage, %s logs d'ingestion",
+                " (simulation)" if dry_run else "",
+                deleted_count,
+                deleted_usage_logs,
+                deleted_ingest_logs,
             )
 
             return (
                 True,
                 {
-                    "status": "success",
+                    # With "dry_run" the counts are what a real run would delete.
+                    "status": "dry_run" if dry_run else "success",
                     "deleted_records": deleted_count,
                     "deleted_requests": deleted_usage_logs,
                     "deleted_usage_logs": deleted_usage_logs,

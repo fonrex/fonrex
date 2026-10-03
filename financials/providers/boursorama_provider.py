@@ -1,13 +1,14 @@
-import asyncio
 import logging
 import random
+import re
 from typing import List, Optional
 
 import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import parse_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class BoursoramaProvider(BaseProvider):
         2. Fetch de la page
         3. Parsing
         """
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             try:
                 # 1. Obtenir l'URL de la fiche valeur
                 url = await self._search_symbol(client, ticker)
@@ -63,7 +64,7 @@ class BoursoramaProvider(BaseProvider):
                 logger.error(f"Erreur globale pour {ticker}: {e}")
                 return None
 
-    async def _search_symbol(self, client: httpx.AsyncClient, symbol: str) -> Optional[str]:
+    async def _search_symbol(self, client: ProviderSession, symbol: str) -> Optional[str]:
         """Recherche l'URL de la fiche valeur."""
         url = self.SEARCH_URL.format(symbol=symbol)
 
@@ -90,7 +91,7 @@ class BoursoramaProvider(BaseProvider):
             logger.error(f"Erreur recherche symbole {symbol}: {e}")
             return None
 
-    async def _fetch_page(self, client: httpx.AsyncClient, url: str) -> Optional[HTMLParser]:
+    async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:
         """Récupère le HTML d'une page."""
         response = await self._fetch_with_retry(client, url)
         if response:
@@ -98,33 +99,21 @@ class BoursoramaProvider(BaseProvider):
         return None
 
     async def _fetch_with_retry(
-        self, client: httpx.AsyncClient, url: str
+        self, client: ProviderSession, url: str
     ) -> Optional[httpx.Response]:
-        """Fetch avec retries exponentielles et rotation User-Agent."""
-        for attempt in range(self.max_retries):
-            headers = {"User-Agent": random.choice(USER_AGENTS)}
-            try:
-                response = await client.get(url, headers=headers)
+        """Récupère une page ; reprises, pauses et limites viennent de la session commune."""
+        try:
+            # Un nouveau User-Agent est tiré à chaque tentative.
+            response = await client.get(
+                url, headers=lambda: {"User-Agent": random.choice(USER_AGENTS)}
+            )
+        except Exception as e:
+            logger.error(f"Erreur réseau pour {url}: {e}")
+            return None
 
-                if response.status_code == 200:
-                    return response
-
-                if response.status_code in [429, 503]:
-                    wait_time = (2**attempt) + random.uniform(0, 1)
-                    logger.warning(
-                        f"Status {response.status_code} pour {url}. Retry dans {wait_time:.2f}s"
-                    )
-                    await asyncio.sleep(wait_time)
-                    continue
-
-                logger.error(f"Erreur HTTP {response.status_code} pour {url}")
-                return None
-
-            except httpx.RequestError as e:
-                logger.error(f"Erreur réseau pour {url}: {e}")
-                if attempt == self.max_retries - 1:
-                    return None
-                await asyncio.sleep(1)
+        if response.status_code == 200:
+            return response
+        logger.error(f"Erreur HTTP {response.status_code} pour {url}")
         return None
 
     def _parse_page(self, parser: HTMLParser, ticker: str) -> FinancialMetrics:
@@ -134,7 +123,10 @@ class BoursoramaProvider(BaseProvider):
         # Extraction ISIN
         isin_node = parser.css_first(".c-faceplate__isin")
         if isin_node:
-            metrics.isin = isin_node.text(strip=True).replace("ISIN :", "").strip()
+            isin_text = isin_node.text(strip=True).replace("ISIN :", "").strip()
+            # The heading also carries the ticker: "NL0000235190 AIR".
+            isin_match = re.search(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b", isin_text)
+            metrics.isin = isin_match.group(0) if isin_match else isin_text
 
         # Extraction Éligibilité (PEA, SRD, etc.)
         # Sélecteur basé sur structure commune: souvent dans le header ou 'c-list-info'
@@ -187,10 +179,23 @@ class BoursoramaProvider(BaseProvider):
         return metrics
 
     def _extract_eligibility(self, parser: HTMLParser) -> List[str]:
+        # Fiche valeur : l'entrée "Éligibilité" de la liste d'infos porte un badge par dispositif
+        # (SRD, PEA, ...).
+        for item in parser.css(".c-list-info__item"):
+            heading = item.css_first(".c-list-info__heading")
+            if heading and "ligibilit" in heading.text():
+                badges = [badge.text(strip=True) for badge in item.css(".c-link-bevel")]
+                badges = list(dict.fromkeys(badge for badge in badges if badge))
+                if badges:
+                    return badges
+
         items = []
-        # Recherche des badges d'éligibilité (PEA, SRD, etc.)
-        # On évite les éléments contenant des scripts ou trop longs pour être des labels
+        # Repli : recherche des badges d'éligibilité (PEA, SRD, etc.) dans les listes.
+        # On évite les menus de navigation et les éléments contenant des scripts ou trop
+        # longs pour être des labels.
         for node in parser.css("li"):
+            if "c-navigation" in (node.attributes.get("class") or ""):
+                continue
             if node.css_first("script") or node.css_first("style"):
                 continue
             text = node.text(strip=True)
@@ -198,7 +203,7 @@ class BoursoramaProvider(BaseProvider):
                 if len(text) < 50:
                     items.append(text)
 
-        return list(set(items))
+        return list(dict.fromkeys(items))
 
     def _extract_text_by_label(
         self, parser: HTMLParser, label_part: str, parent_css: str = ""
@@ -243,7 +248,11 @@ class BoursoramaProvider(BaseProvider):
                 metrics.pe_ratio = val
             elif "Rendement" in row_title:
                 metrics.dividend_yield = val
-            elif "BPA" in row_title or "BNA" in row_title:
+            elif (
+                "BPA" in row_title
+                or "BNA" in row_title
+                or "Bénéfice net par action" in row_title
+            ):
                 metrics.eps = val
             elif "Résultat net" in row_title:
                 metrics.net_income = val
@@ -254,9 +263,5 @@ class BoursoramaProvider(BaseProvider):
                 pass
 
     def _clean_number(self, text: str) -> Optional[float]:
-        try:
-            # Nettoyage format français "1 234,56" -> "1234.56"
-            clean = text.replace(" ", "").replace(",", ".").replace("%", "")
-            return float(clean)
-        except ValueError:
-            return None
+        """A figure of the page (French format, abbreviated amounts, sign)."""
+        return parse_number(text, decimal=",")

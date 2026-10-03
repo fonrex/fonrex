@@ -27,6 +27,7 @@ from fastapi import HTTPException
 
 from cache.technical import RedisTechnicalCache
 from schemas.technical import IndicatorResult
+from technical.contracts import MarketSeries
 from technical.errors import (
     InsufficientHistoricalData,
     InvalidIndicator,
@@ -364,19 +365,23 @@ class TestBollingerBands:
 # ── Service Tests ─────────────────────────────────────────────────────────────
 
 
+SERIES = MarketSeries(asset_id=1, listing_id=1)
+
+
 class TestTechnicalIndicatorService:
     @pytest.mark.asyncio
     async def test_market_data_is_accessed_through_injected_port(self):
         frame = make_ohlcv_df(20)
         market_data = MagicMock()
-        market_data.resolve_asset_id = AsyncMock(return_value=42)
+        series = MarketSeries(asset_id=42, listing_id=7)
+        market_data.resolve_series = AsyncMock(return_value=series)
         market_data.load_ohlcv = AsyncMock(return_value=frame)
         service = TechnicalIndicatorService(market_data)
 
-        assert await service._resolve_asset_id("AAPL") == 42
-        assert await service._load_ohlcv_dataframe(42, "1D", limit=20) is frame
-        market_data.resolve_asset_id.assert_awaited_once_with("AAPL")
-        market_data.load_ohlcv.assert_awaited_once_with(42, "1D", None, None, 20)
+        assert await service._resolve_series("AAPL") == series
+        assert await service._load_ohlcv_dataframe(series, "1D", limit=20) is frame
+        market_data.resolve_series.assert_awaited_once_with("AAPL")
+        market_data.load_ohlcv.assert_awaited_once_with(series, "1D", None, None, 20)
 
     @pytest.mark.asyncio
     async def test_unknown_indicator_raises_400(self):
@@ -396,7 +401,7 @@ class TestTechnicalIndicatorService:
         df_small = make_ohlcv_df(5, trend="flat")
 
         with (
-            patch.object(service, "_resolve_asset_id", return_value=1),
+            patch.object(service, "_resolve_series", return_value=SERIES),
             patch.object(service, "_load_ohlcv_dataframe", return_value=df_small),
         ):
             with pytest.raises(InsufficientHistoricalData) as exc:
@@ -416,7 +421,7 @@ class TestTechnicalIndicatorService:
         os.environ["TECHNICAL_CACHE_ENABLED"] = "true"
         try:
             with (
-                patch.object(service, "_resolve_asset_id", return_value=1),
+                patch.object(service, "_resolve_series", return_value=SERIES),
                 patch.object(service, "_load_ohlcv_dataframe", return_value=df),
             ):
                 # First call: calculates
@@ -445,7 +450,7 @@ class TestTechnicalIndicatorService:
         df = make_ohlcv_df(100, trend="up")
 
         with (
-            patch.object(service, "_resolve_asset_id", return_value=1),
+            patch.object(service, "_resolve_series", return_value=SERIES),
             patch.object(service, "_load_ohlcv_dataframe", return_value=df) as mock_load,
         ):
             res = await service.calculate_multi(
@@ -491,7 +496,7 @@ class TestTechnicalIndicatorService:
     @pytest.mark.asyncio
     async def test_missing_ticker_raises_domain_error(self):
         service = TechnicalIndicatorService(None)
-        with patch.object(service, "_resolve_asset_id", return_value=None):
+        with patch.object(service, "_resolve_series", return_value=None):
             with pytest.raises(TechnicalDataNotFound) as exc:
                 await service.calculate("UNKNOWN", "rsi")
         assert exc.value.detail == "Ticker not found: UNKNOWN"

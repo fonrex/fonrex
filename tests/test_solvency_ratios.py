@@ -44,8 +44,7 @@ def test_solvency_ratios_calculation(enricher, mock_session):
     mock_query = mock_session.query.return_value
     mock_filter_stmt = mock_query.filter_by.return_value
     mock_order = mock_filter_stmt.order_by.return_value
-    mock_limit = mock_order.limit.return_value
-    mock_limit.all.return_value = [stmt]
+    mock_order.all.return_value = [stmt]
     
     # Second query for highlights
     mock_filter_hl = mock_session.query.return_value.filter_by.return_value

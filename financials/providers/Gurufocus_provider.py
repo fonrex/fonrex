@@ -3,12 +3,11 @@ import logging
 import re
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.exchange import GURUFOCUS_TO_YAHOO
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +35,7 @@ class GurufocusProvider(BaseProvider):
         """
         Récupère les métriques financières en résolvant d'abord le ticker via l'API de recherche.
         """
-        async with httpx.AsyncClient(
-            timeout=self.timeout, follow_redirects=True, headers=self.headers
-        ) as client:
+        async with self._session(headers=self.headers) as client:
             # 1. Résolution du ticker GuruFocus (ex: TFI.PA -> XPAR:TFI)
             gf_ticker = await self._resolve_gf_ticker(client, ticker)
             if not gf_ticker:
@@ -73,7 +70,7 @@ class GurufocusProvider(BaseProvider):
 
             return metrics
 
-    async def _resolve_gf_ticker(self, client: httpx.AsyncClient, ticker: str) -> Optional[str]:
+    async def _resolve_gf_ticker(self, client: ProviderSession, ticker: str) -> Optional[str]:
         """
         Résout le ticker GuruFocus en utilisant l'API de recherche et le mapping d'exchange.
         Ex: TFI.PA -> XPAR:TFI
@@ -103,7 +100,7 @@ class GurufocusProvider(BaseProvider):
         return None
 
     async def _search_symbol(
-        self, client: httpx.AsyncClient, query: str, target_suffix: Optional[str]
+        self, client: ProviderSession, query: str, target_suffix: Optional[str]
     ) -> Optional[str]:
         """
         Interroge l'API de recherche GuruFocus et sélectionne le meilleur résultat.
@@ -146,7 +143,7 @@ class GurufocusProvider(BaseProvider):
         return None
 
     async def _fetch_score(
-        self, client: httpx.AsyncClient, ticker: str, term_code: str, term_name: str
+        self, client: ProviderSession, ticker: str, term_code: str, term_name: str
     ) -> Optional[float]:
         """
         Extrait une valeur numérique depuis une page de définition de terme GuruFocus.

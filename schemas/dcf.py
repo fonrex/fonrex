@@ -11,6 +11,14 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 from schemas.macro import SolvencyRatios
+from settings import env_decimal, env_int
+
+# Defaults of a DCF request, tunable through the environment (see .env.example).
+DEFAULT_PROJECTION_YEARS = env_int("DCF_DEFAULT_PROJECTION_YEARS", 5, minimum=3, maximum=10)
+# A ratio: 0.025 for 2.5 %.
+DEFAULT_TERMINAL_GROWTH_RATE = env_decimal(
+    "DCF_TERMINAL_GROWTH_RATE", "0.025", minimum="-1", maximum="1"
+)
 
 
 class WACCInput(BaseModel):
@@ -32,10 +40,14 @@ class DCFRequest(BaseModel):
 
     models: List[Literal["fcf", "eps", "ddm"]] = Field(default_factory=lambda: ["fcf"])
     projection_years: int = Field(
-        5, ge=3, le=10, description="Nombre d'années de projection (3 à 10)"
+        DEFAULT_PROJECTION_YEARS,
+        ge=3,
+        le=10,
+        description="Nombre d'années de projection (3 à 10)",
     )
     terminal_growth_rate: Decimal = Field(
-        Decimal("0.025"), description="Taux de croissance terminal (ex: 0.025 pour 2.5%)"
+        DEFAULT_TERMINAL_GROWTH_RATE,
+        description="Taux de croissance terminal (ex: 0.025 pour 2.5%)",
     )
     wacc_params: Optional[WACCInput] = Field(None, description="Paramètres de WACC personnalisés")
     fcf_growth_override: Optional[Decimal] = Field(

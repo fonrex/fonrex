@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, Response
 
 from cache.service import CacheService
 from concurrency import run_sync
+from database.price_series import session_date
 from database.query import QueryService
 from database.service import DatabaseService
 from historical.ingestion_service import HistoricalIngestionService
@@ -151,7 +152,7 @@ def _format_records(rows, descending: bool):
     for row in sorted(rows, key=lambda item: item.get("time"), reverse=descending):
         timestamp = row.get("time")
         displayed_date = (
-            timestamp.strftime("%Y-%m-%d")
+            session_date(timestamp).isoformat()
             if isinstance(timestamp, (date, datetime))
             else str(timestamp)
         )
@@ -186,6 +187,16 @@ async def get_eod(
     order: str = Query("a"),
     from_date: Optional[str] = Query(None, alias="from"),
     to_date: Optional[str] = Query(None, alias="to"),
+    currency: Optional[str] = Query(
+        None,
+        max_length=10,
+        description="Currency of the listing, when several listings share the ticker",
+    ),
+    exchange: Optional[str] = Query(
+        None,
+        max_length=50,
+        description="Exchange of the listing, when several listings share the ticker",
+    ),
     query_service: QueryService = Depends(get_query_service),
     ingestion_service: HistoricalIngestionService = Depends(get_ingestion_service),
     cache: Optional[CacheService] = Depends(get_cache_service),
@@ -205,6 +216,8 @@ async def get_eod(
             order=order,
             from_date=from_date,
             to_date=to_date,
+            currency=(currency or "").upper(),
+            exchange=(exchange or "").upper(),
         )
         cached = await run_sync(cache.get, cache_key)
         if cached:
@@ -224,8 +237,11 @@ async def get_eod(
         start_date=start_date,
         end_date=end_date,
         interval=resolution,
+        currency=currency,
+        exchange=exchange,
     )
     source = "database"
+    ingest_error = None
     if not rows:
         result = await ingestion_service.ingest(
             ticker=ticker,
@@ -233,21 +249,27 @@ async def get_eod(
             source="auto",
             from_date=start_date,
             to_date=end_date,
+            currency=currency,
+            exchange=exchange,
         )
+        ingest_error = result.error
         if result.status in {"success", "up_to_date"}:
             rows = await query_service.get_history(
                 ticker,
                 start_date=start_date,
                 end_date=end_date,
                 interval=resolution,
+                currency=currency,
+                exchange=exchange,
             )
             source = result.source_used or "yfinance"
 
     if not rows:
-        return JSONResponse(
-            status_code=404,
-            content={"error": "No data found", "message": f"Aucune donnée trouvée pour {ticker}"},
-        )
+        content = {"error": "No data found", "message": f"Aucune donnée trouvée pour {ticker}"}
+        if ingest_error:
+            # Why nothing could be fetched (e.g. no verified symbol for the listing).
+            content["reason"] = ingest_error
+        return JSONResponse(status_code=404, content=content)
 
     records = await run_sync(_format_records, rows, descending=order == "d")
     request.state.cache_hit = False

@@ -15,9 +15,9 @@ class FakeRedis:
     def get(self, key):
         return self.store.get(key)
 
-    def setex(self, key, ttl, value):
+    def set(self, key, value, ex=None):
         self.store[key] = value
-        self.ttls[key] = ttl
+        self.ttls[key] = ex
 
     def keys(self, pattern):
         prefix = pattern.rstrip("*")
@@ -75,6 +75,65 @@ class CacheServiceTest(unittest.TestCase):
         self.assertEqual(deleted_count, 1)
         self.assertIsNone(error)
         self.assertIsNone(cache.get(key))
+
+
+class CacheEntriesAreDataTest(unittest.TestCase):
+    """An entry of the cache is read as JSON, never executed."""
+
+    def test_pickled_entry_is_ignored_and_runs_nothing(self):
+        """A pickled entry used to be rebuilt: whoever writes to Redis ran code in the API."""
+        import os
+        import pickle
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as folder:
+            trace = os.path.join(folder, "created-by-the-entry")
+
+            class Payload:
+                def __reduce__(self):
+                    # What unpickling calls: here, creating a folder.
+                    return (os.mkdir, (trace,))
+
+            cache = CacheServiceStub()
+            cache.client.store["eod:AAPL:5d"] = pickle.dumps(Payload())
+
+            self.assertIsNone(cache.get("eod:AAPL:5d"))
+            self.assertFalse(os.path.exists(trace))
+
+    def test_unreadable_entries_are_a_miss(self):
+        cache = CacheServiceStub()
+        for value in (b"\xff\xfe not text", b"not json", "also not json", b""):
+            cache.client.store["key"] = value
+            self.assertIsNone(cache.get("key"))
+
+    def test_json_entries_are_read_as_bytes_or_text(self):
+        cache = CacheServiceStub()
+        cache.client.store["bytes"] = b'{"close": 31.378}'
+        cache.client.store["text"] = '{"close": 31.378}'
+
+        self.assertEqual(cache.get("bytes"), {"close": 31.378})
+        self.assertEqual(cache.get("text"), {"close": 31.378})
+
+    def test_application_code_never_imports_pickle(self):
+        import ast
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        offenders = []
+        for path in root.rglob("*.py"):
+            relative = path.relative_to(root)
+            if relative.parts[0] in {"tests", ".venv", "venv", "path", "node_modules"}:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    names = [node.module or ""]
+                if any(name.split(".")[0] in {"pickle", "cPickle", "dill", "shelve"} for name in names):
+                    offenders.append(f"{relative}:{node.lineno}")
+
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
 from database.component import DatabaseComponent
+from database.price_series import session_date
 from models import Asset, AssetListing, IngestLog, PriceEOD, UsageLog
 
 logger = logging.getLogger(__name__)
@@ -686,10 +687,10 @@ class AssetRepository(DatabaseComponent):
 
             stats = {
                 "ticker": asset.ticker,
-                "earliest_date": stats_row.earliest_date.date().isoformat()
+                "earliest_date": session_date(stats_row.earliest_date).isoformat()
                 if stats_row.earliest_date
                 else None,
-                "latest_date": stats_row.latest_date.date().isoformat()
+                "latest_date": session_date(stats_row.latest_date).isoformat()
                 if stats_row.latest_date
                 else None,
                 "total_records": stats_row.total_records,

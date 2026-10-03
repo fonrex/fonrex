@@ -24,16 +24,29 @@ def _session_adapter() -> tuple[SqlAlchemyMonitoringRepository, MagicMock]:
 @pytest.mark.asyncio
 async def test_get_recent_closing_prices_maps_query_result():
     repository, session = _session_adapter()
-    asset_result = MagicMock()
-    asset_result.scalar.return_value = 7
+    series_result = MagicMock()
+    series_result.first.return_value = (7, 3)  # (asset_id, listing_id) of the ticker
     prices_result = MagicMock()
     prices_result.scalars.return_value.all.return_value = [Decimal("10.5"), None]
-    session.execute.side_effect = [asset_result, prices_result]
+    session.execute.side_effect = [series_result, prices_result]
 
     prices = await repository.get_recent_closing_prices("AAPL", datetime.now(timezone.utc))
 
     assert prices == [10.5]
     assert session.execute.await_count == 2
+    # The prices read are those of the listing the ticker designates.
+    price_statement = str(session.execute.await_args_list[1].args[0])
+    assert "prices_eod.asset_listing_id = :asset_listing_id_1" in price_statement
+
+
+@pytest.mark.asyncio
+async def test_get_recent_closing_prices_of_an_unknown_ticker():
+    repository, session = _session_adapter()
+    nothing = MagicMock()
+    nothing.first.return_value = None
+    session.execute.return_value = nothing
+
+    assert await repository.get_recent_closing_prices("NOPE", datetime.now(timezone.utc)) is None
 
 
 @pytest.mark.asyncio

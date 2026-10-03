@@ -2,11 +2,11 @@ import logging
 import re
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import parse_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class InvestirLesEchosProvider(BaseProvider):
         self._dynamic_token: Optional[str] = None
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             search_result = await self._search_result(client, ticker)
             if not search_result:
                 return None
@@ -46,7 +46,7 @@ class InvestirLesEchosProvider(BaseProvider):
                 logger.error(f"InvestirLesEchos fetch error: {e}")
             return metrics
 
-    async def _get_dynamic_token(self, client: httpx.AsyncClient) -> Optional[str]:
+    async def _get_dynamic_token(self, client: ProviderSession) -> Optional[str]:
         if self._dynamic_token:
             return self._dynamic_token
 
@@ -69,7 +69,7 @@ class InvestirLesEchosProvider(BaseProvider):
 
         return None
 
-    async def _search_result(self, client: httpx.AsyncClient, query: str) -> Optional[dict]:
+    async def _search_result(self, client: ProviderSession, query: str) -> Optional[dict]:
         token = await self._get_dynamic_token(client)
         if not token:
             return None
@@ -95,7 +95,7 @@ class InvestirLesEchosProvider(BaseProvider):
             logger.warning(f"InvestirLesEchos search error for {query}: {e}")
         return None
 
-    async def _search_url(self, client: httpx.AsyncClient, query: str) -> Optional[str]:
+    async def _search_url(self, client: ProviderSession, query: str) -> Optional[str]:
         search_result = await self._search_result(client, query)
         return search_result["url"] if search_result else None
 
@@ -199,17 +199,5 @@ class InvestirLesEchosProvider(BaseProvider):
         return metrics
 
     def _clean_number(self, text: str) -> Optional[float]:
-        try:
-            # Nettoyage format français "293,320 $" -> "293.32"
-            clean = (
-                text.replace(" ", "")
-                .replace(",", ".")
-                .replace("%", "")
-                .replace("$", "")
-                .replace("€", "")
-                .replace("+", "")
-                .strip()
-            )
-            return float(clean)
-        except (ValueError, TypeError):
-            return None
+        """French format: "293,320 $", "+1,99 %"."""
+        return parse_number(text, decimal=",")

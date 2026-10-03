@@ -12,6 +12,8 @@ from typing import Dict, List, Literal, Optional
 from sqlalchemy import select
 
 from concurrency import run_sync
+from database.price_series import latest_daily_close_of_asset
+from financials.fiscal_years import FiscalYear, fiscal_years
 from models import (
     AnalystRatings,
     Asset,
@@ -29,8 +31,18 @@ from schemas.dcf import (
     WACCInput,
     WACCResult,
 )
+from settings import env_decimal
 
 logger = logging.getLogger(__name__)
+
+# Fiscal years a valuation looks back on (growth rates, averages).
+FISCAL_YEARS = 5
+
+# Equity risk premium used when the request does not override it.
+# A ratio: 0.055 for 5.5 % (DCF_EQUITY_RISK_PREMIUM in .env.example).
+DEFAULT_EQUITY_RISK_PREMIUM = env_decimal(
+    "DCF_EQUITY_RISK_PREMIUM", "0.055", minimum="0", maximum="1"
+)
 
 
 class DCFService:
@@ -54,6 +66,27 @@ class DCFService:
         if denom == 0:
             return fallback
         return num / denom
+
+    @staticmethod
+    def _annual_statements(session, asset_id: int) -> List[FiscalYear]:
+        """The last fiscal years of an instrument, most recent first, one row per year.
+
+        A fiscal year is stored as three rows (income statement, balance sheet,
+        cash flow). They are put together here: taking the five latest *rows*
+        gave less than two fiscal years, and a "latest statement" that was one
+        statement out of three — the debt without the interest, or the reverse.
+        """
+        rows = (
+            session.execute(
+                select(FinancialStatement)
+                .where(FinancialStatement.asset_id == asset_id)
+                .where(FinancialStatement.period_type == "annual")
+                .order_by(FinancialStatement.period_end.desc())
+            )
+            .scalars()
+            .all()
+        )
+        return fiscal_years(rows, limit=FISCAL_YEARS)
 
     async def compute_dcf(self, ticker: str, request: DCFRequest) -> DCFResult:
         """Run the synchronous SQLAlchemy valuation workflow off the event loop."""
@@ -132,15 +165,8 @@ class DCFService:
             if not highlights:
                 raise ValueError(f"FundamentalsHighlights data missing for {ticker}.")
 
-            # Statements (last 5 years)
-            stmt_stmt = (
-                select(FinancialStatement)
-                .where(FinancialStatement.asset_id == asset.id)
-                .where(FinancialStatement.period_type == "annual")
-                .order_by(FinancialStatement.period_end.desc())
-                .limit(5)
-            )
-            statements = session.execute(stmt_stmt).scalars().all()
+            # Statements (last 5 fiscal years)
+            statements = self._annual_statements(session, asset.id)
             if not statements:
                 raise ValueError(f"Annual financial statements missing for {ticker}.")
 
@@ -160,16 +186,8 @@ class DCFService:
             if highlights.pe_ratio and highlights.eps_trailing:
                 current_price = self._dec(highlights.pe_ratio) * self._dec(highlights.eps_trailing)
 
-            # Use the most recent price_eod if available
-            from models import PriceEOD
-
-            stmt_price = (
-                select(PriceEOD.close)
-                .where(PriceEOD.asset_id == asset.id)
-                .order_by(PriceEOD.timestamp.desc())
-                .limit(1)
-            )
-            latest_price_db = session.execute(stmt_price).scalar()
+            # Use the most recent daily close of the instrument's main listing if available
+            latest_price_db = session.execute(latest_daily_close_of_asset(asset.id)).scalar()
             if latest_price_db:
                 current_price = self._dec(latest_price_db)
 
@@ -281,7 +299,7 @@ class DCFService:
     def _compute_wacc(
         self,
         highlights: FundamentalsHighlights,
-        statements: List[FinancialStatement],
+        statements: List[FiscalYear],
         params: Optional[WACCInput],
         rf_fred: Optional[Decimal] = None,
         rf_source: Optional[str] = None,
@@ -291,7 +309,7 @@ class DCFService:
         risk_free = rf_fred if rf_fred is not None else Decimal("0.04")
         current_rf_source = rf_source if rf_source else "env_fallback"
         
-        erp = Decimal("0.055")  # 5.5%
+        erp = DEFAULT_EQUITY_RISK_PREMIUM
         beta = self._dec(highlights.beta) if highlights.beta else Decimal("1.0")
 
         # User overrides
@@ -380,7 +398,7 @@ class DCFService:
 
     def _dcf_fcf(
         self,
-        statements: List[FinancialStatement],
+        statements: List[FiscalYear],
         wacc: Decimal,
         shares_outstanding: int,
         projection_years: int,
@@ -517,7 +535,7 @@ class DCFService:
 
     def _dcf_eps(
         self,
-        statements: List[FinancialStatement],
+        statements: List[FiscalYear],
         trend_dict: Dict,
         wacc: Decimal,
         cost_of_equity: Decimal,
@@ -632,7 +650,7 @@ class DCFService:
     def _dcf_ddm(
         self,
         highlights: FundamentalsHighlights,
-        statements: List[FinancialStatement],
+        statements: List[FiscalYear],
         cost_of_equity: Decimal,
         projection_years: int,
         terminal_growth: Decimal,
@@ -773,15 +791,8 @@ class DCFService:
             if not highlights:
                 raise ValueError(f"Highlights missing for {ticker}.")
 
-            # Statements
-            stmt_stmt = (
-                select(FinancialStatement)
-                .where(FinancialStatement.asset_id == asset.id)
-                .where(FinancialStatement.period_type == "annual")
-                .order_by(FinancialStatement.period_end.desc())
-                .limit(5)
-            )
-            statements = session.execute(stmt_stmt).scalars().all()
+            # Statements (last 5 fiscal years)
+            statements = self._annual_statements(session, asset.id)
             if not statements:
                 raise ValueError(f"Statements missing for {ticker}.")
 
@@ -793,15 +804,7 @@ class DCFService:
             if highlights.pe_ratio and highlights.eps_trailing:
                 current_price = self._dec(highlights.pe_ratio) * self._dec(highlights.eps_trailing)
 
-            from models import PriceEOD
-
-            stmt_price = (
-                select(PriceEOD.close)
-                .where(PriceEOD.asset_id == asset.id)
-                .order_by(PriceEOD.timestamp.desc())
-                .limit(1)
-            )
-            latest_price_db = session.execute(stmt_price).scalar()
+            latest_price_db = session.execute(latest_daily_close_of_asset(asset.id)).scalar()
             if latest_price_db:
                 current_price = self._dec(latest_price_db)
 

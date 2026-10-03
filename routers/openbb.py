@@ -51,7 +51,13 @@ from routers.fundamentals import (
 )
 from routers.historical import get_ticker_history
 from routers.macro import get_fred_service, get_macro_rates
-from routers.news import get_news_feed, get_news_service, get_ticker_news
+from routers.news import (
+    NEWS_DEFAULT_LIMIT,
+    NEWS_MAX_LIMIT,
+    get_news_feed,
+    get_news_service,
+    get_ticker_news,
+)
 from routers.realtime import (
     get_quote,
     get_quotes_batch,
@@ -77,6 +83,7 @@ from routers.valuation import (
     get_dcf_service,
     get_dcf_valuation,
 )
+from schemas.technical import TECHNICAL_DEFAULT_LIMIT
 
 router = APIRouter(prefix="/openbb", tags=["OpenBB Adapters"])
 
@@ -89,10 +96,17 @@ router = APIRouter(prefix="/openbb", tags=["OpenBB Adapters"])
 @router.get("/quote/{ticker}")
 async def get_openbb_quote(
     ticker: str,
+    request: Request,
     worker=Depends(get_realtime_worker),
 ) -> List[Dict[str, Any]]:
-    """Return quote snapshot formatted as OpenBB metric tiles."""
-    quote_snapshot = await get_quote(ticker=ticker, subscribe_if_missing=True, worker=worker)
+    """Return quote snapshot formatted as OpenBB metric tiles.
+
+    Like ``GET /quote``, it changes nothing (AGENTS.md, rule 7), whatever the key:
+    the realtime stream of a ticker is started by ``POST /realtime/subscribe``.
+    """
+    quote_snapshot = await get_quote(
+        ticker=ticker, request=request, subscribe_if_missing=False, worker=worker
+    )
     return format_quote_metric(quote_snapshot)
 
 
@@ -118,11 +132,15 @@ async def get_openbb_eod(
     order: str = Query("a"),
     from_date: Optional[str] = Query(None, alias="from"),
     to_date: Optional[str] = Query(None, alias="to"),
+    currency: Optional[str] = Query(None, max_length=10),
+    exchange: Optional[str] = Query(None, max_length=50),
     query_service: QueryService = Depends(get_query_service),
     ingestion_service: HistoricalIngestionService = Depends(get_ingestion_service),
     cache=Depends(get_cache_service),
 ) -> Dict[str, Any]:
     """Return EOD price history as a Plotly Candlestick chart."""
+    # The route function is called directly: every parameter is passed, a
+    # missing one would receive its `Query(...)` declaration instead of a value.
     response = await get_eod(
         ticker=ticker,
         request=request,
@@ -131,6 +149,8 @@ async def get_openbb_eod(
         order=order,
         from_date=from_date,
         to_date=to_date,
+        currency=currency,
+        exchange=exchange,
         query_service=query_service,
         ingestion_service=ingestion_service,
         cache=cache,
@@ -153,6 +173,8 @@ async def get_openbb_history(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     interval: str = Query("1D", pattern="^(daily|weekly|monthly|1D|1W|1M)$"),
+    currency: Optional[str] = Query(None, max_length=10),
+    exchange: Optional[str] = Query(None, max_length=50),
     query_service: QueryService = Depends(get_query_service),
     redis_client=Depends(get_redis_client),
     cache_service=Depends(get_cache_service),
@@ -163,6 +185,8 @@ async def get_openbb_history(
         start_date=start_date,
         end_date=end_date,
         interval=interval,
+        currency=currency,
+        exchange=exchange,
         query_service=query_service,
         redis_client=redis_client,
         cache_service=cache_service,
@@ -210,7 +234,7 @@ async def get_openbb_technical(
     resolution: str = "1D",
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
-    limit: int = 500,
+    limit: int = TECHNICAL_DEFAULT_LIMIT,
     service=Depends(get_technical_service),
 ) -> Dict[str, Any]:
     """Return single technical indicator formatted as a Plotly line chart."""
@@ -238,7 +262,7 @@ async def get_openbb_technical_multi(
     resolution: str = "1D",
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
-    limit: int = 500,
+    limit: int = TECHNICAL_DEFAULT_LIMIT,
     service=Depends(get_technical_service),
 ) -> Dict[str, Any]:
     """Return multiple technical indicators formatted as a Plotly line chart."""
@@ -423,7 +447,7 @@ async def get_openbb_dcf_sensitivity(
 
 @router.get("/news/feed")
 async def get_openbb_news_feed(
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=NEWS_DEFAULT_LIMIT, ge=1, le=NEWS_MAX_LIMIT),
     language: Optional[str] = None,
     tickers: Optional[str] = None,
     service=Depends(get_news_service),
@@ -442,7 +466,7 @@ async def get_openbb_news_feed(
 @router.get("/news/{ticker}")
 async def get_openbb_news(
     ticker: str,
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=NEWS_DEFAULT_LIMIT, ge=1, le=NEWS_MAX_LIMIT),
     language: Optional[str] = None,
     force_refresh: bool = False,
     service=Depends(get_news_service),

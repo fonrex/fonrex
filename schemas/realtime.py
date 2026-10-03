@@ -83,6 +83,7 @@ class WebSocketMessage(BaseModel):
     """
     Format standardisé des messages WebSocket Fonrex → Client.
     type : "tick" | "snapshot" | "error" | "subscribed" | "unsubscribed" | "pong"
+           | "not_streaming" (read-only key on a ticker that is not streamed)
     """
 
     type: str

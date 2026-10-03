@@ -22,7 +22,9 @@ from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_DATABASE_URL = "******localhost:5432/fonrex"
+# The local database of ``.env.example`` and ``docker-compose.yml``, as in
+# ``database/query.py``. ``tests/test_zipline_bundle.py`` keeps them identical.
+_DEFAULT_DATABASE_URL = "postgresql://fonrex:fonrex_password@localhost:5432/fonrex"
 
 # Canonical daily resolution used everywhere in FonRex.
 DAILY_RESOLUTION = "1D"
@@ -78,6 +80,16 @@ def _to_pd_timestamp(value: date | datetime | pd.Timestamp) -> pd.Timestamp:
     if ts.tzinfo is not None:
         ts = ts.tz_convert("UTC").tz_localize(None)
     return ts.normalize()
+
+
+def _session_bound(session: pd.Timestamp) -> datetime:
+    """Bound of a query on ``prices_eod.time``.
+
+    A bar is stored at midnight UTC of its session date: the bound is sent as
+    an explicit UTC instant, so the comparison does not depend on the time
+    zone of the database session.
+    """
+    return session.tz_localize("UTC").to_pydatetime()
 
 
 class FonRexBundleDataSource:
@@ -145,7 +157,7 @@ class FonRexBundleDataSource:
         end_ts = _to_pd_timestamp(end_session)
         listings = self._fetch_listings(start_ts, end_ts)
         for sid, listing in enumerate(listings):
-            frame = self._fetch_bars(listing["asset_id"], start_ts, end_ts)
+            frame = self._fetch_bars(listing["asset_listing_id"], start_ts, end_ts)
             if frame.empty:
                 logger.info(
                     "Skipping %s (asset_id=%s): no EOD rows in [%s, %s]",
@@ -184,13 +196,15 @@ class FonRexBundleDataSource:
         """Return the ranked listing chosen per asset for the requested window.
 
         FonRex may expose several listings per asset (primary + dual-listed
-        variants). The bundle picks the primary listing when available and
-        falls back to the lowest ``asset_listings.id`` otherwise so that
-        ``sid`` allocation stays deterministic across runs.
+        variants), each with its own price series. The bundle keeps one listing
+        per asset among those that have prices in the window: the primary
+        listing when available, the lowest ``asset_listings.id`` otherwise, so
+        that ``sid`` allocation stays deterministic across runs and the series
+        of two listings (two currencies) are never mixed.
         """
         params: dict[str, object] = {
-            "start_session": start_session.to_pydatetime(),
-            "end_session": end_session.to_pydatetime() + pd.Timedelta(days=1),
+            "start_session": _session_bound(start_session),
+            "end_session": _session_bound(end_session + pd.Timedelta(days=1)),
             "resolution": self._resolution,
         }
         ticker_filter = ""
@@ -215,10 +229,10 @@ class FonRexBundleDataSource:
                             al.id
                     ) AS rank
                 FROM assets a
-                LEFT JOIN asset_listings al ON al.asset_id = a.id
+                JOIN asset_listings al ON al.asset_id = a.id
                 WHERE EXISTS (
                     SELECT 1 FROM prices_eod p
-                    WHERE p.asset_id = a.id
+                    WHERE p.asset_listing_id = al.id
                       AND p.resolution = :resolution
                       AND p.time >= :start_session
                       AND p.time <  :end_session
@@ -243,7 +257,7 @@ class FonRexBundleDataSource:
 
     def _fetch_bars(
         self,
-        asset_id: int,
+        listing_id: int,
         start_session: pd.Timestamp,
         end_session: pd.Timestamp,
     ) -> pd.DataFrame:
@@ -266,7 +280,7 @@ class FonRexBundleDataSource:
                 adj_close,
                 volume
             FROM prices_eod
-            WHERE asset_id = :asset_id
+            WHERE asset_listing_id = :listing_id
               AND resolution = :resolution
               AND time >= :start_session
               AND time <  :end_session
@@ -274,10 +288,10 @@ class FonRexBundleDataSource:
             """
         )
         params = {
-            "asset_id": asset_id,
+            "listing_id": listing_id,
             "resolution": self._resolution,
-            "start_session": start_session.to_pydatetime(),
-            "end_session": end_session.to_pydatetime() + pd.Timedelta(days=1),
+            "start_session": _session_bound(start_session),
+            "end_session": _session_bound(end_session + pd.Timedelta(days=1)),
         }
         with self._engine.connect() as connection:
             rows = connection.execute(query, params).mappings().all()

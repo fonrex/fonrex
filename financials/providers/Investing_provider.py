@@ -1,11 +1,11 @@
 import logging
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import find_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class InvestingProvider(BaseProvider):
         self.timeout = timeout
 
     async def get_financials(self, identifier: str) -> Optional[FinancialMetrics]:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             search_result = self._direct_search_result(identifier)
             if not search_result:
                 search_result = await self._search_result(client, identifier)
@@ -127,7 +127,7 @@ class InvestingProvider(BaseProvider):
                 setattr(metrics, field, value)
         return metrics
 
-    async def _search_result(self, client: httpx.AsyncClient, query: str) -> Optional[dict]:
+    async def _search_result(self, client: ProviderSession, query: str) -> Optional[dict]:
         try:
             resp = await client.get(self.SEARCH_API, params={"q": query})
             if resp.status_code == 200:
@@ -151,12 +151,8 @@ class InvestingProvider(BaseProvider):
             label = dt.text(strip=True)
             dd = dt.next
             if dd and dd.tag == "dd":
-                val_text = dd.text(strip=True)
-                import re
-
-                val_nums = re.findall(r"(\d+\.?\d*)", val_text)
-                if val_nums:
-                    val = float(val_nums[0])
+                val = find_number(dd.text(strip=True))
+                if val is not None:
                     if "P/E Ratio" in label:
                         metrics.pe_ratio = val
                     elif "EPS" in label:

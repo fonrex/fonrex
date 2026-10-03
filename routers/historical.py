@@ -57,6 +57,8 @@ async def post_historical_ingest(
     force_refresh: bool = False,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
+    currency: Optional[str] = Query(None, max_length=10, description="Currency of the listing"),
+    exchange: Optional[str] = Query(None, max_length=50, description="Exchange of the listing"),
     service: HistoricalIngestionService = Depends(get_ingestion_service),
 ):
     return await service.ingest(
@@ -66,6 +68,8 @@ async def post_historical_ingest(
         force_refresh=force_refresh,
         from_date=from_date,
         to_date=to_date,
+        currency=currency,
+        exchange=exchange,
     )
 
 
@@ -98,6 +102,8 @@ async def get_ticker_history(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     interval: str = Query("1D", pattern="^(daily|weekly|monthly|1D|1W|1M)$"),
+    currency: Optional[str] = Query(None, max_length=10, description="Currency of the listing"),
+    exchange: Optional[str] = Query(None, max_length=50, description="Exchange of the listing"),
     query_service: QueryService = Depends(get_query_service),
     redis_client=Depends(get_redis_client),
     cache_service: Optional[CacheService] = Depends(get_cache_service),
@@ -114,7 +120,9 @@ async def get_ticker_history(
         "1M": "1M",
     }
     normalized = aliases.get(interval.strip(), "1D")
-    cache_key = f"history:{symbol}:{normalized}:{start_date}:{end_date}"
+    listing_choice = f"{(currency or '').upper()}:{(exchange or '').upper()}"
+    # Upper case, as the ingestion looks the entries up to drop them.
+    cache_key = f"history:{symbol.upper()}:{normalized}:{start_date}:{end_date}:{listing_choice}"
 
     if redis_client:
         try:
@@ -124,7 +132,9 @@ async def get_ticker_history(
         except (RedisError, json.JSONDecodeError, TypeError, UnicodeError) as exc:
             logger.warning("History cache read failed for %s: %s", cache_key, exc)
 
-    data = await query_service.get_history(symbol, start_date, end_date, interval)
+    data = await query_service.get_history(
+        symbol, start_date, end_date, interval, currency=currency, exchange=exchange
+    )
 
     response = {
         "ticker": symbol,

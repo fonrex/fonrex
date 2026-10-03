@@ -1,0 +1,25 @@
+{
+  "provider": "Boursorama",
+  "ticker": "AIR",
+  "source_url": "https://www.boursorama.com/cours/1rPAIR/",
+  "captured_on": "2026-10-03",
+  "expected": {
+    "dividend_yield": 1.49,
+    "eligibility": [
+      "SRD",
+      "PEA",
+      "BoursoVie Lux",
+      "CTO Business",
+      "22H"
+    ],
+    "eps": 6.89,
+    "esg_co2": "10,5",
+    "esg_controversy": "Modéré",
+    "esg_negative_impact": "2/23",
+    "esg_positive_impact": "0/12",
+    "esg_score": "20,4/100 (moyen)",
+    "isin": "NL0000235190",
+    "pe_ratio": 31.27
+  },
+  "known_gaps": {}
+}

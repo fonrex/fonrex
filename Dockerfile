@@ -19,10 +19,11 @@ RUN sed -i 's/deb.debian.org/ftp.fr.debian.org/g' /etc/apt/sources.list.d/debian
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python dependencies inside virtual env
-COPY requirements.txt .
-RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies inside virtual env: the exact versions recorded
+# in the lock file, each checked against its hash. Two builds of the same
+# commit therefore contain the same packages (refresh the lock with `make lock`).
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # ==========================================
 # 2. Runner Stage (Lightweight production image)
@@ -55,9 +56,12 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy application code with correct ownership directly (prevents layer duplication)
 COPY --chown=fonrex:fonrex . .
 
-# Convert line endings and make entrypoint executable
+# Convert line endings, make entrypoint executable and create the directories
+# written at runtime (Compose mounts volumes over them)
 RUN sed -i 's/\r$//' entrypoint.sh && \
-    chmod +x entrypoint.sh
+    chmod +x entrypoint.sh && \
+    mkdir -p logs static/logos && \
+    chown fonrex:fonrex logs static static/logos
 
 # Switch to non-root user
 USER fonrex

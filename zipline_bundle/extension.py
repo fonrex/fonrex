@@ -8,7 +8,7 @@ so the ``fonrex`` bundle becomes discoverable from the ``zipline`` CLI:
     mkdir -p ~/.zipline
     cp zipline_bundle/extension.py ~/.zipline/extension.py
 
-    export DATABASE_URL="postgresql://fonrex:fonrex@localhost:5432/fonrex"
+    export DATABASE_URL="postgresql://fonrex:fonrex_password@localhost:5432/fonrex"
     zipline ingest -b fonrex
     zipline bundles
 

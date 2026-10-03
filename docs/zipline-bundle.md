@@ -44,7 +44,7 @@ zipline bundles
 ## Ingest data
 
 ```bash
-export DATABASE_URL="postgresql://fonrex:fonrex@localhost:5432/fonrex"
+export DATABASE_URL="postgresql://fonrex:fonrex_password@localhost:5432/fonrex"
 zipline ingest -b fonrex
 ```
 
@@ -95,7 +95,7 @@ The extension file honours the following environment variables:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DATABASE_URL` | `postgresql://fonrex:fonrex@localhost:5432/fonrex` | SQLAlchemy URL used by the bundle to read `prices_eod`. Async URLs (`postgresql+asyncpg://`) are auto-normalised. |
+| `DATABASE_URL` | `postgresql://fonrex:fonrex_password@localhost:5432/fonrex` | SQLAlchemy URL used by the bundle to read `prices_eod`. Async URLs (`postgresql+asyncpg://`) are auto-normalised. |
 | `FONREX_BUNDLE_NAME` | `fonrex` | Bundle name registered with Zipline. |
 | `FONREX_BUNDLE_TICKERS` | *(empty)* | Comma-separated whitelist. Empty means ingest every asset with EOD rows in the ingest window. |
 | `FONREX_BUNDLE_CALENDAR` | `NYSE` | Trading calendar name. See below. |

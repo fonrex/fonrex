@@ -2,13 +2,14 @@ import asyncio
 import logging
 import random
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import httpx
 from selectolax.parser import HTMLParser, Node
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import parse_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class ZoneBourseProvider(BaseProvider):
         """
         Fetches financial data for a given ticker or ISIN.
         """
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             try:
                 # 1. Search for the security URL
                 url = await self._search_symbol(client, ticker)
@@ -70,7 +71,7 @@ class ZoneBourseProvider(BaseProvider):
                 logger.debug(traceback.format_exc())
                 return None
 
-    async def _search_symbol(self, client: httpx.AsyncClient, symbol: str) -> Optional[str]:
+    async def _search_symbol(self, client: ProviderSession, symbol: str) -> Optional[str]:
         """
         Searches for the symbol/ISIN using the internal async search API and returns the profile URL.
         """
@@ -147,7 +148,7 @@ class ZoneBourseProvider(BaseProvider):
             logger.error(f"Error searching symbol {symbol}: {e}")
             return None
 
-    async def _fetch_page(self, client: httpx.AsyncClient, url: str) -> Optional[HTMLParser]:
+    async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:
         """Fetches the page content and returns a parser."""
         response = await self._fetch_with_retry(client, url)
         if response:
@@ -155,48 +156,27 @@ class ZoneBourseProvider(BaseProvider):
         return None
 
     async def _fetch_with_retry(
-        self, client: httpx.AsyncClient, url: str
+        self, client: ProviderSession, url: str
     ) -> Optional[httpx.Response]:
-        """Executes request with retry logic, backoff, and UA rotation."""
-        for attempt in range(self.max_retries):
-            # Rotate User-Agent
-            headers = {
+        """Fetch a page; retries, pauses and limits come from the shared session."""
+
+        def headers() -> dict:
+            # Called at each attempt: the User-Agent rotates between retries.
+            return {
                 "User-Agent": random.choice(USER_AGENTS),
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.5",
             }
 
-            try:
-                # Use semaphore if we were calling this rapidly, but here we just do one request sequence per get_financials.
-                logger.debug(f"Fetching {url} (Attempt {attempt + 1}/{self.max_retries})")
-                response = await client.get(url, headers=headers)
+        try:
+            response = await client.get(url, headers=headers)
+        except Exception as e:
+            logger.error(f"Network error for {url}: {e}")
+            return None
 
-                if response.status_code == 200:
-                    return response
-
-                # Handle Rate Limits and Server Errors
-                if response.status_code in [429, 503, 502, 504]:
-                    wait_time = (2**attempt) + random.uniform(0.5, 1.5)
-                    logger.warning(
-                        f"Status {response.status_code}. Retrying in {wait_time:.2f}s..."
-                    )
-                    await asyncio.sleep(wait_time)
-                    continue
-
-                # Handle other client errors (404, etc) - No retry
-                if 400 <= response.status_code < 500:
-                    logger.warning(f"Client error {response.status_code} for {url}. No retry.")
-                    return None
-
-            except (httpx.RequestError, httpx.TimeoutException) as e:
-                logger.warning(f"Network error: {e}. Retrying...")
-                if attempt < self.max_retries - 1:
-                    wait_time = (2**attempt) + random.uniform(0.5, 1.5)
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.error(f"Max retries reached for {url}")
-                    return None
-
+        if response.status_code == 200:
+            return response
+        logger.warning(f"Status {response.status_code} for {url}")
         return None
 
     def _parse_page(self, parser: HTMLParser, ticker_input: str, url: str) -> FinancialMetrics:
@@ -212,7 +192,8 @@ class ZoneBourseProvider(BaseProvider):
             # Header often contains the name
             h1 = parser.css_first("h1")
             if h1:
-                metrics.name = h1.text(strip=True)
+                # The quote page heading reads "Cours <company name>".
+                metrics.name = re.sub(r"^Cours\s+", "", h1.text(strip=True))
 
             # Extract ISIN - usually labeled
             # Try to find text "ISIN:" nearby
@@ -282,108 +263,98 @@ class ZoneBourseProvider(BaseProvider):
     def _extract_financial_table_data(self, parser: HTMLParser, metrics: FinancialMetrics):
         """
         Scans all tables for financial keywords and extracts data.
+
+        For each metric the first matching row wins (current year or estimate).
         """
         for table in parser.css("table"):
-            rows = table.css("tr")
-            if not rows:
-                continue
+            for row in table.css("tr"):
+                for label, value_cells in self._row_pairs(row):
+                    value = self._find_first_number(value_cells)
+                    if value is not None:
+                        self._assign_metric(metrics, label.lower(), value)
 
-            # Check header to see if it's a financial table (Years?)
-            # Heuristic: headers look like years (2023, 2024...)
+    @staticmethod
+    def _row_pairs(row: Node) -> List[Tuple[str, List[Node]]]:
+        """Splits a table row into (label, value cells) pairs.
 
-            for row in rows:
-                cells = row.css("td")
-                header = row.css_first("th")
+        ZoneBourse serves two layouts:
+        - label in the first cell (<th> or <td>), values in the following <td> cells;
+        - label in a <td>, values in the following <th> cells, with possibly several
+          label/value pairs on the same row (valuation block, financial estimates).
+        """
+        cells = [cell for cell in row.iter() if cell.tag in ("td", "th")]
+        if not cells:
+            return []
 
-                # Determine label
-                label = ""
-                if header:
-                    label = header.text(strip=True)
-                elif cells:
-                    label = cells[0].text(strip=True)  # First cell effectively header
-                else:
-                    continue
+        if cells[0].tag == "td" and any(cell.tag == "th" for cell in cells):
+            pairs: List[Tuple[str, List[Node]]] = []
+            for cell in cells:
+                if cell.tag == "td":
+                    pairs.append((cell.text(strip=True), []))
+                elif pairs:
+                    pairs[-1][1].append(cell)
+            return [(label, values) for label, values in pairs if label and values]
 
-                if not label:
-                    continue
+        label = cells[0].text(strip=True)
+        values = [cell for cell in cells[1:] if cell.tag == "td"]
+        return [(label, values)] if label else []
 
-                # Get the first numeric value
-                # We iterate values to find the first valid number (often current year/estimate)
-                idx_offset = 0 if header else 1  # If first cell was label, skip it
+    @staticmethod
+    def _assign_metric(metrics: FinancialMetrics, label_lower: str, value: float) -> None:
+        """Maps a row label to a metric; an already extracted metric is kept."""
+        if "chiffre d'affaires" in label_lower or "net sales" in label_lower:
+            field = "revenue"
+        elif "résultat net" in label_lower or "net income" in label_lower:
+            field = "net_income"
+        elif re.search(r"\b(bna|bpa|eps)\b", label_lower):
+            field = "eps"
+        elif re.search(r"\bper\b|p/e", label_lower):
+            field = "pe_ratio"
+        elif "rendement" in label_lower or "yield" in label_lower:
+            # Returned as displayed, i.e. as a percentage (see monitoring/units.py).
+            field = "dividend_yield"
+        elif "ebitda" in label_lower:
+            field = "ebitda"
+        elif "marge d'exploitation" in label_lower or "operating margin" in label_lower:
+            field = "operating_margin"
+        elif "marge nette" in label_lower or "net margin" in label_lower:
+            field = "profit_margin"
+        else:
+            return
 
-                relevant_cells = row.css("td")[idx_offset:] if header else cells[1:]
-
-                # Helper to set if not already set
-                current_val = self._find_first_number(relevant_cells)
-
-                if current_val is not None:
-                    label_lower = label.lower()
-
-                    if "chiffre d'affaires" in label_lower or "net sales" in label_lower:
-                        metrics.revenue = current_val
-                    elif "résultat net" in label_lower or "net income" in label_lower:
-                        metrics.net_income = current_val
-                    elif "bna" in label_lower or "bpa" in label_lower or "eps" in label_lower:
-                        metrics.eps = current_val
-                    elif "per" in label_lower or "p/e" in label_lower:
-                        metrics.pe_ratio = current_val
-                    elif "rendement" in label_lower or "yield" in label_lower:
-                        # Sometimes yield is %, handle in helper
-                        metrics.dividend_yield = current_val  # Assuming handled in cleaning
-                    elif "ebitda" in label_lower:
-                        metrics.ebitda = current_val
-                    elif "dette nette" in label_lower or "net debt" in label_lower:
-                        # Mapping to debt_to_equity if strictly ratio, but here it's likely absolute.
-                        # FinancialMetrics has debt_to_equity.
-                        # We might need to compute it or find the ratio line.
-                        pass
-                    elif "marge d'exploitation" in label_lower or "operating margin" in label_lower:
-                        metrics.operating_margin = current_val
-                    elif "marge nette" in label_lower or "net margin" in label_lower:
-                        metrics.profit_margin = current_val
+        if getattr(metrics, field, None) is None:
+            setattr(metrics, field, value)
 
     def _find_first_number(self, cells: List[Node]) -> Optional[float]:
         """Iterates cells to find the first valid float."""
         for cell in cells:
-            txt = cell.text(strip=True)
-            val = self._clean_number(txt)
+            val = self._cell_number(cell)
             if val is not None:
                 return val
         return None
 
+    def _cell_number(self, cell: Node) -> Optional[float]:
+        """Reads the number of a value cell.
+
+        Amounts are rendered once per currency (<span class="efd_EUR">,
+        <span class="efd_USD c-none">, ...): only the visible one is read, from
+        its exact ``title`` value when available.
+        """
+        variants = cell.css("span[class*='efd_']")
+        if not variants:
+            return self._clean_number(cell.text(strip=True))
+
+        visible = next(
+            (v for v in variants if "c-none" not in (v.attributes.get("class") or "")),
+            variants[0],
+        )
+        exact = visible.css_first("span[title]")
+        if exact:
+            value = self._clean_number(exact.attributes.get("title") or "")
+            if value is not None:
+                return value
+        return self._clean_number(visible.text(strip=True))
+
     def _clean_number(self, text: str) -> Optional[float]:
-        """Converts French/US number formats to float."""
-        if not text or text == "-":
-            return None
-        try:
-            # Remove currency symbols and percentages
-            clean = re.sub(r"[€$%\sA-Za-z]", "", text)
-            # Replace comma with dot for decimals (French format handle)
-            # But be careful with thousands separators.
-            # If text was "1 234,56", after remove space: "1234,56" -> replace , with . -> 1234.56
-            # If text was "1,234.56" (US), after remove space: "1,234.56" -> remove , -> 1234.56
-
-            # Simple heuristic for ZoneBourse (usually French format with spaces and commas)
-            # Replaces spaces first.
-            clean = clean.replace(",", ".")
-
-            # Handle multiple dots?
-            if clean.count(".") > 1:
-                # Possible thousands separator used as dot?
-                # or just remove all but last.
-                pass
-
-            if clean:
-                return float(clean)
-        except ValueError:
-            pass
-        return None
-
-    def _extract_number_from_text(self, text: str) -> Optional[float]:
-        """Extracts the first number found in a text string."""
-        if not text:
-            return None
-        matches = re.findall(r"(\d+[.,]\d+)", text)
-        if matches:
-            return self._clean_number(matches[0])
-        return None
+        """French format, abbreviated amounts included: "80,95 Md", "25,5x", "1,81 %"."""
+        return parse_number(text, decimal=",")

@@ -101,6 +101,189 @@ def test_to_eodhd_pydantic_handling():
     assert formatted["SharesStats"]["PercentInsiders"] == 0.01
 
 
+# Yahoo payload of Apple on 4 October 2026 (the fields the document reads).
+YAHOO_AAPL = {
+    "symbol": "AAPL",
+    "marketCap": 4869931925504,
+    "trailingPE": 38.31114,
+    "dividendYield": 0.32,  # percent
+    "dividendRate": 1.08,
+    "payoutRatio": 0.1204,
+    "trailingEps": 8.71,
+}
+
+
+def test_yahoo_dividend_yield_is_rendered_as_a_ratio():
+    """Yahoo publishes 0.32 for 0.32 %: copied as is, the document said 32 %."""
+    formatted = FinancialsFormatter.to_eodhd({"YahooFinance": YAHOO_AAPL})
+
+    assert formatted["Highlights"]["DividendYield"] == 0.0032
+    assert formatted["SplitsDividends"]["ForwardAnnualDividendYield"] == 0.0032
+    assert formatted["SplitsDividends"]["PayoutRatio"] == 0.1204
+
+
+def test_each_figure_names_its_source():
+    results = {
+        "highlights": {
+            "fetched_at": "2026-10-01T06:00:00+00:00",
+            "pe_ratio": 37.0,
+            "peg_ratio": 2.1,
+            "market_cap": Decimal("4800000000000"),
+        },
+        "YahooFinance": YAHOO_AAPL,
+        "Barrons": {"pe_ratio": 38.25, "eps": 8.72, "dividend_yield": 0.32},
+    }
+
+    formatted = FinancialsFormatter.to_eodhd(results)
+
+    # The answer of this request first: a stored figure is an older answer.
+    assert formatted["Highlights"]["PERatio"] == 38.31114
+    assert formatted["Highlights"]["MarketCapitalization"] == 4869931925504
+    # What Yahoo did not give this time comes from the stored figures, dated.
+    assert formatted["Highlights"]["PEGRatio"] == 2.1
+    assert formatted["Sources"]["Highlights"] == {
+        "MarketCapitalization": "YahooFinance",
+        "PERatio": "YahooFinance",
+        "PEGRatio": "database (2026-10-01)",
+        "DividendShare": "YahooFinance",
+        "DividendYield": "YahooFinance",
+        "EarningsShare": "YahooFinance",
+        "DilutedEpsTTM": "YahooFinance",
+    }
+    assert formatted["Sources"]["Valuation"] == {"TrailingPE": "YahooFinance"}
+    # A figure nobody gave has no source.
+    assert formatted["Highlights"]["BookValue"] is None
+    assert "BookValue" not in formatted["Sources"]["Highlights"]
+
+
+def test_stored_figures_answer_when_yahoo_is_not_asked():
+    """A listing without a verified Yahoo symbol still shows what the database holds."""
+    results = {
+        "highlights": {"pe_ratio": 37.0, "dividend_yield": Decimal("0.0032"), "beta": 1.1},
+        "YahooFinance": {"error": "No Yahoo symbol quoted in CHF"},
+    }
+
+    formatted = FinancialsFormatter.to_eodhd(results)
+
+    assert formatted["Highlights"]["PERatio"] == 37.0
+    assert formatted["Highlights"]["DividendYield"] == Decimal("0.0032")
+    assert formatted["Sources"]["Technicals"] == {"Beta": "database"}
+
+
+def test_scraped_figures_fill_what_yahoo_does_not_give():
+    """Without Yahoo, the trailing figures of the scraped pages are used, as ratios."""
+    results = {
+        "YahooFinance": {"error": "No Yahoo symbol quoted in EUR"},
+        "GoogleFinance": {"pe_ratio": 25.21, "eps": 7.51, "revenue": 17830000000.0},
+        "Barrons": {"error": "Provider timeout", "pe_ratio": 1.0},
+        "Marketwatch": {"pe_ratio": 25.3, "eps": 7.5, "dividend_yield": 1.45},
+        # Estimates for the current fiscal year: another quantity, never a fallback.
+        "Boursorama": {"pe_ratio": 31.27, "eps": 6.89, "dividend_yield": 1.49},
+        "ZoneBourse": {"pe_ratio": 25.5, "dividend_yield": 1.81, "revenue": 80945151250.0},
+    }
+
+    formatted = FinancialsFormatter.to_eodhd(results)
+
+    assert formatted["Highlights"]["PERatio"] == 25.21
+    assert formatted["Valuation"]["TrailingPE"] == 25.21
+    assert formatted["Highlights"]["EarningsShare"] == 7.51
+    # 1.45 displayed in percent on the page, 0.0145 in the document.
+    assert formatted["Highlights"]["DividendYield"] == 0.0145
+    assert formatted["Sources"]["Highlights"] == {
+        "PERatio": "GoogleFinance",
+        "EarningsShare": "GoogleFinance",
+        "DividendYield": "Marketwatch",
+    }
+    # Revenue of the last quarter (GoogleFinance) is not the revenue of twelve months.
+    assert formatted["Highlights"]["RevenueTTM"] is None
+
+
+def test_zero_is_a_value_not_a_missing_figure():
+    results = {
+        "highlights": {"dividend_rate": 1.04, "beta": 1.1},
+        "YahooFinance": {"dividendRate": 0, "beta": 0.0},
+    }
+
+    formatted = FinancialsFormatter.to_eodhd(results)
+
+    assert formatted["Highlights"]["DividendShare"] == 0
+    assert formatted["Technicals"]["Beta"] == 0.0
+    assert formatted["Sources"]["Technicals"] == {"Beta": "YahooFinance"}
+
+
+def test_unusable_values_are_skipped_not_rendered():
+    results = {
+        "highlights": {"pe_ratio": Decimal("NaN"), "market_cap": 0},
+        "YahooFinance": {"dividendYield": "N/A", "trailingPE": float("inf"), "beta": float("nan")},
+        "GoogleFinance": {"pe_ratio": float("inf")},
+        "Marketwatch": {"pe_ratio": 25.3, "dividend_yield": True},
+    }
+
+    formatted = FinancialsFormatter.to_eodhd(results)
+
+    assert formatted["Highlights"]["PERatio"] == 25.3
+    assert formatted["Highlights"]["DividendYield"] is None
+    assert formatted["Technicals"]["Beta"] is None
+    assert formatted["Highlights"]["MarketCapitalization"] == 0
+    assert formatted["Highlights"]["MarketCapitalizationMln"] == 0.0
+
+
+def test_wall_street_journal_insiders_are_found_under_the_name_of_the_provider():
+    results = {
+        "wallStreetJournal": {
+            "insider_transactions": {
+                "Transactions": [{"date": "2026-05-11", "ownerName": "Lourd Jean", "shares": 1000}]
+            }
+        }
+    }
+
+    transactions = FinancialsFormatter.to_eodhd(results)["InsiderTransactions"]
+
+    assert transactions["0"]["ownerName"] == "Lourd Jean"
+
+
+def test_insider_transactions_of_the_sec_provider_are_rendered():
+    """The provider returns one document holding ``transactions``, not a list."""
+    results = {
+        "SECEdgar": {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "transactions": [
+                {
+                    "filing_date": "2026-10-01",
+                    "insider_name": "Newstead Jennifer",
+                    "insider_title": "SVP, GC and Government Affairs",
+                    "transaction_date": "2026-09-29",
+                    "transaction_type": "Sell",
+                    "transaction_code": "S",
+                    "shares": 2399,
+                    "price_per_share": 336.18,
+                    "total_value": 806495.82,
+                    "shares_owned_after": 41992,
+                    "sec_filing_url": "https://www.sec.gov/Archives/edgar/data/320193/x-index.htm",
+                }
+            ],
+        }
+    }
+
+    transactions = FinancialsFormatter.to_eodhd(results)["InsiderTransactions"]
+
+    assert transactions == {
+        "0": {
+            "date": "2026-09-29",
+            "ownerName": "Newstead Jennifer",
+            "ownerTitle": "SVP, GC and Government Affairs",
+            "shares": 2399,
+            "transactionCode": "S",
+            "transactionAmount": 806495.82,
+            "transactionPrice": 336.18,
+            "postTransactionAmount": 41992,
+            "description": "Sell",
+            "secLink": "https://www.sec.gov/Archives/edgar/data/320193/x-index.htm",
+        }
+    }
+
+
 def test_build_providers():
     results = {
         "raw_providers": {

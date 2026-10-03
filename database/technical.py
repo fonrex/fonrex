@@ -12,6 +12,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from concurrency import run_sync
+from database.price_series import resolve_price_series, session_timestamp
+from technical.contracts import MarketSeries
 
 
 class SessionProvider(Protocol):
@@ -29,7 +31,7 @@ class SqlAlchemyTechnicalRepository:
 
     async def load_ohlcv(
         self,
-        asset_id: int,
+        series: MarketSeries,
         resolution: str,
         from_date: date | None = None,
         to_date: date | None = None,
@@ -37,7 +39,7 @@ class SqlAlchemyTechnicalRepository:
     ) -> pd.DataFrame:
         return await run_sync(
             self._load_ohlcv_sync,
-            asset_id,
+            series,
             resolution,
             from_date,
             to_date,
@@ -46,7 +48,7 @@ class SqlAlchemyTechnicalRepository:
 
     def _load_ohlcv_sync(
         self,
-        asset_id: int,
+        series: MarketSeries,
         resolution: str,
         from_date: date | None = None,
         to_date: date | None = None,
@@ -55,26 +57,38 @@ class SqlAlchemyTechnicalRepository:
         session, close_session = self._session()
         try:
             is_eod = resolution in {"1D", "1W", "1M"}
-            table_name = "prices_eod" if is_eod else "prices_intraday"
-            time_column = "time" if is_eod else "timestamp"
+            # End-of-day prices are stored per listing (one currency, one
+            # exchange) and dated by session at midnight UTC; intraday prices
+            # are stored per instrument.
+            if is_eod:
+                table_name, time_column = "prices_eod", "time"
+                series_filter = "asset_listing_id = :series_id"
+                series_id = series.listing_id
+                lower = session_timestamp(from_date) if from_date else None
+                upper = session_timestamp(to_date) if to_date else None
+            else:
+                table_name, time_column = "prices_intraday", "timestamp"
+                series_filter = "asset_id = :series_id"
+                series_id = series.asset_id
+                lower, upper = from_date, to_date
             clauses = []
             parameters = {
-                "asset_id": asset_id,
+                "series_id": series_id,
                 "resolution": resolution,
                 "limit": limit,
             }
-            if from_date:
+            if lower:
                 clauses.append(f"AND {time_column} >= :from_date")
-                parameters["from_date"] = from_date
-            if to_date:
+                parameters["from_date"] = lower
+            if upper:
                 clauses.append(f"AND {time_column} <= :to_date")
-                parameters["to_date"] = to_date
+                parameters["to_date"] = upper
 
             query = f"""
                 SELECT * FROM (
                     SELECT {time_column} AS timestamp, open, high, low, close, volume
                     FROM {table_name}
-                    WHERE asset_id = :asset_id AND resolution = :resolution
+                    WHERE {series_filter} AND resolution = :resolution
                       {" ".join(clauses)}
                     ORDER BY {time_column} DESC
                     LIMIT :limit
@@ -87,43 +101,16 @@ class SqlAlchemyTechnicalRepository:
             if close_session:
                 session.close()
 
-    async def resolve_asset_id(self, ticker: str) -> int | None:
-        normalized = ticker.strip().upper()
-        tickers_to_try = [normalized]
-        if "." in normalized:
-            base_ticker = normalized.split(".")[0]
-            if base_ticker and base_ticker not in tickers_to_try:
-                tickers_to_try.append(base_ticker)
+    async def resolve_series(self, ticker: str) -> MarketSeries | None:
+        """Resolve a ticker with the rule shared by every reader of the prices."""
 
-        def resolve() -> int | None:
+        def resolve() -> MarketSeries | None:
             session, close_session = self._session()
             try:
-                from models import Asset, AssetListing
-
-                for sym in tickers_to_try:
-                    listing = (
-                        session.query(AssetListing)
-                        .filter(
-                            AssetListing.ticker == sym,
-                            AssetListing.is_active.is_(True),
-                        )
-                        .order_by(
-                            AssetListing.is_primary.desc(),
-                            AssetListing.currency.asc(),
-                            AssetListing.exchange.asc(),
-                        )
-                        .first()
-                    )
-                    if listing:
-                        return listing.asset_id
-                    asset = (
-                        session.query(Asset)
-                        .filter(Asset.ticker == sym, Asset.is_active.is_(True))
-                        .first()
-                    )
-                    if asset:
-                        return asset.id
-                return None
+                series = resolve_price_series(session, ticker, active_only=True)
+                if series is None:
+                    return None
+                return MarketSeries(asset_id=series.asset_id, listing_id=series.listing_id)
             finally:
                 if close_session:
                     session.close()

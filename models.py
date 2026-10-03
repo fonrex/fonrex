@@ -218,31 +218,42 @@ class AssetMapping(Base):
 class PriceEOD(Base):
     """
     EOD Prices table (prices_eod) - TimescaleDB Hypertable.
-    Stores price history.
+
+    One row per listing, resolution and trading session. Prices belong to a
+    listing (a ticker on an exchange, in a currency), not to the instrument:
+    the same ETF quoted in EUR and in USD has two series. ``time`` is the date
+    of the session on its exchange, stored as midnight UTC of that date (see
+    ``database/price_series.py``).
     """
 
     __tablename__ = "prices_eod"
 
+    asset_listing_id = Column(
+        Integer,
+        ForeignKey("asset_listings.id"),
+        nullable=False,
+        primary_key=True,
+        autoincrement=False,
+    )
+    resolution = Column(String(3), default="1D", nullable=False, primary_key=True)
     timestamp = Column("time", DateTime(timezone=True), nullable=False, primary_key=True)
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False, primary_key=True)
-    asset_listing_id = Column(Integer, ForeignKey("asset_listings.id"), nullable=True)
+    # Instrument of the listing, kept on the row for instrument-wide statistics.
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
     open = Column(Float)
     high = Column(Float)
     low = Column(Float)
     close = Column(Float)
     adj_close = Column(Float)
     volume = Column(BigInteger)
-    resolution = Column(String(3), default="1D", nullable=False)
     adjusted = Column(Boolean, default=True, nullable=False)
     source = Column(String(20))
 
     asset = relationship("Asset", back_populates="prices_eod")
 
-    # Implicit composite primary key for SQLAlchemy (TimescaleDB handles partitioning)
+    # The primary key (asset_listing_id, resolution, time) is the identity of a
+    # bar and the conflict target of the ingestion upsert.
     __table_args__ = (
-        UniqueConstraint("time", "asset_id", name="prices_eod_timestamp_asset_id_key"),
         Index("idx_prices_asset_timestamp", "asset_id", text("time DESC")),
-        Index("idx_prices_listing_timestamp", "asset_listing_id", text("time DESC")),
         Index("ix_prices_eod_asset_resolution_time", "asset_id", "resolution", "time"),
     )
 
@@ -624,7 +635,10 @@ class OutstandingSharesHistory(Base):
 
 class UsageLog(Base):
     """
-    API usage log for analytics, provider costs, and future SaaS billing.
+    Local usage journal of this self-hosted instance: which route was called,
+    how long it took, which provider answered. Written after the response and
+    purged with age (see usage_recorder.py). The IP address is not stored unless
+    USAGE_LOG_IP asks for it.
     """
 
     __tablename__ = "usage_logs"
@@ -846,28 +860,3 @@ class MacroRateCache(Base):
     unit             = Column(String(10))
     observation_date = Column(Date, nullable=False)
     fetched_at       = Column(DateTime(timezone=True), server_default=func.now())
-
-
-def cleanup_old_data(days_to_keep=730):  # 2 ans par défaut
-    """
-    DEPRECATED: Use db_service.cleanup_old_data() instead.
-
-    Cleans up old data to prevent the DB from growing too large.
-
-    Args:
-        days_to_keep (int): Number of days of data to keep
-
-    Returns:
-        int: Total number of records deleted
-    """
-    from database.service import DatabaseService
-
-    logger.warning(
-        "⚠️ La fonction cleanup_old_data() est dépréciée. Utilisez db_service.cleanup_old_data() à la place."
-    )
-
-    # Create a temporary instance of the service
-    db_service = DatabaseService()
-
-    # Call the internal method to perform cleanup
-    return db_service._cleanup_old_data(days_to_keep)

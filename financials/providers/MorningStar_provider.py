@@ -1,9 +1,12 @@
 import logging
 import random
+import re
 from typing import Any, Dict, Optional
 
-import httpx
 from selectolax.parser import HTMLParser
+
+from financials.numbers import parse_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +15,7 @@ USER_AGENTS = [
 ]
 
 
-class MorningStarProvider:
+class MorningStarProvider(BaseProvider):
     """
     MorningStar Provider.
     Professional data extraction from Morningstar.fr
@@ -32,7 +35,7 @@ class MorningStarProvider:
             logger.warning("No ISIN provided for MorningStar search.")
             return None
 
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             ms_id = await self._search_id(client, isin)
             if not ms_id:
                 logger.warning(f"Could not find MorningStar internal ID for ISIN: {isin}")
@@ -66,14 +69,12 @@ class MorningStarProvider:
 
             return base_data
 
-    async def _search_id(self, client: httpx.AsyncClient, isin: str) -> Optional[str]:
+    async def _search_id(self, client: ProviderSession, isin: str) -> Optional[str]:
         # POST to search API
         url = self.SEARCH_API + "?source=nav&moduleId=6&ifIncludeAds=True&usrtType=v"
         try:
             resp = await client.post(url, data={"q": isin})
             if resp.status_code == 200:
-                import re
-
                 # Common pattern for JSON response or specific data attributes
                 match = re.search(r'{"i":"([^"]+)"', resp.text)
                 if match:
@@ -126,22 +127,21 @@ class MorningStarProvider:
                     data["market_cap_str"] = val_text
 
                 # 5. P/E Ratio
-                elif "cours/bénéfices" in label or "price/earnings" in label or "per" in label:
-                    try:
-                        clean_per = val_text.replace(",", ".").strip()
-                        if clean_per and clean_per != "-":
-                            data["pe_ratio"] = float(clean_per)
-                    except ValueError:
-                        pass
+                # "per" as a word: "performance" and "perspectives" are other rows.
+                elif (
+                    "cours/bénéfices" in label
+                    or "price/earnings" in label
+                    or re.search(r"\bper\b", label)
+                ):
+                    pe_ratio = parse_number(val_text, decimal=",")
+                    if pe_ratio is not None:
+                        data["pe_ratio"] = pe_ratio
 
                 # 6. Dividend Yield
                 elif "rendement div" in label or "dividend yield" in label:
-                    try:
-                        clean_div = val_text.replace("%", "").replace(",", ".").strip()
-                        if clean_div and clean_div != "-":
-                            data["dividend_yield"] = float(clean_div)
-                    except ValueError:
-                        pass
+                    dividend_yield = parse_number(val_text, decimal=",")
+                    if dividend_yield is not None:
+                        data["dividend_yield"] = dividend_yield
 
             # 7. Price
             price_node = parser.css_first("#message-box-price")

@@ -32,7 +32,7 @@ Fonrex is a **self-hosted financial data API** that aggregates market data, fund
 ```bash
 git clone https://github.com/fonrex/fonrex
 cd fonrex
-cp .env.example .env
+cp .env.example .env   # then set FONREX_API_KEY in .env (see Quickstart)
 mkdir -p logs
 docker compose up
 # → API running on http://localhost:5000
@@ -46,55 +46,99 @@ docker compose up
 - Docker + Docker Compose
 - 4 GB RAM minimum (8 GB recommended)
 
-### Start in 4 commands
+### Start in 5 commands
 
 ```bash
 # 1. Clone and configure
 git clone https://github.com/fonrex/fonrex && cd fonrex
 cp .env.example .env
 
-# 2. Ensure log directory exists
+# 2. Set your API key (required: the API rejects every request until one is configured)
+export FONREX_API_KEY="frx_live_$(openssl rand -hex 24)"
+sed -i.bak "s/^FONREX_API_KEY=.*/FONREX_API_KEY=$FONREX_API_KEY/" .env && rm .env.bak
+
+# 3. Ensure log directory exists
 mkdir -p logs
 
-# 3. Start (runs migrations automatically)
+# 4. Start (runs migrations automatically)
 docker compose up -d
 
-# 4. Import your first assets
+# 5. Import your first assets
 docker compose exec fonrex-api python import_assets.py --file data/etf.csv
 ```
+
+Docker Compose loads `.env` into the API container. Change `POSTGRES_PASSWORD` in `.env`
+**before** the first start as well. PostgreSQL and Redis are published on `127.0.0.1` only:
+they are reachable from the host, never from the network.
+
+The API image is self-contained: it holds the code, the database migrations and the seed
+files (`data/*.csv`). Compose only mounts what the application writes at runtime: `./logs`
+and `./static/logos` (downloaded logos). `.env` is never copied into the image.
+
+```bash
+# After updating the code (git pull, local edit): rebuild the image
+docker compose up -d --build
+
+# Development: run the code of this folder without rebuilding at each change
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+### Authentication
+
+Authentication is **on by default**. Every route except `/health`, `/docs`, `/redoc`,
+`/openapi.json`, `/widgets.json`, `/apps.json` and `/static` requires one of the keys
+configured in `FONREX_API_KEY` (or `FONREX_API_KEYS`, comma-separated), sent as either:
+
+```
+Authorization: Bearer frx_live_...
+X-API-KEY: frx_live_...
+```
+
+WebSocket clients that cannot set headers may pass `?token=frx_live_...`.
+
+**Read-only keys.** Keys listed in `FONREX_READ_ONLY_API_KEYS` can query data but cannot
+clear the cache, clean the database, trigger ingestion or change subscriptions. Use one for
+any client that stores the key outside the machine running Fonrex — the Google Sheets
+connector, or a dashboard reaching your instance through a tunnel.
+
+For a purely local instance you can opt out with `FONREX_AUTH_REQUIRED=false` (and no key
+configured). This opens every route, including cache and database administration — never
+do it on a reachable host.
 
 ### First API calls
 
 ```bash
+AUTH="X-API-KEY: $FONREX_API_KEY"
+
 # Fundamentals
-curl "http://localhost:5000/fundamental?ticker=AIR.PA"
+curl -H "$AUTH" "http://localhost:5000/fundamental?ticker=AIR.PA"
 
 # EOD history (auto-ingests if missing)
-curl "http://localhost:5000/eod/AIR.PA?period=1y"
+curl -H "$AUTH" "http://localhost:5000/eod/AIR.PA?period=1y"
 
 # Real-time quote (cached from WebSocket stream)
-curl "http://localhost:5000/quote/AAPL"
+curl -H "$AUTH" "http://localhost:5000/quote/AAPL"
 
 # Technical indicators
-curl "http://localhost:5000/technical/AIR.PA?indicator=rsi&period=14"
+curl -H "$AUTH" "http://localhost:5000/technical/AIR.PA?indicator=rsi&period=14"
 
 # DCF valuation
-curl "http://localhost:5000/dcf/AIR.PA"
+curl -H "$AUTH" "http://localhost:5000/dcf/AIR.PA"
 
 # Macro-economic rates
-curl "http://localhost:5000/macro/rates"
+curl -H "$AUTH" "http://localhost:5000/macro/rates"
 
 # Latest news
-curl "http://localhost:5000/news/AIR.PA"
+curl -H "$AUTH" "http://localhost:5000/news/AIR.PA"
 
 # Provider health monitoring
-curl "http://localhost:5000/health/providers"
+curl -H "$AUTH" "http://localhost:5000/health/providers"
 ```
 
 ### WebSocket (real-time prices)
 
 ```javascript
-const ws = new WebSocket("ws://localhost:5000/ws/realtime/AIR.PA");
+const ws = new WebSocket("ws://localhost:5000/ws/realtime/AIR.PA?token=" + FONREX_API_KEY);
 ws.onmessage = (e) => {
   const { type, data } = JSON.parse(e.data);
   if (type === "tick") console.log(`${data.close} €`);
@@ -123,6 +167,12 @@ ws.onmessage = (e) => {
 | **Core Global** | Yahoo Finance, Google Finance, MSN, MorningStar, Investing.com |
 | **US Premium** | Barron's, WSJ, MarketWatch, Gurufocus |
 | **Specialized** | JustETF (UCITS ETFs), SEC Edgar (insider transactions), OpenFIGI, Index Constituents |
+
+`GET /fundamental` returns one document in the EODHD layout. Each figure comes from Yahoo,
+then from the figures stored in the database, then from the scraped providers that publish
+the same quantity; the `Sources` section names the source of every figure. Ratios are ratios (a 0.32 % dividend
+yield is `0.0032`). For a listing of your catalogue, Yahoo is asked with the symbol verified
+for it — never with the bare ticker, which may be another instrument.
 
 **Deep fundamentals stored in 8 dedicated tables:**
 - `fundamentals_highlights` — 50+ metrics (P/E, ROE, ROA, EV/EBITDA, beta, solvency ratios, short interest...)
@@ -202,7 +252,7 @@ Deduplication: URL normalization (UTM removal) + title similarity (`difflib`, th
 
 ### Provider Monitoring (Phase 12)
 
-With 18 HTML-scraping providers, **silent data corruption** is the biggest risk: a CSS selector changes, a provider returns `0.8` instead of `24.0` for a P/E ratio, and the fallback runner accepts it because it's not `None`.
+With 13 HTML-scraping providers, **silent data corruption** is the biggest risk: a CSS selector changes, a provider returns `0.8` instead of `24.0` for a P/E ratio, and the fallback runner accepts it because it's not `None`.
 
 Fonrex solves this with two layers of automated protection:
 
@@ -342,7 +392,7 @@ FMP Premium costs **$59/month ($708/year)** and doesn't cover European markets w
 ┌──────▼──────┐  ┌──────▼───────┐  ┌───────▼───────────────┐
 │   Redis 7   │  │  TimescaleDB │  │   External Sources    │
 │  Cache &    │  │  PostgreSQL  │  │  yfinance / TV WS     │
-│  Pub/Sub    │  │  19 tables   │  │  18 providers         │
+│  Pub/Sub    │  │  hypertables │  │  18 providers         │
 │  Health ∑   │  │  + 3 health  │  │  5 canary assets      │
 └─────────────┘  └──────────────┘  └───────────────────────┘
 ```
@@ -352,12 +402,12 @@ FMP Premium costs **$59/month ($708/year)** and doesn't cover European markets w
 ```yaml
 services:
   fonrex-api     # FastAPI + Gunicorn, port 5000
-  fonrex-db      # TimescaleDB (PostgreSQL 16)
-  fonrex-redis   # Redis 7, 256MB limit, allkeys-lru
+  fonrex-db      # TimescaleDB (PostgreSQL 16), published on 127.0.0.1:5432 only
+  fonrex-redis   # Redis 7, 256MB limit, allkeys-lru, published on 127.0.0.1:6379 only
   fonrex-migrate # Alembic migrations (one-shot, profile: migrate)
 ```
 
-### Database schema (12 migrations)
+### Database schema
 
 ```
 assets                    — 1 row per ISIN (unique index)
@@ -386,7 +436,7 @@ provider_health_daily     — daily aggregate per provider
 provider_alerts           — active/resolved alerts with auto-resolution
 
 ingest_log                — ingestion audit trail
-usage_logs                — API request logs (cost_bucket included)
+usage_logs                — local API request journal (no IP by default, purged with age)
 ```
 
 ---
@@ -396,14 +446,19 @@ usage_logs                — API request logs (cost_bucket included)
 Copy `.env.example` to `.env` and adjust:
 
 ```env
+# Authentication (required by default — see Quickstart › Authentication)
+FONREX_API_KEY=frx_live_...
+
 # Database
+# With Docker Compose, DATABASE_URL and REDIS_URL are overridden to target the
+# `db` and `redis` services; DATABASE_URL is then built from POSTGRES_PASSWORD.
 POSTGRES_USER=fonrex
 POSTGRES_PASSWORD=changeme
 POSTGRES_DB=fonrex
-DATABASE_URL=postgresql+psycopg2://fonrex:changeme@db:5432/fonrex
+DATABASE_URL=postgresql://fonrex:changeme@localhost:5432/fonrex
 
 # Redis
-REDIS_URL=redis://redis:6379/0
+REDIS_URL=redis://localhost:6379/0
 
 # Historical ingestion
 INGEST_CONCURRENCY=5
@@ -439,11 +494,138 @@ ALERT_SUCCESS_RATE_CRITICAL=0.70    # Success rate → critical alert
 
 # Optional: OpenFIGI (free key at openfigi.com)
 OPENFIGI_API_KEY=
+
+# Usage log (local journal of the calls received by your instance)
+USAGE_LOG_IP=none                   # none | truncated | full
+USAGE_LOG_RETENTION_DAYS=90         # Older rows are deleted daily (0 = keep)
+
+# Outbound requests of the providers
+FONREX_PROVIDER_MAX_CONCURRENCY=4   # Simultaneous requests per provider
+FONREX_PROXY_URL=                   # Optional outbound proxy (yours or a relay service)
+FONREX_PROXY_PROVIDERS=             # Optional: only these providers use the proxy
 ```
+
+Every provider sends its requests through one shared HTTP layer
+(`financials/providers/base.py`): same retry policy (network errors, 429 and 5xx are retried
+with a growing pause; 401, 403 and 404 are final), same limit of simultaneous requests per
+provider, and the same optional proxy. A website that starts refusing your IP can be routed
+through `FONREX_PROXY_URL` without touching any provider.
 
 ---
 
 ## Troubleshooting
+
+### Every request returns `401 Missing API key` or `403`
+Authentication is on by default. Set `FONREX_API_KEY` in `.env`, restart the API
+(`docker compose up -d`) and send the key with each request. The startup logs state the
+effective mode (`docker compose logs fonrex-api | grep -i auth`).
+
+### `.env` created before authentication became mandatory
+`.env` is now loaded into the API container. Older copies of `.env.example` had comments
+after empty values (`FRED_API_KEY=   # Optional…`), which Docker Compose reads as the value
+itself. Re-create your file from the current `.env.example`, or move those comments to
+their own lines.
+
+### Where the database is stored, and how to back it up
+The database files are kept in the Docker volume `timescale_data`, mounted on the data
+directory of the TimescaleDB image (`PGDATA=/home/postgres/pgdata/data`). They survive
+`docker compose down` and a rebuild; only `docker compose down -v` (or `make docker-clean`)
+deletes them.
+
+```bash
+# Backup (one file, on the host)
+docker compose exec -T db pg_dump -U fonrex -d fonrex -Fc > fonrex.dump
+
+# Restore into an empty database: start the database alone, restore, then start the API
+docker compose up -d db
+docker compose exec -T db psql -U fonrex -d fonrex \
+  -c "CREATE EXTENSION IF NOT EXISTS timescaledb;" -c "SELECT timescaledb_pre_restore();"
+docker compose exec -T db pg_restore -U fonrex -d fonrex -Fc < fonrex.dump
+docker compose exec -T db psql -U fonrex -d fonrex -c "SELECT timescaledb_post_restore();"
+docker compose up -d
+```
+
+This is the [TimescaleDB logical backup procedure](https://www.tigerdata.com/docs/deploy/self-hosted/backup-and-restore/logical-backup);
+restore with the same TimescaleDB version that made the dump.
+
+### Upgrading an installation whose database was not on a volume
+Before this fix the volume was mounted on `/var/lib/postgresql/data`, a path the
+`timescaledb-ha` image does not use: the database lived inside the `fonrex-db` container and
+was deleted with it. To check an existing installation:
+
+```bash
+docker exec fonrex-db psql -U fonrex -d fonrex -tc "show data_directory"
+docker inspect fonrex-db --format '{{range .Mounts}}{{.Destination}} {{end}}'
+```
+
+If the data directory is not one of the mounted destinations, **make a backup (command
+above) before `docker compose up -d` with the new `docker-compose.yml`**: Compose recreates
+the database container, and the old container takes its data with it. Then restore the
+backup as shown above, or import and ingest again.
+
+### A ticker returns no price, or the wrong listing
+The tickers of the catalogue are not Yahoo symbols (`EUCO` is `SYBC.DE` on Yahoo, and `SPFF`
+alone is a US fund). Fonrex finds the Yahoo symbol of a listing from the ISIN of the
+instrument, keeps it only if Yahoo quotes it in the currency of the listing, and stores it.
+A listing for which nothing matches is **not** ingested, and the answer says why:
+
+```json
+{"error": "No data found", "reason": "No Yahoo symbol quoted in CHF for ISIN IE00B3S5XW04; Yahoo offers SYBB.DE (EUR)"}
+```
+
+- Several listings share a ticker (`GOVY` in EUR and in CHF): name the one you want with
+  `currency` or `exchange` — `GET /eod/GOVY?period=1mo&currency=CHF`. Without it the primary
+  listing is used.
+- To see which symbol was used: `POST /historical/ingest?ticker=EUCO` returns `provider_symbol`.
+  When the prices come from TradingView, `note` says why Yahoo was not the source
+  (no symbol quoted in the currency of the listing, or no bar for the verified symbol).
+- To replace a series fetched before this check existed, or to look the symbol up again:
+  `POST /historical/ingest?ticker=<ticker>&force_refresh=true`.
+- To set a symbol yourself when you know the right line (it is then trusted as it is):
+
+```bash
+docker compose exec -T db psql -U fonrex -d fonrex -c "
+  INSERT INTO asset_mappings (asset_id, asset_listing_id, provider_name, provider_ticker,
+                              source, is_active, failure_count, created_at, updated_at)
+  SELECT l.asset_id, l.id, 'YahooFinance', 'GOVY.SW', 'manual', true, 0, now(), now()
+  FROM asset_listings l WHERE l.ticker = 'GOVY' AND l.currency = 'CHF'
+  ON CONFLICT (asset_listing_id, provider_name)
+  DO UPDATE SET provider_ticker = EXCLUDED.provider_ticker, source = 'manual', is_active = true"
+```
+
+### Upgrading to per-listing prices (migration 014)
+Daily, weekly and monthly prices are now stored per listing and dated by trading session.
+The migration runs by itself at the next start (`docker compose up -d --build`) and converts
+the existing rows; nothing has to be downloaded again. Back the database up first (see
+above). What changes:
+
+- the listings of one instrument (the same ETF in EUR and in USD) no longer share one
+  series, and a weekly bar no longer replaces the daily bar of the same day;
+- European and Asian sessions are no longer dated the day before.
+
+Rows that were already stored are re-dated from their time of day. If a series looks wrong
+after the upgrade, replace it: `POST /historical/ingest?ticker=<ticker>&force_refresh=true`.
+
+To run the database tests against your own TimescaleDB (a temporary database is created
+and dropped):
+
+```bash
+FONREX_TEST_DATABASE_URL=postgresql://fonrex:<password>@localhost:5432/fonrex \
+    pytest tests/test_timescale_integration.py
+```
+
+### Deleting old prices
+`POST /database/cleanup` deletes the prices older than `days_to_keep` days (730 when the body
+is empty) and the logs older than 30 days. A first ingestion fetches ten years of history:
+a cleanup with the default value removes eight of them. Count before deleting:
+
+```bash
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" \
+     -d '{"days_to_keep": 3650, "dry_run": true}' http://localhost:5000/database/cleanup
+```
+
+`dry_run` deletes nothing and returns what a real run would delete. A value below 30 is
+refused: zero or a negative number would empty the price history.
 
 ### Common Docker Issues
 
@@ -469,11 +651,11 @@ docker compose up -d
 A `Makefile` is provided to simplify local development, testing, and quality checks. Run `make` or `make help` to see all available commands.
 
 ```bash
-# Install development and quality dependencies
-python -m pip install -r requirements-dev.txt
+# Install development and quality dependencies (exact versions of the lock file)
+make install-dev
 
 # Run the same quality gate as the CI (linting, syntax, migrations, test coverage)
-make quality
+make ci
 
 # Run individual quality stages
 make lint             # Ruff lint checks
@@ -483,23 +665,46 @@ make test-cov         # Pytest with global and per-module coverage gates
 
 # Run a specific test module
 PYTHONPATH=. pytest tests/test_technical_indicators.py -v
+
+# Run the database tests on a throwaway TimescaleDB container (needs Docker)
+make test-db
+```
+
+The database tests (`tests/test_timescale_integration.py`: migrations applied to existing
+data, price storage on the compressed hypertable, cleanup) need a TimescaleDB server and
+are skipped without one. `make test-db` starts a temporary container of the image used by
+`docker-compose.yml`, on port 54329, runs them and removes it; your own database is not
+touched. To run them inside `make ci`, give the address of any TimescaleDB server — each
+run creates and drops its own database on it:
+
+```bash
+FONREX_TEST_DATABASE_URL=postgresql://user:password@127.0.0.1:5432/postgres make ci
 ```
 
 The local quality gate blocks strict Ruff violations, invalid Python syntax, multiple
-Alembic heads, test warnings, regressions, application coverage below 54%, and
-coverage regressions in nine critical modules.
-GitHub Actions runs this exact same quality check for every pull request and push to `main`.
+Alembic heads, test warnings, regressions, application coverage below 70%, and
+coverage regressions in the modules listed in `scripts/check_coverage_distribution.py`:
+the critical application modules and every data provider, each with its own floor.
+A provider without a declared floor fails the gate, so a new one cannot be merged untested.
+GitHub Actions runs this exact same quality check for every pull request and push to `main`,
+with the database tests on a TimescaleDB service of the same image as `docker-compose.yml`,
+and publishes the coverage per module in the summary of the run (pull request → Checks).
 
-**38 test files** covering:
+The test suite covers:
 - Asset identity resolution and ISIN deduplication
-- 10 individual provider parsers (Barrons, WSJ, MarketWatch, Investing, JustETF, SEC Edgar, OpenFIGI, Fortuneo, Google Finance, Index Constituents)
+- Provider parsers, checked against reduced extracts of real pages (`tests/fixtures/providers/`)
+- Provider search, download and retries, against a simulated network (no real request is sent)
 - Historical ingestion (gap detection, normalization, cache invalidation)
 - Real-time streaming (subscribe/unsubscribe/restore, WebSocket manager)
-- Technical indicators (24 tests: RSI, SMA, EMA, MACD, Bollinger Bands, screener)
-- News service (31 tests: 7 providers, URL dedup, title similarity, Redis cache)
-- DCF service (10 tests: WACC, FCF, EPS, DDM, consensus, sensitivity matrix)
-- Provider monitoring (44 tests: ValidationLayer range/consensus, CanaryMonitor, alerts, endpoints, Redis)
+- Technical indicators (RSI, SMA, EMA, MACD, Bollinger Bands, screener)
+- News service (providers, URL dedup, title similarity, Redis cache)
+- DCF service (WACC, FCF, EPS, DDM, consensus, sensitivity matrix)
+- Provider monitoring (ValidationLayer range/consensus, CanaryMonitor, alerts, endpoints, Redis)
+- Authentication defaults and read-only keys
 - Alembic migration consistency
+- Migrations, price storage and cleanup on a real TimescaleDB (in the CI, or `make test-db`)
+- Guards that keep this document honest: provider, indicator and widget counts, settings of
+  `.env.example` really read by the code, Docker image content
 
 ---
 
@@ -515,7 +720,25 @@ GitHub Actions runs this exact same quality check for every pull request and pus
 
 ---
 
+## Scope: self-hosted, and what Fonrex Relay will be
+
+Fonrex is software you run yourself. Your instance fetches the data from public sources and
+keeps it in your own database: there is no Fonrex-operated data API, and the integrations
+below (OpenBB Workspace, Google Sheets) connect to **your** instance.
+
+**Fonrex Relay** is a separate, optional paid service, still in development. It will be an
+outbound relay that your instance can route its provider requests through. It relays pages;
+it does not store or serve financial data. Fonrex does not depend on it.
+
+---
+
 ## Integrations
+
+### Google Sheets
+
+The [Fonrex Sheets Connector](fonrex-sheets-connector/README.md) fills a spreadsheet with
+fundamentals, DCF valuations and technical indicators from your instance, reached through a
+tunnel (zrok or equivalent) with a read-only key.
 
 ### OpenBB Workspace
 
@@ -532,24 +755,34 @@ setup instructions and the full list of 19 available widgets.
 
 ## Contributing
 
-Contributions are welcome. Please read `CONTRIBUTING.md` before opening a PR.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
+The rules of the code base — and the tests that enforce them — are in [AGENTS.md](AGENTS.md);
+they apply to human contributors and to AI coding agents alike.
 
 ```bash
 # Setup dev environment
 python -m venv venv && source venv/bin/activate
-pip install -r requirements-dev.txt
+make install-dev
 
 # Run the local quality checks (Ruff, migrations, tests) before submitting
-make quality
+make ci
 ```
 
+**Locked dependencies.** `requirements.txt` and `requirements-dev.txt` list what the project
+needs, as ranges. `requirements.lock` and `requirements-dev.lock` record the exact versions
+that were tested, with their hashes; the Docker image, the CI and `make install-dev` install
+those, so two builds of the same commit contain the same packages. After editing a
+requirements file run `make lock` (needs [uv](https://docs.astral.sh/uv/)); to move every
+package to its latest allowed version run `make lock-upgrade`, then `make ci`.
+
 **Adding a new provider:**
-1. Create `financials/providers/myprovider.py` extending `BaseFinancialProvider`
+1. Create `financials/providers/myprovider.py` extending `BaseFinancialProvider`; send every
+   request with `self._session()` or `self._get()` — never create an HTTP client yourself
 2. Register in `main.py`
 3. Add mappings in `import_assets.py`
 4. Write tests in `tests/test_myprovider.py`
 
-See [docs/adding-providers.md](docs/adding-providers.md) for details.
+See "Adding a provider" in [AGENTS.md](AGENTS.md) for the full checklist.
 
 ---
 

@@ -8,7 +8,8 @@ import httpx
 from selectolax.parser import HTMLParser, Node
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import parse_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ class GoogleFinanceProvider(BaseProvider):
         Fetches financial data for a given ticker.
         Handles Yahoo-style tickers (e.g., AIR.PA) by converting them.
         """
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             try:
                 # 1. Handle URL input (extract ticker)
                 is_url = False
@@ -133,7 +134,11 @@ class GoogleFinanceProvider(BaseProvider):
                     google_ticker = ticker
 
                 # Normalisation finale pour l'URL (SYMBOL:EXCHANGE)
-                url_ticker = self._normalize_ticker(google_ticker)
+                if is_url and ":" in ticker:
+                    # A quote URL already carries SYMBOL:EXCHANGE: it must not be swapped.
+                    url_ticker = google_ticker
+                else:
+                    url_ticker = self._normalize_ticker(google_ticker)
 
                 # 3. Build URL
                 url = self.QUOTE_URL.format(ticker=url_ticker)
@@ -242,7 +247,7 @@ class GoogleFinanceProvider(BaseProvider):
 
         return google_ticker_fmt
 
-    async def _fetch_page(self, client: httpx.AsyncClient, url: str) -> Optional[HTMLParser]:
+    async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:
         """Fetches the page content and returns a parser."""
         response = await self._fetch_with_retry(client, url)
         if response:
@@ -258,49 +263,39 @@ class GoogleFinanceProvider(BaseProvider):
                 or "couldn't find any match" in response.text
             ):
                 return None
-            return HTMLParser(response.text)
+            parser = HTMLParser(response.text)
+            # An unknown SYMBOL:EXCHANGE is answered with HTTP 200 and the generic
+            # home page, whose title is just "Google Finance".
+            title = parser.css_first("title")
+            if title and title.text(strip=True) == "Google Finance":
+                return None
+            return parser
         return None
 
     async def _fetch_with_retry(
-        self, client: httpx.AsyncClient, url: str
+        self, client: ProviderSession, url: str
     ) -> Optional[httpx.Response]:
-        """Executes request with retry logic, backoff, and UA rotation."""
-        for attempt in range(self.max_retries):
-            headers = {
+        """Fetch a page; retries, pauses and limits come from the shared session."""
+
+        def headers() -> dict:
+            # Called at each attempt: the User-Agent rotates between retries.
+            return {
                 "User-Agent": random.choice(USER_AGENTS),
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
             }
 
-            try:
-                # Add random slight delay to behave more human-like
-                await asyncio.sleep(random.uniform(0.1, 0.5))
+        try:
+            # Small random delay so that successive lookups are not sent in a burst.
+            await asyncio.sleep(random.uniform(0.1, 0.5))
+            response = await client.get(url, headers=headers)
+        except Exception as e:
+            logger.warning(f"Network error fetching {url}: {e}")
+            return None
 
-                response = await client.get(url, headers=headers)
-
-                if response.status_code == 200:
-                    return response
-
-                if response.status_code in [429, 503, 502]:
-                    wait_time = (2**attempt) + random.uniform(1, 3)
-                    logger.warning(
-                        f"Google Finance Status {response.status_code}. Retrying in {wait_time:.2f}s..."
-                    )
-                    await asyncio.sleep(wait_time)
-                    continue
-
-                logger.warning(f"Error {response.status_code} fetching {url}")
-                # Don't retry 404
-                if response.status_code == 404:
-                    return None
-
-            except (httpx.RequestError, httpx.TimeoutException) as e:
-                logger.warning(f"Network error: {e}. Retrying...")
-                if attempt < self.max_retries - 1:
-                    await asyncio.sleep((2**attempt) + 1)
-                else:
-                    return None
-
+        if response.status_code == 200:
+            return response
+        logger.warning(f"Error {response.status_code} fetching {url}")
         return None
 
     def _parse_page(self, parser: HTMLParser, ticker_input: str) -> FinancialMetrics:
@@ -310,9 +305,7 @@ class GoogleFinanceProvider(BaseProvider):
         try:
             # 1. Basic Info
             # Name is usually available in a specific H1 class or just the first H1
-            h1 = parser.css_first("h1")  # Google often calls it class="zzDege" but let's be generic
-            if h1:
-                metrics.name = h1.text(strip=True)
+            metrics.name = self._extract_name(parser)
 
             # Price (usually huge font, heuristics)
             # We don't strictly need price in FinancialMetrics base (it's in StockSummary?)
@@ -352,6 +345,14 @@ class GoogleFinanceProvider(BaseProvider):
             # Let's look for "Revenue" specifically.
             self._extract_financial_row(parser, metrics)
 
+            # The "EPS" statistic is the trailing-twelve-month figure; the financials
+            # table above only holds the latest quarter.
+            eps_node = self._find_stat_by_label(parser, "EPS")
+            if eps_node:
+                eps = self._clean_number(eps_node)
+                if eps is not None:
+                    metrics.eps = eps
+
             # 4. About / Description
             # Usually in a section "About"
             about_header = self._find_text_node(parser, "About")
@@ -363,6 +364,24 @@ class GoogleFinanceProvider(BaseProvider):
             logger.error(f"Error parsing Google Finance page: {e}")
 
         return metrics
+
+    @staticmethod
+    def _extract_name(parser: HTMLParser) -> Optional[str]:
+        """Company name of a quote page.
+
+        The page title reads "<Company> (<TICKER>) Stock Price & News - Google Finance".
+        The first <h1> of the live page is the product name ("Finance"), so it is only
+        used as a fallback for simpler documents.
+        """
+        title = parser.css_first("title")
+        if title:
+            match = re.match(r"\s*(.+?)\s*\([^()]+\)\s+Stock Price", title.text())
+            if match:
+                return match.group(1)
+
+        h1 = parser.css_first("h1")
+        name = h1.text(strip=True) if h1 else None
+        return None if name == "Finance" else name
 
     def _find_stat_by_label(self, parser: HTMLParser, label: str) -> Optional[str]:
         """
@@ -480,42 +499,5 @@ class GoogleFinanceProvider(BaseProvider):
         return None
 
     def _clean_number(self, text: str) -> Optional[float]:
-        """Parses "1.23B", "5.67%", "1,234.56"."""
-        if not text:
-            return None
-
-        # Remove currency symbols text like "USD", "EUR"
-        clean = re.sub(r"[^\d.,\-MBTK%]", "", text.upper())  # Keep M, B, T, K for scale
-
-        if not clean:
-            return None
-
-        # Multipliers
-        multiplier = 1.0
-        if "B" in clean:
-            multiplier = 1_000_000_000
-            clean = clean.replace("B", "")
-        elif "M" in clean:
-            multiplier = 1_000_000
-            clean = clean.replace("M", "")
-        elif "T" in clean:
-            multiplier = 1_000_000_000_000
-            clean = clean.replace("T", "")
-        elif "K" in clean:
-            multiplier = 1_000
-            clean = clean.replace("K", "")
-        elif "%" in clean:
-            multiplier = 1.0  # Standard is already unit? Or usually 0.01?
-            # In data models, margins are often whole numbers or ratios.
-            # If 5.56%, we might return 5.56
-            clean = clean.replace("%", "")
-
-        # Format handling
-        # US/European mix. Google Finance usually adapts to locale, but scraping requests usually get US English (en-US header).
-        # "1,234.56" -> 1234.56
-        clean = clean.replace(",", "")
-
-        try:
-            return float(clean) * multiplier
-        except ValueError:
-            return None
+        """English format: "1.23B", "5.67%", "1,234.56", "€189.30"."""
+        return parse_number(text, decimal=".")

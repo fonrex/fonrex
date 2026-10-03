@@ -29,14 +29,27 @@ class YFinanceAssetProfileEnricher:
         self.database = database
         self.timeout_seconds = timeout_seconds
 
-    async def enrich(self, asset_profile: AssetProfile, ticker: str) -> None:
+    async def enrich(
+        self, asset_profile: AssetProfile, ticker: str, symbol: str | None = None
+    ) -> None:
+        """Complete the profile from Yahoo.
+
+        ``symbol`` is the Yahoo symbol verified for the listing: it is then the
+        only one asked. Without it the tickers of the profile are tried, which is
+        only right for an instrument whose tickers are Yahoo symbols.
+        """
         if not self.database.asset_profile_needs_enrichment(asset_profile):
             return
 
         # Kept lazy because import_assets is also a standalone CLI module.
         from import_assets import fetch_yfinance_data
 
-        enrichment_tickers = self.database.asset_profile_enrichment_tickers(asset_profile, ticker)
+        if symbol:
+            enrichment_tickers = [symbol]
+        else:
+            enrichment_tickers = self.database.asset_profile_enrichment_tickers(
+                asset_profile, ticker
+            )
         for enrichment_ticker in enrichment_tickers:
             metadata = await asyncio.wait_for(
                 run_sync(fetch_yfinance_data, enrichment_ticker),

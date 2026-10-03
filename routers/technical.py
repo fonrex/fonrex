@@ -20,12 +20,14 @@ from routers.dependencies import (
     get_technical_service,
 )
 from schemas.technical import (
+    TECHNICAL_DEFAULT_LIMIT,
     IndicatorCategory,
     IndicatorInfo,
     IndicatorResult,
     MultiIndicatorResult,
     TechnicalRequest,
 )
+from settings import env_int
 from technical.catalog import INDICATOR_DEFAULTS, INDICATOR_REGISTRY
 from technical.errors import (
     IndicatorCalculationFailed,
@@ -38,6 +40,10 @@ from technical.errors import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/technical", tags=["Technical Indicators"])
+
+# Size limits of POST /technical/batch.
+TECHNICAL_MAX_BATCH_TICKERS = env_int("TECHNICAL_MAX_BATCH_TICKERS", 20, minimum=1)
+TECHNICAL_MAX_BATCH_INDICATORS = env_int("TECHNICAL_MAX_BATCH_INDICATORS", 10, minimum=1)
 
 
 def _raise_technical_http_error(error: TechnicalAnalysisError):
@@ -300,10 +306,14 @@ async def get_technical_batch(
     payload: TechnicalRequest,
     service=Depends(get_technical_service),
 ):
-    if len(payload.tickers) > 20:
-        raise HTTPException(400, "Maximum 20 tickers par requête batch")
-    if len(payload.indicators) > 10:
-        raise HTTPException(400, "Maximum 10 indicateurs par requête batch")
+    if len(payload.tickers) > TECHNICAL_MAX_BATCH_TICKERS:
+        raise HTTPException(
+            400, f"Maximum {TECHNICAL_MAX_BATCH_TICKERS} tickers par requête batch"
+        )
+    if len(payload.indicators) > TECHNICAL_MAX_BATCH_INDICATORS:
+        raise HTTPException(
+            400, f"Maximum {TECHNICAL_MAX_BATCH_INDICATORS} indicateurs par requête batch"
+        )
     semaphore = asyncio.Semaphore(5)
 
     async def calculate(ticker):
@@ -354,7 +364,7 @@ async def get_technical_indicator(
     resolution: str = "1D",
     from_date: date = None,
     to_date: date = None,
-    limit: int = 500,
+    limit: int = TECHNICAL_DEFAULT_LIMIT,
     service=Depends(get_technical_service),
 ):
     params = {
@@ -389,7 +399,7 @@ async def get_multi_indicators(
     resolution: str = "1D",
     from_date: date = None,
     to_date: date = None,
-    limit: int = 500,
+    limit: int = TECHNICAL_DEFAULT_LIMIT,
     include_ohlcv: bool = False,
     service=Depends(get_technical_service),
 ):

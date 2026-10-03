@@ -1,8 +1,197 @@
 import logging
+import math
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from monitoring.units import percent_fields
+
 logger = logging.getLogger(__name__)
+
+# Name given, in ``Sources``, to a value read from the figures stored in the database.
+STORED = "database"
+
+
+@dataclass(frozen=True)
+class Field:
+    """Where a value of the rendered document may come from.
+
+    ``yahoo`` is a key of the Yahoo payload fetched for this request, ``stored``
+    a column of the figures kept in the database (an earlier Yahoo answer),
+    ``scraped`` a field of the scraped providers that means the same thing (see
+    ``LIKE_FOR_LIKE_PROVIDERS``). They are tried in that order: the freshest first.
+    """
+
+    stored: Optional[str] = None
+    yahoo: Optional[str] = None
+    scraped: Optional[str] = None
+    # Yahoo publishes this key in percent (0.32 for 0.32 %): the document holds a ratio.
+    yahoo_percent: bool = False
+
+
+# Scraped providers whose price/earnings ratio, earnings per share and dividend
+# yield are the trailing figures the document asks for. Boursorama and ZoneBourse
+# publish estimates for the current fiscal year, GoogleFinance publishes revenue
+# and margins for the last quarter: those are another quantity, not a fallback.
+# They stay available as they are with ``fmt=raw``.
+LIKE_FOR_LIKE_PROVIDERS = ("GoogleFinance", "Barrons", "Marketwatch", "wallStreetJournal", "Investing")
+
+HIGHLIGHTS = {
+    "MarketCapitalization": Field("market_cap", "marketCap"),
+    "EBITDA": Field("ebitda_ttm", "ebitda"),
+    "PERatio": Field("pe_ratio", "trailingPE", "pe_ratio"),
+    "PEGRatio": Field("peg_ratio", "pegRatio"),
+    "WallStreetTargetPrice": Field(yahoo="targetMeanPrice"),
+    "BookValue": Field("book_value_per_share", "bookValue"),
+    "DividendShare": Field("dividend_rate", "dividendRate"),
+    "DividendYield": Field("dividend_yield", "dividendYield", "dividend_yield", yahoo_percent=True),
+    "EarningsShare": Field("eps_trailing", "trailingEps", "eps"),
+    "EPSEstimateCurrentYear": Field(yahoo="forwardEps"),
+    "EPSEstimateNextYear": Field(),
+    "EPSEstimateNextQuarter": Field(),
+    "EPSEstimateCurrentQuarter": Field(),
+    "MostRecentQuarter": Field(),
+    "ProfitMargin": Field("net_margin", "profitMargins"),
+    "OperatingMarginTTM": Field("operating_margin", "operatingMargins"),
+    "ReturnOnAssetsTTM": Field("roa", "returnOnAssets"),
+    "ReturnOnEquityTTM": Field("roe", "returnOnEquity"),
+    "RevenueTTM": Field("revenue_ttm", "totalRevenue"),
+    "RevenuePerShareTTM": Field("revenue_per_share", "revenuePerShare"),
+    "QuarterlyRevenueGrowthYOY": Field("quarterly_revenue_growth_yoy", "revenueGrowth"),
+    "QuarterlyEarningsGrowthYOY": Field("quarterly_earnings_growth_yoy", "earningsGrowth"),
+    "GrossProfitTTM": Field("gross_profit_ttm", "grossProfits"),
+    "DilutedEpsTTM": Field("diluted_eps_ttm", "trailingEps"),
+    "QuarterlyEarningsShareGrowthYOY": Field(),
+}
+
+VALUATION = {
+    "TrailingPE": Field("pe_ratio", "trailingPE", "pe_ratio"),
+    "ForwardPE": Field("pe_forward", "forwardPE"),
+    "PriceSalesTTM": Field("ps_ratio", "priceToSalesTrailing12Months"),
+    "PriceBookMRQ": Field("pb_ratio", "priceToBook"),
+    "EnterpriseValue": Field("enterprise_value", "enterpriseValue"),
+    "EnterpriseValueRevenue": Field("ev_revenue", "enterpriseToRevenue"),
+    "EnterpriseValueEbitda": Field("ev_ebitda", "enterpriseToEbitda"),
+}
+
+SHARES_STATS = {
+    "SharesOutstanding": Field("shares_outstanding", "sharesOutstanding"),
+    "SharesFloat": Field("float_shares", "floatShares"),
+    "PercentInsiders": Field("pct_insiders", "heldPercentInsiders"),
+    "PercentInstitutions": Field("pct_institutions", "heldPercentInstitutions"),
+    "SharesShort": Field("shares_short", "sharesShort"),
+    "SharesShortPriorMonth": Field("shares_short_prior", "sharesShortPriorMonth"),
+    "ShortRatio": Field("short_ratio", "shortRatio"),
+    "ShortPercentFloat": Field("short_percent_float", "shortPercentOfFloat"),
+    "ShortPercentOutstanding": Field("short_percent_outstanding", "sharesPercentSharesOut"),
+}
+
+TECHNICALS = {
+    "Beta": Field("beta", "beta"),
+    "52WeekHigh": Field("week_52_high", "fiftyTwoWeekHigh"),
+    "52WeekLow": Field("week_52_low", "fiftyTwoWeekLow"),
+    "50DayMA": Field("ma_50", "fiftyDayAverage"),
+    "200DayMA": Field("ma_200", "twoHundredDayAverage"),
+    "SharesShort": Field("shares_short", "sharesShort"),
+    "SharesShortPriorMonth": Field("shares_short_prior", "sharesShortPriorMonth"),
+    "ShortRatio": Field("short_ratio", "shortRatio"),
+    "ShortPercent": Field("short_percent_float", "shortPercentOfFloat"),
+}
+
+SPLITS_DIVIDENDS = {
+    "ForwardAnnualDividendRate": Field("dividend_rate", "dividendRate"),
+    "ForwardAnnualDividendYield": Field(
+        "dividend_yield", "dividendYield", "dividend_yield", yahoo_percent=True
+    ),
+    "PayoutRatio": Field("payout_ratio", "payoutRatio"),
+    "LastSplitFactor": Field(yahoo="lastSplitFactor"),
+    "LastSplitDate": Field(yahoo="lastSplitDate"),
+}
+
+ANALYST_RATINGS = {
+    "Rating": Field("consensus", "recommendationKey"),
+    "TargetPrice": Field("target_mean", "targetMeanPrice"),
+    "StrongBuy": Field("strong_buy"),
+    "Buy": Field("buy"),
+    "Hold": Field("hold"),
+    "Sell": Field("sell"),
+    "StrongSell": Field("strong_sell"),
+}
+
+
+def _known(value: Any) -> bool:
+    """A value that says something: zero does; ``None``, NaN and infinity do not."""
+    if value is None or value == "":
+        return False
+    if isinstance(value, Decimal):
+        return value.is_finite()
+    return not (isinstance(value, float) and not math.isfinite(value))
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool) and _known(value)
+
+
+def _percent_to_ratio(value: Any) -> float:
+    """1.45 (percent) -> 0.0145, without the noise of a binary division."""
+    return float(Decimal(str(value)) / 100)
+
+
+def _as_dict(payload: Any) -> Dict[str, Any]:
+    if hasattr(payload, "model_dump"):
+        payload = payload.model_dump()
+    elif hasattr(payload, "dict"):
+        payload = payload.dict()
+    return payload if isinstance(payload, dict) else {}
+
+
+class _Chooser:
+    """Chooses each value among the sources and remembers which one gave it."""
+
+    def __init__(self, results: Dict[str, Any], yahoo: Dict[str, Any], yahoo_name: str) -> None:
+        self._results = results
+        self._yahoo = yahoo
+        self._yahoo_name = yahoo_name
+        self.sources: Dict[str, Dict[str, str]] = {}
+
+    def section(self, name: str, fields: Dict[str, Field], stored: Dict[str, Any]) -> Dict:
+        # The stored figures say when they were fetched: "database (2026-10-01)".
+        fetched_at = str(stored.get("fetched_at") or "")[:10]
+        stored_name = f"{STORED} ({fetched_at})" if fetched_at else STORED
+        rendered = {}
+        for key, field in fields.items():
+            value, source = self._choose(field, stored, stored_name)
+            rendered[key] = value
+            if source:
+                self.sources.setdefault(name, {})[key] = source
+        return rendered
+
+    def _choose(
+        self, field: Field, stored: Dict[str, Any], stored_name: str
+    ) -> tuple[Any, Optional[str]]:
+        if field.yahoo:
+            value = self._yahoo.get(field.yahoo)
+            if field.yahoo_percent:
+                if _is_number(value):
+                    return _percent_to_ratio(value), self._yahoo_name
+            elif _known(value):
+                return value, self._yahoo_name
+        if field.stored and _known(stored.get(field.stored)):
+            return stored[field.stored], stored_name
+        if field.scraped:
+            for provider in LIKE_FOR_LIKE_PROVIDERS:
+                value = self._scraped(provider, field.scraped)
+                if value is not None:
+                    return value, provider
+        return None, None
+
+    def _scraped(self, provider: str, field: str) -> Optional[float]:
+        payload = _as_dict(self._results.get(provider))
+        value = payload.get(field)
+        if payload.get("error") or not _is_number(value):
+            return None
+        # Scraped pages display some fields in percent; the document holds ratios.
+        return _percent_to_ratio(value) if field in percent_fields(provider) else value
 
 
 class FinancialsFormatter:
@@ -16,34 +205,53 @@ class FinancialsFormatter:
         """
         Transforme le dictionnaire agrégé en format EODHD.
         """
-        asset_profile = results.get("asset_profile", {})
-        highlights = results.get("highlights", {})
-        # yf_info est utilisé comme fallback si les highlights DB sont pauvres
+        asset_profile = results.get("asset_profile") or {}
+        # The Yahoo payload of this request, then the figures stored in the
+        # database, then the scraped providers for the fields that mean the same thing.
+        highlights = _as_dict(results.get("highlights"))
+        yahoo_name = "YahooFinance"
         yf_info = results.get("YahooFinance", {})
         if not yf_info or (isinstance(yf_info, dict) and yf_info.get("error")):
+            yahoo_name = "YFinanceProvider"
             yf_info = results.get("YFinanceProvider", {})
+        yf_info = _as_dict(yf_info)
+        if yf_info.get("error"):
+            yf_info = {}
 
-        # Si c'est un objet Pydantic, on le convertit en dict
-        def _to_dict(obj):
-            if hasattr(obj, "model_dump"):
-                return obj.model_dump()
-            if hasattr(obj, "dict"):
-                return obj.dict()
-            return obj
-
-        highlights = _to_dict(highlights)
-        yf_info = _to_dict(yf_info)
+        choose = _Chooser(results, yf_info, yahoo_name)
+        section_highlights = choose.section("Highlights", HIGHLIGHTS, highlights)
+        market_cap = section_highlights["MarketCapitalization"]
+        section_highlights = FinancialsFormatter._insert_after(
+            section_highlights,
+            "MarketCapitalization",
+            "MarketCapitalizationMln",
+            float(market_cap) / 1e6 if _is_number(market_cap) else None,
+        )
+        splits_dividends = choose.section("SplitsDividends", SPLITS_DIVIDENDS, highlights)
+        splits_dividends = FinancialsFormatter._insert_after(
+            splits_dividends,
+            "PayoutRatio",
+            "DividendDate",
+            str(highlights["dividend_pay_date"]) if highlights.get("dividend_pay_date") else None,
+        )
+        splits_dividends = FinancialsFormatter._insert_after(
+            splits_dividends,
+            "DividendDate",
+            "ExDividendDate",
+            str(highlights["dividend_ex_date"]) if highlights.get("dividend_ex_date") else None,
+        )
+        splits_dividends["NumberDividendsByYear"] = 0
 
         # Construction du rendu Premium
         rendered = {
             "General": FinancialsFormatter._build_general(asset_profile, yf_info),
-            "Highlights": FinancialsFormatter._build_highlights(highlights, yf_info),
-            "Valuation": FinancialsFormatter._build_valuation(highlights, yf_info),
-            "SharesStats": FinancialsFormatter._build_shares_stats(highlights, yf_info),
-            "Technicals": FinancialsFormatter._build_technicals(highlights, yf_info),
-            "SplitsDividends": FinancialsFormatter._build_splits_dividends(highlights, yf_info),
-            "AnalystRatings": FinancialsFormatter._build_analyst_ratings(
-                results.get("analyst_ratings"), yf_info
+            "Highlights": section_highlights,
+            "Valuation": choose.section("Valuation", VALUATION, highlights),
+            "SharesStats": choose.section("SharesStats", SHARES_STATS, highlights),
+            "Technicals": choose.section("Technicals", TECHNICALS, highlights),
+            "SplitsDividends": splits_dividends,
+            "AnalystRatings": choose.section(
+                "AnalystRatings", ANALYST_RATINGS, _as_dict(results.get("analyst_ratings"))
             ),
             "Holders": FinancialsFormatter._build_holders(yf_info),
             "InsiderTransactions": FinancialsFormatter._build_insider_transactions(results),
@@ -55,6 +263,8 @@ class FinancialsFormatter:
                 results.get("financial_statements")
             ),
             "Providers": FinancialsFormatter._build_providers(results),
+            # Which source gave each figure above ("database": stored figures).
+            "Sources": choose.sources,
         }
 
         # Ajout ETF_Data si c'est un ETF
@@ -141,107 +351,14 @@ class FinancialsFormatter:
         }
 
     @staticmethod
-    def _build_highlights(h: Dict, yf: Dict) -> Dict:
-        return {
-            "MarketCapitalization": h.get("market_cap") or yf.get("marketCap"),
-            "MarketCapitalizationMln": float(h.get("market_cap") or yf.get("marketCap") or 0) / 1e6
-            if (h.get("market_cap") or yf.get("marketCap"))
-            else None,
-            "EBITDA": h.get("ebitda_ttm") or yf.get("ebitda"),
-            "PERatio": h.get("pe_ratio") or yf.get("trailingPE"),
-            "PEGRatio": h.get("peg_ratio") or yf.get("pegRatio"),
-            "WallStreetTargetPrice": yf.get("targetMeanPrice"),
-            "BookValue": h.get("book_value_per_share") or yf.get("bookValue"),
-            "DividendShare": h.get("dividend_rate") or yf.get("dividendRate"),
-            "DividendYield": h.get("dividend_yield") or yf.get("dividendYield"),
-            "EarningsShare": h.get("eps_trailing") or yf.get("trailingEps"),
-            "EPSEstimateCurrentYear": yf.get("forwardEps"),
-            "EPSEstimateNextYear": None,
-            "EPSEstimateNextQuarter": None,
-            "EPSEstimateCurrentQuarter": None,
-            "MostRecentQuarter": None,
-            "ProfitMargin": h.get("net_margin") or yf.get("profitMargins"),
-            "OperatingMarginTTM": h.get("operating_margin") or yf.get("operatingMargins"),
-            "ReturnOnAssetsTTM": h.get("roa") or yf.get("returnOnAssets"),
-            "ReturnOnEquityTTM": h.get("roe") or yf.get("returnOnEquity"),
-            "RevenueTTM": h.get("revenue_ttm") or yf.get("totalRevenue"),
-            "RevenuePerShareTTM": h.get("revenue_per_share") or yf.get("revenuePerShare"),
-            "QuarterlyRevenueGrowthYOY": h.get("quarterly_revenue_growth_yoy")
-            or yf.get("revenueGrowth"),
-            "QuarterlyEarningsGrowthYOY": h.get("quarterly_earnings_growth_yoy")
-            or yf.get("earningsGrowth"),
-            "GrossProfitTTM": h.get("gross_profit_ttm") or yf.get("grossProfits"),
-            "DilutedEpsTTM": h.get("diluted_eps_ttm") or yf.get("trailingEps"),
-            "QuarterlyEarningsShareGrowthYOY": None,
-        }
-
-    @staticmethod
-    def _build_valuation(h: Dict, yf: Dict) -> Dict:
-        return {
-            "TrailingPE": h.get("pe_ratio") or yf.get("trailingPE"),
-            "ForwardPE": h.get("pe_forward") or yf.get("forwardPE"),
-            "PriceSalesTTM": h.get("ps_ratio") or yf.get("priceToSalesTrailing12Months"),
-            "PriceBookMRQ": h.get("pb_ratio") or yf.get("priceToBook"),
-            "EnterpriseValue": h.get("enterprise_value") or yf.get("enterpriseValue"),
-            "EnterpriseValueRevenue": h.get("ev_revenue") or yf.get("enterpriseToRevenue"),
-            "EnterpriseValueEbitda": h.get("ev_ebitda") or yf.get("enterpriseToEbitda"),
-        }
-
-    @staticmethod
-    def _build_shares_stats(h: Dict, yf: Dict) -> Dict:
-        return {
-            "SharesOutstanding": h.get("shares_outstanding") or yf.get("sharesOutstanding"),
-            "SharesFloat": h.get("float_shares") or yf.get("floatShares"),
-            "PercentInsiders": h.get("pct_insiders") or yf.get("heldPercentInsiders"),
-            "PercentInstitutions": h.get("pct_institutions") or yf.get("heldPercentInstitutions"),
-            "SharesShort": h.get("shares_short") or yf.get("sharesShort"),
-            "SharesShortPriorMonth": h.get("shares_short_prior") or yf.get("sharesShortPriorMonth"),
-            "ShortRatio": h.get("short_ratio") or yf.get("shortRatio"),
-            "ShortPercentFloat": h.get("short_percent_float") or yf.get("shortPercentOfFloat"),
-            "ShortPercentOutstanding": h.get("short_percent_outstanding")
-            or yf.get("sharesPercentSharesOut"),
-        }
-
-    @staticmethod
-    def _build_technicals(h: Dict, yf: Dict) -> Dict:
-        return {
-            "Beta": h.get("beta") or yf.get("beta"),
-            "52WeekHigh": h.get("week_52_high") or yf.get("fiftyTwoWeekHigh"),
-            "52WeekLow": h.get("week_52_low") or yf.get("fiftyTwoWeekLow"),
-            "50DayMA": h.get("ma_50") or yf.get("fiftyDayAverage"),
-            "200DayMA": h.get("ma_200") or yf.get("twoHundredDayAverage"),
-            "SharesShort": h.get("shares_short") or yf.get("sharesShort"),
-            "SharesShortPriorMonth": h.get("shares_short_prior") or yf.get("sharesShortPriorMonth"),
-            "ShortRatio": h.get("short_ratio") or yf.get("shortRatio"),
-            "ShortPercent": h.get("short_percent_float") or yf.get("shortPercentOfFloat"),
-        }
-
-    @staticmethod
-    def _build_splits_dividends(h: Dict, yf: Dict) -> Dict:
-        return {
-            "ForwardAnnualDividendRate": h.get("dividend_rate") or yf.get("dividendRate"),
-            "ForwardAnnualDividendYield": h.get("dividend_yield") or yf.get("dividendYield"),
-            "PayoutRatio": h.get("payout_ratio") or yf.get("payoutRatio"),
-            "DividendDate": str(h.get("dividend_pay_date")) if h.get("dividend_pay_date") else None,
-            "ExDividendDate": str(h.get("dividend_ex_date")) if h.get("dividend_ex_date") else None,
-            "LastSplitFactor": yf.get("lastSplitFactor"),
-            "LastSplitDate": yf.get("lastSplitDate"),
-            "NumberDividendsByYear": 0,
-        }
-
-    @staticmethod
-    def _build_analyst_ratings(r: Optional[Dict], yf: Dict) -> Dict:
-        if not r:
-            r = {}
-        return {
-            "Rating": r.get("consensus") or yf.get("recommendationKey"),
-            "TargetPrice": r.get("target_mean") or yf.get("targetMeanPrice"),
-            "StrongBuy": r.get("strong_buy"),
-            "Buy": r.get("buy"),
-            "Hold": r.get("hold"),
-            "Sell": r.get("sell"),
-            "StrongSell": r.get("strong_sell"),
-        }
+    def _insert_after(section: Dict, after: str, key: str, value: Any) -> Dict:
+        """Return ``section`` with ``key`` placed right after ``after`` (EODHD order)."""
+        rendered = {}
+        for name, existing in section.items():
+            rendered[name] = existing
+            if name == after:
+                rendered[key] = value
+        return rendered
 
     @staticmethod
     def _build_holders(yf: Dict) -> Dict:
@@ -267,8 +384,27 @@ class FinancialsFormatter:
     def _build_insider_transactions(results: Dict) -> Dict:
         txns = {}
 
-        # 1. Fallback sur SEC Edgar (US)
+        # 1. SEC Edgar (US): the answer of the provider, as it returns it
         sec_data = results.get("SECEdgar")
+        filed = _as_dict(sec_data).get("transactions")
+        if filed:
+            for i, item in enumerate(filed):
+                item = _as_dict(item)
+                txns[str(i)] = {
+                    "date": FinancialsFormatter._safe_str(
+                        item.get("transaction_date") or item.get("filing_date")
+                    ),
+                    "ownerName": item.get("insider_name"),
+                    "ownerTitle": item.get("insider_title"),
+                    "shares": item.get("shares"),
+                    "transactionCode": item.get("transaction_code"),
+                    "transactionAmount": item.get("total_value"),
+                    "transactionPrice": item.get("price_per_share"),
+                    "postTransactionAmount": item.get("shares_owned_after"),
+                    "description": item.get("transaction_type"),
+                    "secLink": item.get("sec_filing_url"),
+                }
+            return txns
         if sec_data and isinstance(sec_data, list):
             for i, item in enumerate(sec_data):
                 txns[str(i)] = {
@@ -283,7 +419,12 @@ class FinancialsFormatter:
             return txns
 
         # 2. Fallback sur WallStreetJournal (International)
-        wsj = results.get("wallstreetjournal") or results.get("WallStreetJournal")
+        # "wallStreetJournal" is the name the provider is registered under.
+        wsj = (
+            results.get("wallStreetJournal")
+            or results.get("wallstreetjournal")
+            or results.get("WallStreetJournal")
+        )
 
         # Handle Pydantic objects
         if hasattr(wsj, "model_dump"):

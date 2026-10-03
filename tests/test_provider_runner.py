@@ -7,11 +7,11 @@ from financials.provider_runner import FinancialProviderRunner
 
 
 class FastProvider:
+    """Answers about whatever it is asked: its page shows no ISIN of its own."""
+
     async def get_financials(self, ticker):
         await asyncio.sleep(0.05)
-        return StandardFinancials(
-            isin="US0378331005", provider_url=f"https://example.test/{ticker}"
-        )
+        return StandardFinancials(revenue=1.0, provider_url=f"https://example.test/{ticker}")
 
 
 class EchoProvider:
@@ -168,6 +168,134 @@ class FinancialProviderRunnerTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(results["Slow"], {"error": "Provider timeout"})
+
+    async def test_answer_about_another_instrument_is_refused(self):
+        """Searched by ticker, a site may answer with a homonym: "SPFF" is also a US fund.
+
+        Its figures used to be returned under the ISIN of the instrument asked for.
+        """
+
+        class Homonym:
+            async def get_financials(self, ticker):
+                return StandardFinancials(isin="US37950E3339", eps=1.2)
+
+        class SameInstrument:
+            async def get_financials(self, ticker):
+                return StandardFinancials(isin="ie000aq7a2x6", eps=0.4)
+
+        class NoIsinOnThePage:
+            async def get_financials(self, ticker):
+                return StandardFinancials(eps=0.5)
+
+        runner = FinancialProviderRunner(
+            {
+                "Msn": {"type": "async", "class": Homonym},
+                "Barrons": {"type": "async", "class": SameInstrument},
+                "GoogleFinance": {"type": "async", "class": NoIsinOnThePage},
+                # The ISIN yfinance reports for a verified symbol is not checked.
+                "YahooFinance": {"type": "async", "class": Homonym},
+            }
+        )
+
+        results, _ = await runner.run(
+            ticker="SPFF", isin="IE000AQ7A2X6", provider_params=[], asset_mappings={}
+        )
+
+        self.assertEqual(
+            results["Msn"],
+            {"error": "Another instrument was found (ISIN US37950E3339, expected IE000AQ7A2X6)"},
+        )
+        self.assertEqual(results["Barrons"], {"eps": 0.4, "isin": "IE000AQ7A2X6"})
+        self.assertEqual(results["GoogleFinance"], {"eps": 0.5, "isin": "IE000AQ7A2X6"})
+        self.assertEqual(results["YahooFinance"]["eps"], 1.2)
+
+    async def test_answer_about_another_instrument_is_refused_with_profile_only_isin(self):
+        class Homonym:
+            async def get_financials(self, ticker):
+                return StandardFinancials(isin="US37950E3339", eps=1.2)
+
+        class SameInstrument:
+            async def get_financials(self, ticker):
+                return StandardFinancials(isin="ie000aq7a2x6", eps=0.4)
+
+        runner = FinancialProviderRunner(
+            {
+                "Msn": {"type": "async", "class": Homonym},
+                "Barrons": {"type": "async", "class": SameInstrument},
+            }
+        )
+
+        results, _ = await runner.run(
+            ticker="SPFF",
+            isin=None,
+            provider_params=[],
+            asset_mappings={},
+            asset_profile={"isin": "IE000AQ7A2X6"},
+        )
+
+        self.assertEqual(
+            results["Msn"],
+            {"error": "Another instrument was found (ISIN US37950E3339, expected IE000AQ7A2X6)"},
+        )
+        self.assertEqual(results["Barrons"], {"eps": 0.4, "isin": "IE000AQ7A2X6"})
+
+    async def test_investir_les_echos_is_searched_by_isin(self):
+        runner = FinancialProviderRunner(
+            {"InvestirLesEchos": {"type": "async", "class": EchoProvider}}
+        )
+
+        _, raw_providers = await runner.run(
+            ticker="SPFF", isin="IE000AQ7A2X6", provider_params=[], asset_mappings={}
+        )
+
+        self.assertEqual(raw_providers["InvestirLesEchos"], "ISIN: IE000AQ7A2X6")
+
+    async def test_verified_symbol_is_used_instead_of_anything_guessed(self):
+        """``EUCO`` on Xetra is ``SYBC.DE`` on Yahoo: no rule on the ticker gives it."""
+        runner = FinancialProviderRunner({"YahooFinance": {"type": "async", "class": EchoProvider}})
+        mapping = SimpleNamespace(
+            provider_url="https://finance.yahoo.com/quote/EUCO", provider_ticker="EUCO"
+        )
+
+        results, raw_providers = await runner.run(
+            ticker="EUCO",
+            isin=None,
+            provider_params=[],
+            asset_mappings={"yahoofinance": mapping},
+            asset_profile={"ticker": "EUCO", "exchange": "XETRA"},
+            verified_symbols={"yahoofinance": "SYBC.DE"},
+        )
+
+        self.assertEqual(results["YahooFinance"]["isin"], "SYBC.DE")
+        self.assertEqual(raw_providers["YahooFinance"], "Verified symbol: SYBC.DE")
+
+    async def test_refused_provider_is_not_queried_and_says_why(self):
+        queried = []
+
+        class Recorder:
+            async def get_financials(self, ticker):
+                queried.append(ticker)
+                return StandardFinancials(revenue=1.0)
+
+        runner = FinancialProviderRunner(
+            {
+                "YahooFinance": {"type": "async", "class": Recorder},
+                "Other": {"type": "async", "class": Recorder},
+            }
+        )
+        reason = "No Yahoo symbol quoted in CHF for ISIN IE00B3S5XW04"
+
+        results, raw_providers = await runner.run(
+            ticker="GOVY",
+            isin=None,
+            provider_params=[],
+            asset_mappings={},
+            refused_providers={"yahoofinance": reason},
+        )
+
+        self.assertEqual(queried, ["GOVY"])  # the other provider only
+        self.assertEqual(results["YahooFinance"], {"error": reason})
+        self.assertEqual(raw_providers["YahooFinance"], f"Not queried: {reason}")
 
 
 if __name__ == "__main__":

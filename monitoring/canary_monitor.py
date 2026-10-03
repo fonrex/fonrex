@@ -37,6 +37,7 @@ from monitoring.ports import (
     MonitoringRepositoryError,
 )
 from monitoring.price_ranges import DynamicPriceRangeResolver
+from monitoring.units import to_ratio
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,8 @@ class CanaryMonitor:
                 if field_name == "price" and price_range_override:
                     exp_min, exp_max = price_range_override
 
-                val = self._extract_field(data, field_name)
+                # Canary ranges are ratios; convert percentage fields first.
+                val = to_ratio(provider_name, field_name, self._extract_field(data, field_name))
                 check_result = self._check_canary_value(
                     provider_name, ticker, field_name, val, exp_min, exp_max
                 )

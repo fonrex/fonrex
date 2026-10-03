@@ -27,11 +27,14 @@ from monitoring.ports import (
     ValidationLogEntry,
     ValidationLogRepository,
 )
+from monitoring.units import to_ratio
 
 logger = logging.getLogger(__name__)
 
 # ── Ranges plausibles par champ financier ─────────────────────────────────────
 # Format : (min, max) — valeurs en dehors = out_of_range → rejeté
+# Les ranges sont exprimés en ratio (0.0345 = 3,45 %). Les providers qui publient
+# un champ en pourcentage sont convertis avant contrôle (cf. monitoring/units.py).
 FIELD_RANGES: Dict[str, Tuple[float, float]] = {
     # Valorisation
     "pe_ratio": (0.5, 1000.0),
@@ -108,6 +111,10 @@ class ValidationLayer:
         1. Range check → valeur dans FIELD_RANGES ?
         2. Consensus check → valeur trop différente des autres ?
 
+        Les valeurs sont d'abord ramenées en ratio (cf. monitoring/units.py) :
+        les contrôles et les logs utilisent la valeur normalisée, le payload
+        du provider conserve son unité d'origine.
+
         Si une valeur est invalide → la remplacer par None dans l'objet
         Et logger dans provider_health_log.
 
@@ -120,7 +127,7 @@ class ValidationLayer:
                 if obj is None or (isinstance(obj, dict) and obj.get("error")):
                     continue
                 for field in _VALIDATABLE_FIELDS:
-                    val = self._extract_field(obj, field)
+                    val = self._extract_normalized(provider_name, obj, field)
                     if val is not None:
                         field_values.setdefault(field, {})[provider_name] = val
 
@@ -137,7 +144,7 @@ class ValidationLayer:
                     continue
 
                 for field in _VALIDATABLE_FIELDS:
-                    val = self._extract_field(obj, field)
+                    val = self._extract_normalized(provider_name, obj, field)
 
                     # Range check
                     range_status, range_reason = self._check_range(field, val)
@@ -380,6 +387,10 @@ class ValidationLayer:
             return Decimal(str(float(val)))
         except (ValueError, TypeError, InvalidOperation):
             return None
+
+    def _extract_normalized(self, provider: str, obj: Any, field: str) -> Optional[Decimal]:
+        """Extrait un champ et le convertit dans l'unité des ranges (ratio)."""
+        return to_ratio(provider, field, self._extract_field(obj, field))
 
     def _set_field_none(self, obj: Any, field: str) -> None:
         """Remet un champ à None sur un objet (Pydantic ou dict)."""

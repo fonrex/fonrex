@@ -4,11 +4,10 @@ import re
 import unicodedata
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class FortuneoProvider(BaseProvider):
         self.timeout = timeout
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             search_result = self._direct_search_result(ticker)
             if not search_result:
                 search_result = await self._search_result(client, ticker)
@@ -51,13 +50,13 @@ class FortuneoProvider(BaseProvider):
                 logger.error(f"Fortuneo fetch error: {e}")
         return metrics
 
-    async def _search_url(self, client: httpx.AsyncClient, query: str) -> Optional[str]:
+    async def _search_url(self, client: ProviderSession, query: str) -> Optional[str]:
         search_result = await self._search_result(client, query)
         if search_result:
             return search_result.get("url")
         return None
 
-    async def _search_result(self, client: httpx.AsyncClient, query: str) -> Optional[dict]:
+    async def _search_result(self, client: ProviderSession, query: str) -> Optional[dict]:
         try:
             resp = await client.get(self.SEARCH_API, params={"term": query})
             if resp.status_code == 200:

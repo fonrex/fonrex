@@ -993,25 +993,71 @@ def upsert_mapping(
     mapping.updated_at = verified_at
 
 
-async def enrich_after_import(asset_id: int, ticker: str, db_service_instance) -> None:
+def _preferred_listing_id(db_service_instance, asset_id: int) -> Optional[int]:
+    """The listing that stands for an instrument: its primary one, then the oldest."""
+    from database.price_series import preferred_listing_of_asset
+
+    session = db_service_instance.get_session()
+    try:
+        return session.execute(preferred_listing_of_asset(asset_id)).scalar()
+    finally:
+        session.close()
+
+
+async def enrich_after_import(
+    asset_id: int, ticker: str, db_service_instance, symbols=None
+) -> None:
     """
     Triggers yfinance enrichment after importing an asset.
     Never blocks import if enrichment fails.
+
+    Yahoo is asked with the symbol verified for the listing of the instrument
+    (ISIN, currency, existing price), never with the ticker of the catalogue: a
+    ticker shared with another instrument (``SPFF`` is a US fund on Yahoo) would
+    store the fundamentals of that other instrument under this one. Without a
+    verified symbol the instrument is left as it is.
     """
     try:
+        from concurrency import run_sync
         from financials.enrichment.yfinance_enricher import YFinanceEnricher
+        from historical.yahoo_symbols import YahooSymbolResolver
+
+        listing_id = await run_sync(_preferred_listing_id, db_service_instance, asset_id)
+        if listing_id is None:
+            logger.info(
+                "Deep enrichment skipped for %s (asset_id=%s): no listing to verify a symbol for",
+                ticker,
+                asset_id,
+            )
+            return
+        resolver = symbols or YahooSymbolResolver(db_service_instance)
+        resolution = await resolver.resolve(listing_id)
+        if not resolution.symbol:
+            logger.info(
+                "Deep enrichment skipped for %s (asset_id=%s): %s",
+                ticker,
+                asset_id,
+                resolution.reason or "no verified Yahoo symbol",
+            )
+            return
 
         enricher = YFinanceEnricher(db_service_instance)
-        result = await enricher.enrich(asset_id, ticker)
+        result = await enricher.enrich(asset_id, resolution.symbol)
         if result.get("errors"):
             logger.warning(
-                "Partial enrichment for %s (asset_id=%s): %s",
+                "Partial enrichment for %s as %s (asset_id=%s): %s",
                 ticker,
+                resolution.symbol,
                 asset_id,
                 result["errors"],
             )
         else:
-            logger.info("Deep enrichment completed for %s (asset_id=%s)", ticker, asset_id)
+            logger.info(
+                "Deep enrichment completed for %s as %s (asset_id=%s)",
+                ticker,
+                resolution.symbol,
+                asset_id,
+            )
     except Exception as e:
         logger.warning("Deep enrichment skipped for %s (asset_id=%s): %s", ticker, asset_id, e)
 

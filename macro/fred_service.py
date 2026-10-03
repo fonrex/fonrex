@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import httpx
@@ -66,15 +66,23 @@ class FREDService:
             except Exception as e:
                 logger.warning("Erreur lecture cache Redis %s: %s", redis_key, e)
 
-        # 2. Try PostgreSQL (last known value)
-        rate = await run_sync(self._get_latest_from_db, series_id)
+        # 2. The value stored in PostgreSQL, when it was read from FRED recently.
+        stored, fetched_at = await run_sync(self._get_latest_from_db, series_id)
+        rate = stored if self._is_recent(fetched_at) else None
 
-        # 3. Try FRED API
-        if not rate:
+        # 3. Otherwise FRED. The stored value is what is left when FRED cannot be
+        # asked or does not answer — it used to be returned first, whatever its
+        # age: once a rate was stored, FRED was never asked again.
+        if rate is None:
             if self.api_key:
                 rate = await self._fetch_fred_series(series_id, label)
             else:
-                logger.warning("FRED_API_KEY manquante, impossible de mettre à jour %s depuis l'API.", series_id)
+                logger.warning(
+                    "FRED_API_KEY manquante, impossible de mettre à jour %s depuis l'API.",
+                    series_id,
+                )
+            if rate is None:
+                rate = stored
 
         # Cache in Redis for the next requests
         if rate and self.redis_client:
@@ -88,6 +96,14 @@ class FREDService:
                 logger.warning("Erreur écriture cache Redis %s: %s", redis_key, e)
 
         return rate
+
+    def _is_recent(self, fetched_at: datetime | None) -> bool:
+        """Whether a stored value was read from FRED less than one cache lifetime ago."""
+        if fetched_at is None:
+            return False
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - fetched_at < timedelta(seconds=self.redis_ttl)
 
     async def _fetch_fred_series(self, series_id: str, label: str) -> MacroRate | None:
         """Call FRED API for the latest observation."""
@@ -160,7 +176,13 @@ class FREDService:
                 observation_date=rate.observation_date
             ).first()
             
-            if not existing:
+            if existing:
+                # Same observation (FRED publishes on business days): the value
+                # may have been revised, and the row was confirmed just now.
+                existing.value = rate.value
+                existing.fetched_at = datetime.now(timezone.utc)
+                session.commit()
+            else:
                 obj = MacroRateCache(
                     series_id=rate.series_id,
                     label=rate.label,
@@ -177,8 +199,8 @@ class FREDService:
         finally:
             session.close()
 
-    def _get_latest_from_db(self, series_id: str) -> MacroRate | None:
-        """Fetch the most recent cached value from DB."""
+    def _get_latest_from_db(self, series_id: str) -> tuple[MacroRate | None, datetime | None]:
+        """The most recent value stored for a series, and when it was read from FRED."""
         session = self.db_service.get_session()
         try:
             latest = session.query(MacroRateCache).filter_by(
@@ -186,16 +208,19 @@ class FREDService:
             ).order_by(MacroRateCache.observation_date.desc()).first()
             
             if latest:
-                return MacroRate(
-                    series_id=latest.series_id,
-                    label=latest.label,
-                    value=latest.value,
-                    unit=latest.unit,
-                    observation_date=latest.observation_date,
+                return (
+                    MacroRate(
+                        series_id=latest.series_id,
+                        label=latest.label,
+                        value=latest.value,
+                        unit=latest.unit,
+                        observation_date=latest.observation_date,
+                    ),
+                    latest.fetched_at,
                 )
-            return None
+            return None, None
         except Exception as e:
             logger.error("Erreur lecture MacroRateCache DB: %s", e)
-            return None
+            return None, None
         finally:
             session.close()

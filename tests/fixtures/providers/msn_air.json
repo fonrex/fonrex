@@ -1,0 +1,10 @@
+{
+  "provider": "Msn",
+  "ticker": "AIR",
+  "source_url": "https://www.msn.com/fr-ca/finances/details-de-l-action/air-fr-stock/fi-ae7bur?id=ae7bur",
+  "captured_on": "2026-10-03",
+  "expected": {
+    "name": "Airbus SE"
+  },
+  "known_gaps": {}
+}

@@ -1,0 +1,53 @@
+{
+  "acc_en": {
+    "isin": "IE00B4L5Y983",
+    "source_url": "https://www.justetf.com/en/etf-profile.html?isin=IE00B4L5Y983",
+    "captured_on": "2026-10-03",
+    "expected": {
+      "isin": "IE00B4L5Y983",
+      "long_name": "iShares Core MSCI World UCITS ETF USD (Acc)",
+      "logo": "https://www.justetf.com/images/logo/ishares-etf-profile.svg",
+      "justETF_pdf_url": "https://api.fundinfo.com/document/4279b2676ef2695fa96f8d3922bc14a6_381748/MR_DE_en_IE00B4L5Y983_YES_2026-08-31.pdf",
+      "dividendsPolicy_etf": "Capitalisation",
+      "fees_etf": 0.2,
+      "holdingCount_etf": 1252,
+      "fundSize_etf": "129 628 m",
+      "fundSizeMillions_etf": 129628,
+      "fundSizeCurrency_etf": "EUR"
+    }
+  },
+  "dist_en": {
+    "isin": "IE00B0M62Q58",
+    "source_url": "https://www.justetf.com/en/etf-profile.html?isin=IE00B0M62Q58",
+    "captured_on": "2026-10-03",
+    "expected": {
+      "isin": "IE00B0M62Q58",
+      "long_name": "iShares MSCI World UCITS ETF (Dist)",
+      "logo": "https://www.justetf.com/images/logo/ishares-etf-profile.svg",
+      "justETF_pdf_url": "https://api.fundinfo.com/document/704436f205f62622438552049ce08011_400288/MR_DE_en_IE00B0M62Q58_YES_2026-08-31.pdf",
+      "dividendsPolicy_etf": "Distribution",
+      "fees_etf": 0.5,
+      "holdingCount_etf": 1252,
+      "fundSize_etf": "8 289 m",
+      "fundSizeMillions_etf": 8289,
+      "fundSizeCurrency_etf": "EUR"
+    }
+  },
+  "acc_fr": {
+    "isin": "IE00B4L5Y983",
+    "source_url": "https://www.justetf.com/fr/etf-profile.html?isin=IE00B4L5Y983",
+    "captured_on": "2026-10-03",
+    "expected": {
+      "isin": "IE00B4L5Y983",
+      "long_name": "iShares Core MSCI World UCITS ETF USD (Acc)",
+      "logo": "https://www.justetf.com/images/logo/ishares-etf-profile.svg",
+      "justETF_pdf_url": "https://api.fundinfo.com/document/cc056c512a18bcf8a10275e181e2a3dc_389728/MR_FR_fr_IE00B4L5Y983_YES_2026-08-31.pdf",
+      "dividendsPolicy_etf": "Capitalisation",
+      "fees_etf": 0.2,
+      "holdingCount_etf": 1252,
+      "fundSize_etf": "129 628 M",
+      "fundSizeMillions_etf": 129628,
+      "fundSizeCurrency_etf": "EUR"
+    }
+  }
+}

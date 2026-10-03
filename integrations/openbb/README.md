@@ -6,20 +6,22 @@ directly inside OpenBB.
 
 ## Prerequisites
 
-- A running Fonrex instance (self-hosted or Fonrex Relay), reachable
-  from the internet or from your local network if running OpenBB
-  Workspace Enterprise on-prem
-- An active Fonrex Relay API key (`frx_live_...`) if using the hosted
-  Cloud Relay, or no key required for a fully self-hosted instance
-  with authentication disabled
+- A running self-hosted Fonrex instance, reachable from the internet
+  (for example through a tunnel) or from your local network if running
+  OpenBB Workspace Enterprise on-prem
+- An API key of that instance (authentication is required by default):
+  the one set in `FONREX_API_KEY`, or preferably a read-only key from
+  `FONREX_READ_ONLY_API_KEYS`, which is enough for every widget. No key
+  is needed only for a local instance started with
+  `FONREX_AUTH_REQUIRED=false`
 
 ## Setup
 
 1. In OpenBB Workspace, right-click on your dashboard and select **"Add data"**
 2. Enter your Fonrex instance URL (e.g. `https://your-fonrex-instance.com`)
 3. OpenBB will automatically discover the available widgets via `/widgets.json`
-4. If your instance requires authentication, add your API key as a
-   custom header: `X-API-KEY: frx_live_...`
+4. Add your API key as a custom header: `X-API-KEY: frx_live_...`
+   (skip this step only if authentication is disabled on your instance)
 5. Import the **"Fonrex — EU Markets"** app from the marketplace, or add
    individual widgets to your own dashboard
 
@@ -31,7 +33,7 @@ directly inside OpenBB.
 | `fonrex_fundamentals_deep` | Fonrex Deep Fundamentals | Fundamentals | table | Financial statements, ESG scores, insider transactions, analyst ratings |
 | `fonrex_eod` | Fonrex EOD History | Historical | chart | End-of-day OHLCV price history with auto-ingestion |
 | `fonrex_history` | Fonrex OHLCV History | Historical | chart | OHLCV price history with date range filtering |
-| `fonrex_quote` | Fonrex Quote | Market Data | metric | Latest real-time price snapshot |
+| `fonrex_quote` | Fonrex Quote | Market Data | metric | Latest real-time price snapshot (real time once the ticker is subscribed with `POST /realtime/subscribe`, delayed price otherwise) |
 | `fonrex_quotes_batch` | Fonrex Batch Quotes | Market Data | table | Batch price snapshots for multiple tickers |
 | `fonrex_technical` | Fonrex Technical Indicator | Technical | chart | Single technical indicator (RSI, SMA, MACD, etc.) |
 | `fonrex_technical_multi` | Fonrex Multi-Indicator | Technical | chart | Multiple indicators from a single database read |
@@ -77,5 +79,5 @@ header configuration.
 
 ## Support
 
-- Documentation: https://docs.fonrex.io
+- Documentation: https://fonrex.io
 - Issues: https://github.com/fonrex/fonrex/issues

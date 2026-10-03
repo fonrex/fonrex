@@ -1,0 +1,13 @@
+{
+  "provider": "InvestirLesEchos",
+  "ticker": "AIR",
+  "source_url": "https://investir.lesechos.fr/cours/actions/airbus-air-nl0000235190-xpar",
+  "captured_on": "2026-10-03",
+  "expected": {
+    "change_percent": 1.99,
+    "isin": "NL0000235190",
+    "name": "Airbus",
+    "price": 189.3
+  },
+  "known_gaps": {}
+}

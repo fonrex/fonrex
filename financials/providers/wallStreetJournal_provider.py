@@ -72,13 +72,15 @@ class WallStreetJournalProvider(BaseProvider):
             "Accept": "application/json",
             "Accept-Language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
             "Referer": "https://www.wsj.com/",
-            "dylan2010.entitlementtoken": self.TOKEN,
             "Origin": "https://www.wsj.com",
             "Connection": "keep-alive",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "cross-site",
         }
+        if self.TOKEN:
+            # A header cannot carry None: without WSJ_TOKEN the request goes out without it.
+            headers["dylan2010.entitlementtoken"] = self.TOKEN
         try:
             response = await client.get(self.SEARCH_API, params=params, headers=headers)
             if response.status_code == 200:

@@ -133,7 +133,11 @@ class GoogleFinanceProvider(BaseProvider):
                     google_ticker = ticker
 
                 # Normalisation finale pour l'URL (SYMBOL:EXCHANGE)
-                url_ticker = self._normalize_ticker(google_ticker)
+                if is_url and ":" in ticker:
+                    # A quote URL already carries SYMBOL:EXCHANGE: it must not be swapped.
+                    url_ticker = google_ticker
+                else:
+                    url_ticker = self._normalize_ticker(google_ticker)
 
                 # 3. Build URL
                 url = self.QUOTE_URL.format(ticker=url_ticker)
@@ -258,7 +262,13 @@ class GoogleFinanceProvider(BaseProvider):
                 or "couldn't find any match" in response.text
             ):
                 return None
-            return HTMLParser(response.text)
+            parser = HTMLParser(response.text)
+            # An unknown SYMBOL:EXCHANGE is answered with HTTP 200 and the generic
+            # home page, whose title is just "Google Finance".
+            title = parser.css_first("title")
+            if title and title.text(strip=True) == "Google Finance":
+                return None
+            return parser
         return None
 
     async def _fetch_with_retry(

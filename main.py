@@ -21,6 +21,7 @@ with warnings.catch_warnings():
     from fastapi.staticfiles import StaticFiles
 
 from auth.dependencies import (
+    get_configured_api_keys,
     is_auth_enforced,
     require_api_key,
 )
@@ -109,7 +110,10 @@ app.include_router(openbb_router)
 
 @app.middleware("http")
 async def api_key_auth_middleware(request: Request, call_next):
-    """Enforces API key authentication on protected routes when configured in environment.
+    """Enforces API key authentication on protected routes.
+
+    Authentication is on by default; it is only skipped when explicitly disabled with
+    ``FONREX_AUTH_REQUIRED=false`` and no API key is configured.
 
     Note: WebSocket connections (e.g. /ws/realtime/{ticker}) do not pass through HTTP
     middleware and enforce API key validation during the WebSocket handshake in their
@@ -290,8 +294,26 @@ def configure_application_state(application: FastAPI):
 configure_application_state(app)
 
 
+def log_authentication_mode() -> None:
+    """Make the effective authentication mode visible in the startup logs."""
+    if not is_auth_enforced():
+        logger.warning(
+            "⚠️ Authentication is DISABLED (FONREX_AUTH_REQUIRED=false): every route, "
+            "including cache and database administration, is open. Never expose this instance."
+        )
+    elif not get_configured_api_keys():
+        logger.warning(
+            "🔒 Authentication is enforced but no API key is configured: protected routes "
+            "will reject every request. Set FONREX_API_KEY (or FONREX_AUTH_REQUIRED=false "
+            "for local-only use)."
+        )
+    else:
+        logger.info("🔒 API key authentication enabled")
+
+
 async def startup_event(application: FastAPI):
     """Build process resources and publish them through application state."""
+    log_authentication_mode()
     state = application.state
     state.async_db_resources = AsyncDatabaseResources.create()
     async_resources = state.async_db_resources

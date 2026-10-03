@@ -6,6 +6,10 @@ Supports dual credential extraction:
 
 Both formats resolve to the same underlying key validation logic —
 single point of truth.
+
+Authentication is secure by default: unless ``FONREX_AUTH_REQUIRED`` is
+explicitly set to a false value, every protected route requires a key listed in
+``FONREX_API_KEY``, ``FONREX_RELAY_KEY`` or ``FONREX_API_KEYS``.
 """
 
 import hashlib
@@ -20,6 +24,12 @@ from starlette.requests import HTTPConnection
 # Regular expression for valid Fonrex key format (frx_live_... or frx_test_...)
 # Requires a live or test prefix followed by at least 6 alphanumeric/dash/underscore characters.
 API_KEY_PATTERN = re.compile(r"^frx_(?:live|test)_[a-zA-Z0-9_-]{6,}$")
+
+# Environment variables holding accepted keys (each may be a comma-separated list).
+API_KEY_ENV_VARS = ("FONREX_API_KEY", "FONREX_RELAY_KEY", "FONREX_API_KEYS")
+
+# Values of FONREX_AUTH_REQUIRED that explicitly opt out of authentication.
+_AUTH_DISABLED_VALUES = frozenset({"false", "0", "no", "off"})
 
 
 def anonymize_api_key(key: Optional[str]) -> Optional[str]:
@@ -93,40 +103,51 @@ def get_api_key_from_request(request: Request) -> Optional[str]:
     return None
 
 
+def get_configured_api_keys() -> list[str]:
+    """Return the API keys accepted by this instance, as configured in the environment."""
+    keys: list[str] = []
+    for env_var in API_KEY_ENV_VARS:
+        val = os.environ.get(env_var)
+        if val:
+            keys.extend(k.strip() for k in val.split(",") if k.strip())
+    return keys
+
+
+def is_auth_explicitly_disabled() -> bool:
+    """Return True only when ``FONREX_AUTH_REQUIRED`` is set to a false value."""
+    return os.environ.get("FONREX_AUTH_REQUIRED", "").strip().lower() in _AUTH_DISABLED_VALUES
+
+
 def is_auth_enforced() -> bool:
-    """Return True if authentication is explicitly required by configuration."""
-    return bool(
-        os.environ.get("FONREX_API_KEY")
-        or os.environ.get("FONREX_RELAY_KEY")
-        or os.environ.get("FONREX_API_KEYS")
-        or os.environ.get("FONREX_AUTH_REQUIRED", "").lower() in ("true", "1", "yes")
-    )
+    """Return True unless authentication has been explicitly disabled.
+
+    Authentication is enforced by default. The only way to run an open instance
+    is to set ``FONREX_AUTH_REQUIRED=false`` *and* configure no API key; a
+    configured key always enforces authentication.
+    """
+    if get_configured_api_keys():
+        return True
+    return not is_auth_explicitly_disabled()
 
 
 def validate_api_key(key: str) -> bool:
-    """Validate an API key against configured environment keys or key format.
+    """Validate an API key against the keys configured in the environment.
 
     - If ``FONREX_API_KEY``, ``FONREX_RELAY_KEY`` or ``FONREX_API_KEYS`` is configured,
       the key must match one of the configured keys (using constant-time comparison).
-    - If no configured keys are present, the key must conform to the valid
-      Fonrex key format (``frx_live_...`` or ``frx_test_...``).
+    - If no key is configured, validation fails closed: a key matching the Fonrex
+      format is not a credential.
+    - Only when authentication is explicitly disabled (``FONREX_AUTH_REQUIRED=false``)
+      does a key merely need to conform to the Fonrex key format
+      (``frx_live_...`` or ``frx_test_...``).
     """
-    allowed_keys: list[str] = []
-    for env_var in ("FONREX_API_KEY", "FONREX_RELAY_KEY", "FONREX_API_KEYS"):
-        val = os.environ.get(env_var)
-        if val:
-            allowed_keys.extend([k.strip() for k in val.split(",") if k.strip()])
-
+    allowed_keys = get_configured_api_keys()
     if allowed_keys:
         return any(secrets.compare_digest(key, k) for k in allowed_keys)
 
-    # If auth is explicitly required by configuration but no explicit key list is provided,
-    # fail closed instead of accepting any key matching the format pattern.
-    if os.environ.get("FONREX_AUTH_REQUIRED", "").lower() in ("true", "1", "yes"):
+    if not is_auth_explicitly_disabled():
         return False
 
-    # When no explicit key or requirement flag is configured in the environment,
-    # validate that the key matches the structured Fonrex API key format.
     return bool(API_KEY_PATTERN.match(key))
 
 

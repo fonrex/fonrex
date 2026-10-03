@@ -9,17 +9,18 @@ directly inside OpenBB.
 - A running Fonrex instance (self-hosted or Fonrex Relay), reachable
   from the internet or from your local network if running OpenBB
   Workspace Enterprise on-prem
-- An active Fonrex Relay API key (`frx_live_...`) if using the hosted
-  Cloud Relay, or no key required for a fully self-hosted instance
-  with authentication disabled
+- An API key (`frx_live_...`): the one set in `FONREX_API_KEY` on your
+  self-hosted instance (authentication is required by default), or your
+  Fonrex Relay key if using the hosted Cloud Relay. No key is needed only
+  for a local instance started with `FONREX_AUTH_REQUIRED=false`
 
 ## Setup
 
 1. In OpenBB Workspace, right-click on your dashboard and select **"Add data"**
 2. Enter your Fonrex instance URL (e.g. `https://your-fonrex-instance.com`)
 3. OpenBB will automatically discover the available widgets via `/widgets.json`
-4. If your instance requires authentication, add your API key as a
-   custom header: `X-API-KEY: frx_live_...`
+4. Add your API key as a custom header: `X-API-KEY: frx_live_...`
+   (skip this step only if authentication is disabled on your instance)
 5. Import the **"Fonrex — EU Markets"** app from the marketplace, or add
    individual widgets to your own dashboard
 
@@ -77,5 +78,5 @@ header configuration.
 
 ## Support
 
-- Documentation: https://docs.fonrex.io
+- Documentation: https://fonrex.io
 - Issues: https://github.com/fonrex/fonrex/issues

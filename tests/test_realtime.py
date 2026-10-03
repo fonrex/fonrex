@@ -408,6 +408,28 @@ class TestWebSocketEndpoint:
                 except Exception:
                     pass
 
+    def test_websocket_requires_key_by_default(self, test_app_client, monkeypatch):
+        """Sans aucune configuration d'auth, la connexion WS est refusée (secure by default)."""
+        from starlette.websockets import WebSocketDisconnect
+
+        client, _worker = test_app_client
+        for name in ("FONREX_API_KEY", "FONREX_RELAY_KEY", "FONREX_API_KEYS", "FONREX_AUTH_REQUIRED"):
+            monkeypatch.delenv(name, raising=False)
+
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/ws/realtime/AAPL"):
+                pass
+        assert exc.value.code == 1008
+
+        # Une clé bien formée mais non configurée n'est pas un identifiant valide.
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect(
+                "/ws/realtime/AAPL",
+                headers={"X-API-KEY": "frx_live_well_formed_but_unknown"},
+            ):
+                pass
+        assert exc.value.code == 1008
+
     def test_websocket_auth_enforcement_when_configured(self, test_app_client, monkeypatch):
         """Vérifie que la connexion WS requiert une clé API valide quand FONREX_API_KEY est configurée."""
         from starlette.websockets import WebSocketDisconnect

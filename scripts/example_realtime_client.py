@@ -11,13 +11,15 @@ Dépendances requises :
     pip install httpx websockets
 
 Lancement :
-    python scripts/example_realtime_client.py
+    FONREX_API_KEY=frx_live_... python scripts/example_realtime_client.py
 """
 
 import asyncio
 import json
 import logging
+import os
 import sys
+from urllib.parse import urlencode
 
 import httpx
 import websockets
@@ -33,6 +35,10 @@ logger = logging.getLogger("realtime_client")
 BASE_URL_REST = "http://localhost:5000"
 BASE_URL_WS = "ws://localhost:5000"
 
+# The API requires a key by default: export FONREX_API_KEY before running this script.
+API_KEY = os.environ.get("FONREX_API_KEY", "")
+AUTH_HEADERS = {"X-API-KEY": API_KEY} if API_KEY else {}
+
 
 async def listen_websocket(ticker: str):
     """
@@ -42,7 +48,9 @@ async def listen_websocket(ticker: str):
     logger.info(f"Connexion WebSocket à {ws_uri}...")
 
     try:
-        async with websockets.connect(ws_uri) as websocket:
+        # WebSocket clients cannot always set headers: the key travels as a query parameter.
+        connect_uri = f"{ws_uri}?{urlencode({'token': API_KEY})}" if API_KEY else ws_uri
+        async with websockets.connect(connect_uri) as websocket:
             logger.info(f"✅ Connecté au flux WebSocket pour {ticker} !")
             logger.info("Le serveur envoie d'abord un snapshot, puis des ticks temps réel...")
 
@@ -96,7 +104,7 @@ async def get_rest_snapshot(ticker: str) -> dict:
     Récupère le dernier snapshot de prix pour un ticker via l'endpoint REST.
     """
     url = f"{BASE_URL_REST}/quote/{ticker}"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=AUTH_HEADERS) as client:
         try:
             response = await client.get(url, params={"subscribe_if_missing": "true"})
             if response.status_code == 200:
@@ -122,7 +130,7 @@ async def get_rest_quotes_batch(tickers: list[str]) -> dict:
     """
     tickers_str = ",".join(tickers)
     url = f"{BASE_URL_REST}/quotes"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=AUTH_HEADERS) as client:
         try:
             response = await client.get(url, params={"tickers": tickers_str})
             if response.status_code == 200:

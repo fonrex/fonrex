@@ -11,6 +11,11 @@ import warnings
 
 os.environ.setdefault("NUMBA_CACHE_DIR", "/tmp")
 
+# The API requires an API key by default. The suite exercises routes without
+# credentials, so it runs in the explicit open mode; tests covering the secure
+# default remove this variable (see tests/test_auth_defaults.py).
+os.environ.setdefault("FONREX_AUTH_REQUIRED", "false")
+
 with warnings.catch_warnings():
     warnings.filterwarnings(
         "ignore",

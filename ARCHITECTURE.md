@@ -90,6 +90,10 @@ The Docker startup goes through `entrypoint.sh`:
 3. Applies database migrations via Alembic (`alembic upgrade head`).
 4. Launches `gunicorn --worker-class uvicorn.workers.UvicornWorker main:app`.
 
+`docker-compose.yml` loads `.env` into the API container (`env_file`) and overrides only `DATABASE_URL` and `REDIS_URL` to target the Compose services. PostgreSQL and Redis are published on `127.0.0.1` only.
+
+Authentication is enforced by default (`auth/dependencies.py`): protected routes require a key listed in `FONREX_API_KEY`, `FONREX_RELAY_KEY` or `FONREX_API_KEYS`. With no key configured every protected request is rejected (fail closed); the only opt-out is `FONREX_AUTH_REQUIRED=false` with no key configured. `main.py` logs the effective mode at startup.
+
 At application startup, `main.py` initializes:
 
 - `DatabaseService` for synchronous ORM accesses.
@@ -1136,6 +1140,8 @@ The `ValidationLayer` sits in the `FinancialProviderRunner` between collecting r
 | `roe`, `roa` | -5.0 / -2.0 | 10.0 / 2.0 | As a ratio |
 | ... | ... | ... | 30+ fields in total |
 
+**Unit normalisation** — `FIELD_RANGES` and `CANARY_ASSETS` are expressed as ratios, while scraped providers return some fields as displayed percentages (`3.45` for 3.45 %). `monitoring/units.py` declares, per provider, which fields are percentages (`PROVIDER_PERCENT_FIELDS`); the `ValidationLayer` and the `CanaryMonitor` convert them with `to_ratio()` before any range, consensus or canary check. Logged values are the normalised ratios; the provider payload returned by the API keeps its native unit.
+
 **Cross-provider consensus** — For each field, the `ValidationLayer` calculates the median of valid values (within range) across all providers. If a provider deviates by more than `VALIDATION_OUTLIER_THRESHOLD` (default 50%) from the consensus, its value is reset to `None`. The minimum threshold of providers to calculate the consensus is configurable (`VALIDATION_MIN_PROVIDERS`, default 2).
 
 **Logging** — All checks are batch recorded in `provider_health_log` via a dedicated `async_sessionmaker`. The `ValidationLayer` never raises an exception: any internal error is logged and silently ignored so as not to impact the main flow.
@@ -1345,6 +1351,8 @@ Two subcommands are exposed as `python -m zipline_bundle`:
 - `SECEdgar` only covers US-listed companies (EDGAR system). Insider transactions for European companies are not available via this provider.
 - Deep yfinance enrichment (highlights, ESG, earnings trend) depends on Yahoo API quotas. In case of rate limiting, premium tables may be partially populated.
 - Canary ranges (`CANARY_ASSETS`) and validation ranges (`FIELD_RANGES`) must be periodically reviewed if the fundamentals of reference assets evolve significantly (e.g., AAPL split, BNP dividend policy change).
+- When a provider is added, or changes the unit of a field, `PROVIDER_PERCENT_FIELDS` in `monitoring/units.py` must be updated; `tests/test_provider_units.py` runs each provider's parser and fails when the declared unit no longer matches.
+- Authentication is secure by default. Tests run with `FONREX_AUTH_REQUIRED=false` (`tests/conftest.py`); a deployment must set `FONREX_API_KEY`.
 - The `CanaryMonitor` uses dynamic imports (`importlib`) to load provider classes. If a provider is renamed or moved, the `_PROVIDER_IMPORTS` mapping in `canary_monitor.py` must be updated.
 - The `ASYNC_DATABASE_URL` is automatically inferred from `DATABASE_URL` by replacing `postgresql://` → `postgresql+asyncpg://`. If the URL uses a different scheme (e.g. `postgresql+psycopg2://`), `ASYNC_DATABASE_URL` must be explicitly defined in `.env`.
 

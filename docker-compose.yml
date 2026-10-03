@@ -4,12 +4,17 @@ services:
     image: timescale/timescaledb-ha:pg16
     container_name: fonrex-db
     restart: unless-stopped
+    # Published on the loopback interface only: reachable from this host (local
+    # development, Zipline bundle, psql) but never from the network. Containers
+    # talk to each other over the Compose network and do not need this mapping.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=fonrex
-      - POSTGRES_PASSWORD=fonrex_password
+      # Set POSTGRES_PASSWORD in .env before the first start (the password is
+      # stored in the postgres_data volume when the database is initialised).
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fonrex_password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init.sh:/docker-entrypoint-initdb.d/postgres-init.sh
@@ -24,8 +29,9 @@ services:
     image: redis:7-alpine
     container_name: fonrex-redis
     restart: unless-stopped
+    # Loopback only: Redis has no password and must not be reachable from the network.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
@@ -42,12 +48,15 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
+    # Application settings (FONREX_API_KEY, provider tokens, tuning…) come from .env.
+    env_file:
+      - .env
+    # Values below take precedence over .env: inside Compose the services are
+    # reached by their service name, not through localhost.
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://fonrex:fonrex_password@db:5432/fonrex
-      - CACHE_TTL=300
-      - WEB_CONCURRENCY=1
-      - SECRET_KEY=your-secret-key-change-in-production
+      - DATABASE_URL=postgresql://fonrex:${POSTGRES_PASSWORD:-fonrex_password}@db:5432/fonrex
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-1}
       # Disable proxies for MorningStar provider
       - HTTP_PROXY=
       - HTTPS_PROXY=
@@ -74,7 +83,7 @@ services:
     container_name: fonrex-migrate
     command: alembic upgrade head
     environment:
-      - DATABASE_URL=postgresql://fonrex:fonrex_password@db:5432/fonrex
+      - DATABASE_URL=postgresql://fonrex:${POSTGRES_PASSWORD:-fonrex_password}@db:5432/fonrex
     depends_on:
       db:
         condition: service_healthy

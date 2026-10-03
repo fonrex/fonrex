@@ -32,7 +32,7 @@ Fonrex is a **self-hosted financial data API** that aggregates market data, fund
 ```bash
 git clone https://github.com/fonrex/fonrex
 cd fonrex
-cp .env.example .env
+cp .env.example .env   # then set FONREX_API_KEY in .env (see Quickstart)
 mkdir -p logs
 docker compose up
 # → API running on http://localhost:5000
@@ -46,55 +46,82 @@ docker compose up
 - Docker + Docker Compose
 - 4 GB RAM minimum (8 GB recommended)
 
-### Start in 4 commands
+### Start in 5 commands
 
 ```bash
 # 1. Clone and configure
 git clone https://github.com/fonrex/fonrex && cd fonrex
 cp .env.example .env
 
-# 2. Ensure log directory exists
+# 2. Set your API key (required: the API rejects every request until one is configured)
+export FONREX_API_KEY="frx_live_$(openssl rand -hex 24)"
+sed -i.bak "s/^FONREX_API_KEY=.*/FONREX_API_KEY=$FONREX_API_KEY/" .env && rm .env.bak
+
+# 3. Ensure log directory exists
 mkdir -p logs
 
-# 3. Start (runs migrations automatically)
+# 4. Start (runs migrations automatically)
 docker compose up -d
 
-# 4. Import your first assets
+# 5. Import your first assets
 docker compose exec fonrex-api python import_assets.py --file data/etf.csv
 ```
+
+Docker Compose loads `.env` into the API container. Change `POSTGRES_PASSWORD` in `.env`
+**before** the first start as well. PostgreSQL and Redis are published on `127.0.0.1` only:
+they are reachable from the host, never from the network.
+
+### Authentication
+
+Authentication is **on by default**. Every route except `/health`, `/docs`, `/redoc`,
+`/openapi.json`, `/widgets.json`, `/apps.json` and `/static` requires one of the keys
+configured in `FONREX_API_KEY` (or `FONREX_API_KEYS`, comma-separated), sent as either:
+
+```
+Authorization: Bearer frx_live_...
+X-API-KEY: frx_live_...
+```
+
+WebSocket clients that cannot set headers may pass `?token=frx_live_...`.
+
+For a purely local instance you can opt out with `FONREX_AUTH_REQUIRED=false` (and no key
+configured). This opens every route, including cache and database administration — never
+do it on a reachable host.
 
 ### First API calls
 
 ```bash
+AUTH="X-API-KEY: $FONREX_API_KEY"
+
 # Fundamentals
-curl "http://localhost:5000/fundamental?ticker=AIR.PA"
+curl -H "$AUTH" "http://localhost:5000/fundamental?ticker=AIR.PA"
 
 # EOD history (auto-ingests if missing)
-curl "http://localhost:5000/eod/AIR.PA?period=1y"
+curl -H "$AUTH" "http://localhost:5000/eod/AIR.PA?period=1y"
 
 # Real-time quote (cached from WebSocket stream)
-curl "http://localhost:5000/quote/AAPL"
+curl -H "$AUTH" "http://localhost:5000/quote/AAPL"
 
 # Technical indicators
-curl "http://localhost:5000/technical/AIR.PA?indicator=rsi&period=14"
+curl -H "$AUTH" "http://localhost:5000/technical/AIR.PA?indicator=rsi&period=14"
 
 # DCF valuation
-curl "http://localhost:5000/dcf/AIR.PA"
+curl -H "$AUTH" "http://localhost:5000/dcf/AIR.PA"
 
 # Macro-economic rates
-curl "http://localhost:5000/macro/rates"
+curl -H "$AUTH" "http://localhost:5000/macro/rates"
 
 # Latest news
-curl "http://localhost:5000/news/AIR.PA"
+curl -H "$AUTH" "http://localhost:5000/news/AIR.PA"
 
 # Provider health monitoring
-curl "http://localhost:5000/health/providers"
+curl -H "$AUTH" "http://localhost:5000/health/providers"
 ```
 
 ### WebSocket (real-time prices)
 
 ```javascript
-const ws = new WebSocket("ws://localhost:5000/ws/realtime/AIR.PA");
+const ws = new WebSocket("ws://localhost:5000/ws/realtime/AIR.PA?token=" + FONREX_API_KEY);
 ws.onmessage = (e) => {
   const { type, data } = JSON.parse(e.data);
   if (type === "tick") console.log(`${data.close} €`);
@@ -352,8 +379,8 @@ FMP Premium costs **$59/month ($708/year)** and doesn't cover European markets w
 ```yaml
 services:
   fonrex-api     # FastAPI + Gunicorn, port 5000
-  fonrex-db      # TimescaleDB (PostgreSQL 16)
-  fonrex-redis   # Redis 7, 256MB limit, allkeys-lru
+  fonrex-db      # TimescaleDB (PostgreSQL 16), published on 127.0.0.1:5432 only
+  fonrex-redis   # Redis 7, 256MB limit, allkeys-lru, published on 127.0.0.1:6379 only
   fonrex-migrate # Alembic migrations (one-shot, profile: migrate)
 ```
 
@@ -396,14 +423,19 @@ usage_logs                — API request logs (cost_bucket included)
 Copy `.env.example` to `.env` and adjust:
 
 ```env
+# Authentication (required by default — see Quickstart › Authentication)
+FONREX_API_KEY=frx_live_...
+
 # Database
+# With Docker Compose, DATABASE_URL and REDIS_URL are overridden to target the
+# `db` and `redis` services; DATABASE_URL is then built from POSTGRES_PASSWORD.
 POSTGRES_USER=fonrex
 POSTGRES_PASSWORD=changeme
 POSTGRES_DB=fonrex
-DATABASE_URL=postgresql+psycopg2://fonrex:changeme@db:5432/fonrex
+DATABASE_URL=postgresql://fonrex:changeme@localhost:5432/fonrex
 
 # Redis
-REDIS_URL=redis://redis:6379/0
+REDIS_URL=redis://localhost:6379/0
 
 # Historical ingestion
 INGEST_CONCURRENCY=5
@@ -444,6 +476,17 @@ OPENFIGI_API_KEY=
 ---
 
 ## Troubleshooting
+
+### Every request returns `401 Missing API key` or `403`
+Authentication is on by default. Set `FONREX_API_KEY` in `.env`, restart the API
+(`docker compose up -d`) and send the key with each request. The startup logs state the
+effective mode (`docker compose logs fonrex-api | grep -i auth`).
+
+### `.env` created before authentication became mandatory
+`.env` is now loaded into the API container. Older copies of `.env.example` had comments
+after empty values (`FRED_API_KEY=   # Optional…`), which Docker Compose reads as the value
+itself. Re-create your file from the current `.env.example`, or move those comments to
+their own lines.
 
 ### Common Docker Issues
 

@@ -529,9 +529,12 @@ PYTHONPATH=. pytest tests/test_technical_indicators.py -v
 ```
 
 The local quality gate blocks strict Ruff violations, invalid Python syntax, multiple
-Alembic heads, test warnings, regressions, application coverage below 54%, and
-coverage regressions in nine critical modules.
-GitHub Actions runs this exact same quality check for every pull request and push to `main`.
+Alembic heads, test warnings, regressions, application coverage below 70%, and
+coverage regressions in the modules listed in `scripts/check_coverage_distribution.py`:
+the critical application modules and every data provider, each with its own floor.
+A provider without a declared floor fails the gate, so a new one cannot be merged untested.
+GitHub Actions runs this exact same quality check for every pull request and push to `main`,
+and publishes the coverage per module in the summary of the run (pull request → Checks).
 
 **38 test files** covering:
 - Asset identity resolution and ISIN deduplication

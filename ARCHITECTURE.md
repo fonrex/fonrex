@@ -1216,9 +1216,9 @@ The local `make quality` command is also the GitHub Actions CI entry point (`.gi
 2. Annotation checking on application boundaries.
 3. `compileall` on the repository excluding temporary environments and directories.
 4. Unique Alembic head verification.
-5. Tests with blocking warnings, branch coverage, XML/JSON reports, minimal 54% global threshold, and dedicated thresholds on nine critical modules.
+5. Tests with blocking warnings, branch coverage, XML/JSON reports, minimal 70% global threshold, and a dedicated floor per module in `scripts/check_coverage_distribution.py`: the critical application modules and every module of `financials/providers/`. A provider module without a declared floor fails the gate.
 
-The coverage threshold and Ruff selection constitute a progressive foundation: they must never be lowered and will be strengthened as the historical technical debt of providers is absorbed. Development dependencies are isolated in `requirements-dev.txt`.
+The coverage thresholds and Ruff selection constitute a progressive foundation: they must never be lowered. A floor is the measured coverage rounded down and is raised whenever the coverage of its module rises; the CI run summary lists the floors that lag behind and shows the coverage per module on each pull request. Development dependencies are isolated in `requirements-dev.txt`.
 
 Test coverage (38 files):
 

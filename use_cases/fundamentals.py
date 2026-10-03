@@ -143,13 +143,22 @@ class GetFundamentals:
         asset_mappings = {}
         provider_default_tickers = {}
         if db_service:
-            asset_context = await run_sync(
-                db_service.get_asset_context,
-                ticker=ticker,
-                isin=isin,
-                exchange=exchange,
-                currency=currency,
-            )
+            if hasattr(db_service, "ensure_asset_context"):
+                asset_context = await run_sync(
+                    db_service.ensure_asset_context,
+                    ticker=ticker,
+                    isin=isin,
+                    exchange=exchange,
+                    currency=currency,
+                )
+            else:
+                asset_context = await run_sync(
+                    db_service.get_asset_context,
+                    ticker=ticker,
+                    isin=isin,
+                    exchange=exchange,
+                    currency=currency,
+                )
 
             if asset_context:
                 asset_profile = asset_context["details"]
@@ -288,7 +297,12 @@ class GetDeepFundamentals:
         resolved_ticker = ticker
 
         if db_service:
-            asset_context = await run_sync(db_service.get_asset_context, ticker=ticker, isin=isin)
+            if hasattr(db_service, "ensure_asset_context"):
+                asset_context = await run_sync(
+                    db_service.ensure_asset_context, ticker=ticker, isin=isin
+                )
+            else:
+                asset_context = await run_sync(db_service.get_asset_context, ticker=ticker, isin=isin)
             if asset_context:
                 asset_profile = asset_context["details"]
                 asset_id = asset_profile.get("asset_id")

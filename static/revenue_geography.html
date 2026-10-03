@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Revenue Per Geography</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #121214;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f4f4f5;
+    }
+    .widget-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: 10px 16px 8px 16px;
+      position: relative;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 36px;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .icon-clock {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #10b981;
+      opacity: 0.95;
+      flex-shrink: 0;
+    }
+    .title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #f4f4f5;
+      letter-spacing: -0.2px;
+      white-space: nowrap;
+    }
+    
+    /* Ticker Pill & Popover */
+    .ticker-dropdown-container {
+      position: relative;
+      display: inline-block;
+    }
+    .ticker-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #1c1d22;
+      border: 1px solid #2e2f38;
+      border-radius: 5px;
+      padding: 2px 7px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      color: #e4e4e7;
+    }
+    .ticker-pill:hover {
+      border-color: #00aaff;
+      background: #23252d;
+    }
+    .group-num {
+      background-color: rgb(0, 170, 255);
+      color: #fff;
+      font-size: 9.5px;
+      padding: 0px 4px;
+      border-radius: 2px;
+      font-weight: 700;
+      height: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ticker-chevron {
+      opacity: 0.7;
+    }
+
+    /* Ticker Search Popover (Matching Screenshot 2) */
+    .ticker-popover {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 5px;
+      background: #191a1e;
+      border: 1px solid #2e2f38;
+      border-radius: 6px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.65);
+      z-index: 100;
+      width: 320px;
+      max-height: 420px;
+      overflow: hidden;
+      flex-direction: column;
+    }
+    .ticker-popover.show {
+      display: flex;
+    }
+    .search-box-wrapper {
+      padding: 8px 10px;
+      border-bottom: 1px solid #24252b;
+      background: #151619;
+    }
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #1f2025;
+      border: 1px solid #32343e;
+      border-radius: 4px;
+      padding: 5px 8px;
+    }
+    .search-box:focus-within {
+      border-color: #00aaff;
+    }
+    .search-box input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #f4f4f5;
+      font-size: 12px;
+      width: 100%;
+      font-family: inherit;
+    }
+    .search-box input::placeholder {
+      color: #71717a;
+    }
+    .ticker-list-viewport {
+      overflow-y: auto;
+      max-height: 350px;
+      padding: 6px 0;
+    }
+    .ticker-list-viewport::-webkit-scrollbar {
+      width: 6px;
+    }
+    .ticker-list-viewport::-webkit-scrollbar-thumb {
+      background: #3f3f46;
+      border-radius: 3px;
+    }
+    .ticker-section-header {
+      padding: 6px 12px 3px 12px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #71717a;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .ticker-row {
+      display: flex;
+      align-items: center;
+      padding: 7px 12px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .ticker-row:hover {
+      background: #25272e;
+    }
+    .ticker-row-sym {
+      font-weight: 700;
+      color: #ffffff;
+      min-width: 55px;
+    }
+    .ticker-row-name {
+      color: #a1a1aa;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      font-size: 11.5px;
+    }
+    .ticker-row-type {
+      font-size: 9.5px;
+      color: #71717a;
+      text-transform: uppercase;
+      margin-right: 4px;
+      font-weight: 500;
+    }
+    .ticker-row-exch {
+      font-size: 9.5px;
+      color: #71717a;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+    .ticker-status-row {
+      padding: 12px 14px;
+      color: #71717a;
+      font-size: 11.5px;
+      text-align: center;
+      font-style: italic;
+    }
+
+    /* Period Pill & Popover (Matching Screenshot 3) */
+    .period-dropdown-container {
+      position: relative;
+      display: inline-block;
+    }
+    .period-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #1c1d22;
+      border: 1px solid #2e2f38;
+      border-radius: 5px;
+      padding: 2px 7px;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: #e4e4e7;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .period-pill:hover {
+      border-color: #52525b;
+      background: #23252d;
+    }
+    .period-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 5px;
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+      z-index: 100;
+      min-width: 100px;
+      overflow: hidden;
+    }
+    .period-menu.show {
+      display: block;
+    }
+    .period-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 12px;
+      font-size: 11.5px;
+      color: #d4d4d8;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .period-option:hover {
+      background: #27272a;
+      color: #fff;
+    }
+    .period-option.active {
+      font-weight: 600;
+      color: #ffffff;
+    }
+    .period-option .check {
+      color: #f4f4f5;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
+    /* Header Right Actions */
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #8e8e93;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .action-btn:hover {
+      background: #1f1f23;
+      color: #f4f4f5;
+    }
+    .action-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+    }
+
+    /* Chart Container */
+    .chart-container {
+      flex: 1;
+      width: 100%;
+      height: calc(100% - 44px);
+      position: relative;
+    }
+
+    /* Loading Overlay */
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(18, 18, 20, 0.75);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: opacity 0.2s ease;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #00aaff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .no-data-msg {
+      display: none;
+      position: absolute;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      color: #71717a;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <!-- Header Navbar -->
+    <div class="header">
+      <div class="header-left">
+        <!-- Clock Icon -->
+        <div class="icon-clock">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
+
+        <div class="title">Revenue Per Geography</div>
+        
+        <!-- AAPL Ticker Dropdown Pill -->
+        <div class="ticker-dropdown-container">
+          <div class="ticker-pill" id="ticker-btn" title="Select stock ticker">
+            <span class="group-num">1</span>
+            <span id="ticker-label">AAPL</span>
+            <svg class="ticker-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+
+          <!-- Ticker Search Dropdown Modal (Matching Screenshot 2) -->
+          <div class="ticker-popover" id="ticker-popover">
+            <div class="search-box-wrapper">
+              <div class="search-box">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="ticker-search-input" placeholder="Search ticker" autocomplete="off" spellcheck="false" />
+              </div>
+            </div>
+            
+            <div class="ticker-list-viewport" id="ticker-list-viewport">
+              <!-- RECENT Section -->
+              <div class="ticker-section-header" id="recent-header">RECENT</div>
+              <div id="recent-list">
+                <!-- Dynamically populated from localStorage -->
+              </div>
+
+              <!-- TOP RESULTS Section -->
+              <div class="ticker-section-header" id="top-header">TOP RESULTS</div>
+              <div id="top-list">
+                <!-- Statically curated & filtered -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FY Period Mini-Dropdown (Matching Screenshot 3) -->
+        <div class="period-dropdown-container">
+          <div class="period-pill" id="period-btn" title="Select period (FY / QTR)">
+            <!-- Group / Link Icon -->
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+            <span id="period-label">FY</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+
+          <div class="period-menu" id="period-menu">
+            <div class="period-option active" data-val="FY">
+              <span>FY</span>
+              <span class="check" id="check-FY">✓</span>
+            </div>
+            <div class="period-option" data-val="QTR">
+              <span>QTR</span>
+              <span class="check" id="check-QTR"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Header Right Action Buttons -->
+      <div class="header-right">
+        <!-- Chat/Notes icon -->
+        <button class="action-btn" title="Widget info">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        </button>
+        <!-- Tuning/Sliders icon -->
+        <button class="action-btn active" title="Chart parameters">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+        <!-- Refresh button -->
+        <button class="action-btn" title="Refresh data" onclick="loadRevenueGeography(true)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Plotly Chart Container -->
+    <div class="chart-container" id="plotly-chart"></div>
+
+    <div class="no-data-msg" id="no-data-msg">
+      No geographic revenue segmentation found for this asset.
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading-overlay" id="loading-overlay">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <script>
+    // Initial parameter state
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentTicker = (urlParams.get('ticker') || urlParams.get('symbol') || 'AAPL').toUpperCase();
+    let currentPeriod = (urlParams.get('period') || 'FY').toUpperCase();
+
+    const tickerLabel = document.getElementById('ticker-label');
+    const tickerBtn = document.getElementById('ticker-btn');
+    const tickerPopover = document.getElementById('ticker-popover');
+    const tickerSearchInput = document.getElementById('ticker-search-input');
+    const recentList = document.getElementById('recent-list');
+    const topList = document.getElementById('top-list');
+
+    const periodLabel = document.getElementById('period-label');
+    const periodBtn = document.getElementById('period-btn');
+    const periodMenu = document.getElementById('period-menu');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const noDataMsg = document.getElementById('no-data-msg');
+
+    tickerLabel.textContent = currentTicker;
+    periodLabel.textContent = currentPeriod;
+    updatePeriodChecks();
+
+    // Top Stocks Dataset matching OpenBB Top Results (Screenshot 2)
+    const TOP_TICKERS = [
+      { sym: 'AAPL', name: 'Apple Inc.', type: 'STOCK', exch: 'NASDAQ' },
+      { sym: 'ADBE', name: 'Adobe Inc.', type: 'STOCK', exch: 'NASDAQ' },
+      { sym: 'AMZN', name: 'Amazon.com, Inc.', type: 'STOCK', exch: 'NASDAQ' },
+      { sym: 'BAC', name: 'Bank of America Corporation', type: 'STOCK', exch: 'NYSE' },
+      { sym: 'DIS', name: 'The Walt Disney Company', type: 'STOCK', exch: 'NYSE' },
+      { sym: 'GOOG', name: 'Alphabet Inc.', type: 'STOCK', exch: 'NASDAQ' },
+      { sym: 'HD', name: 'The Home Depot, Inc.', type: 'STOCK', exch: 'NYSE' },
+      { sym: 'JNJ', name: 'Johnson & Johnson', type: 'STOCK', exch: 'NYSE' },
+      { sym: 'MSFT', name: 'Microsoft Corporation', type: 'STOCK', exch: 'NASDAQ' },
+      { sym: 'NVDA', name: 'NVIDIA Corporation', type: 'STOCK', exch: 'NASDAQ' },
+      { sym: 'META', name: 'Meta Platforms, Inc.', type: 'STOCK', exch: 'NASDAQ' },
+      { sym: 'TSLA', name: 'Tesla, Inc.', type: 'STOCK', exch: 'NASDAQ' },
+      { sym: 'AIR.PA', name: 'Airbus SE', type: 'STOCK', exch: 'EURONEXT' },
+      { sym: 'MC.PA', name: 'LVMH Moët Hennessy', type: 'STOCK', exch: 'EURONEXT' },
+      { sym: 'TTE.PA', name: 'TotalEnergies SE', type: 'STOCK', exch: 'EURONEXT' }
+    ];
+
+    // Local Storage for Recent Tickers
+    function getRecentTickers() {
+      try {
+        const stored = JSON.parse(localStorage.getItem('fonrex_recent_tickers') || '[]');
+        if (Array.isArray(stored) && stored.length > 0) return stored;
+      } catch (e) {}
+      return [{ sym: 'AAPL', name: 'Apple Inc.', type: 'STOCK', exch: 'NASDAQ' }];
+    }
+
+    function addRecentTicker(tickerObj) {
+      try {
+        let recents = getRecentTickers().filter(item => item.sym !== tickerObj.sym);
+        recents.unshift(tickerObj);
+        if (recents.length > 6) recents = recents.slice(0, 6);
+        localStorage.setItem('fonrex_recent_tickers', JSON.stringify(recents));
+      } catch (e) {}
+    }
+
+    function renderTickerRow(item) {
+      const row = document.createElement('div');
+      row.className = 'ticker-row';
+      row._tickerItem = item;
+      row.innerHTML = `
+        <span class="ticker-row-sym">${item.sym}</span>
+        <span class="ticker-row-name">${item.name}</span>
+        <span class="ticker-row-type">${item.type || 'STOCK'}</span>
+        <span class="ticker-row-exch">${item.exch || ''}</span>
+      `;
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectTicker(item.sym, item);
+      });
+      return row;
+    }
+
+    let searchDebounceTimer = null;
+    let currentSearchAbortController = null;
+
+    function populateTickerLists(filterQuery = '') {
+      const trimmedQuery = filterQuery.trim();
+      const q = trimmedQuery.toUpperCase();
+
+      // If empty query: display RECENT + default TOP RESULTS immediately
+      if (!trimmedQuery) {
+        if (currentSearchAbortController) {
+          currentSearchAbortController.abort();
+          currentSearchAbortController = null;
+        }
+        recentList.innerHTML = '';
+        topList.innerHTML = '';
+
+        const recents = getRecentTickers();
+        recents.forEach(item => {
+          recentList.appendChild(renderTickerRow(item));
+        });
+        document.getElementById('recent-header').style.display = recents.length ? 'block' : 'none';
+
+        const topHeader = document.getElementById('top-header');
+        topHeader.textContent = 'TOP RESULTS';
+        topHeader.style.display = 'block';
+
+        TOP_TICKERS.forEach(item => {
+          topList.appendChild(renderTickerRow(item));
+        });
+        return;
+      }
+
+      // Filter query provided:
+      // 1. Instantly filter RECENT list
+      recentList.innerHTML = '';
+      const recents = getRecentTickers();
+      const filteredRecents = recents.filter(r =>
+        r.sym.toUpperCase().includes(q) || r.name.toUpperCase().includes(q)
+      );
+      filteredRecents.forEach(item => {
+        recentList.appendChild(renderTickerRow(item));
+      });
+      document.getElementById('recent-header').style.display = filteredRecents.length ? 'block' : 'none';
+
+      // 2. Immediate local feedback while API searches
+      topList.innerHTML = '';
+      const topHeader = document.getElementById('top-header');
+      topHeader.textContent = 'SEARCH RESULTS';
+      topHeader.style.display = 'block';
+
+      const localMatches = TOP_TICKERS.filter(t =>
+        t.sym.toUpperCase().includes(q) || t.name.toUpperCase().includes(q)
+      );
+      localMatches.forEach(item => {
+        topList.appendChild(renderTickerRow(item));
+      });
+
+      if (localMatches.length === 0 && filteredRecents.length === 0) {
+        const hint = document.createElement('div');
+        hint.className = 'ticker-status-row';
+        hint.textContent = 'Searching...';
+        topList.appendChild(hint);
+      }
+
+      // 3. Debounce API call to Fonrex /api/search
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      if (currentSearchAbortController) currentSearchAbortController.abort();
+
+      searchDebounceTimer = setTimeout(async () => {
+        currentSearchAbortController = new AbortController();
+        try {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}`, {
+            signal: currentSearchAbortController.signal
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const results = data.results || [];
+
+          // Guard against out-of-order response
+          if (tickerSearchInput.value.trim() !== trimmedQuery) return;
+
+          topList.innerHTML = '';
+
+          const seen = new Set();
+          const combined = [];
+
+          results.forEach(r => {
+            const sym = (r.ticker || r.symbol || r.value || '').toUpperCase();
+            if (sym && !seen.has(sym)) {
+              seen.add(sym);
+              combined.push({
+                sym: sym,
+                name: r.name || sym,
+                type: r.quote_type || 'STOCK',
+                exch: r.exchange || ''
+              });
+            }
+          });
+
+          // Also keep any local top matches that match the query
+          localMatches.forEach(m => {
+            if (!seen.has(m.sym)) {
+              seen.add(m.sym);
+              combined.push(m);
+            }
+          });
+
+          if (combined.length === 0 && filteredRecents.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'ticker-status-row';
+            empty.textContent = `No tickers found for "${trimmedQuery}"`;
+            topList.appendChild(empty);
+            return;
+          }
+
+          combined.forEach(item => {
+            topList.appendChild(renderTickerRow(item));
+          });
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          console.warn('Ticker search error:', err);
+        }
+      }, 150);
+    }
+
+    function selectTicker(sym, itemObj = null) {
+      if (!sym) return;
+      currentTicker = sym.toUpperCase();
+      tickerLabel.textContent = currentTicker;
+      
+      const found = itemObj || TOP_TICKERS.find(t => t.sym === currentTicker) || {
+        sym: currentTicker,
+        name: currentTicker,
+        type: 'STOCK',
+        exch: ''
+      };
+      addRecentTicker(found);
+
+      tickerPopover.classList.remove('show');
+      loadRevenueGeography(false);
+
+      // Notify OpenBB parent if running in iframe
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'ticker_change', ticker: currentTicker }, '*');
+        }
+      } catch (e) {}
+    }
+
+    // Toggle Ticker Popover
+    tickerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      periodMenu.classList.remove('show');
+      const isVisible = tickerPopover.classList.toggle('show');
+      if (isVisible) {
+        tickerSearchInput.value = '';
+        populateTickerLists('');
+        setTimeout(() => tickerSearchInput.focus(), 50);
+      }
+    });
+
+    tickerSearchInput.addEventListener('input', (e) => {
+      populateTickerLists(e.target.value);
+    });
+
+    tickerSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const firstRow = topList.querySelector('.ticker-row') || recentList.querySelector('.ticker-row');
+        if (firstRow && firstRow._tickerItem) {
+          selectTicker(firstRow._tickerItem.sym, firstRow._tickerItem);
+        } else {
+          const val = tickerSearchInput.value.trim().toUpperCase();
+          if (val) {
+            selectTicker(val);
+          }
+        }
+      }
+    });
+
+    // Toggle Period Dropdown
+    periodBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      tickerPopover.classList.remove('show');
+      periodMenu.classList.toggle('show');
+    });
+
+    function updatePeriodChecks() {
+      document.getElementById('check-FY').textContent = currentPeriod === 'FY' ? '✓' : '';
+      document.getElementById('check-QTR').textContent = currentPeriod === 'QTR' ? '✓' : '';
+      document.querySelectorAll('.period-option').forEach(opt => {
+        opt.classList.toggle('active', opt.getAttribute('data-val') === currentPeriod);
+      });
+    }
+
+    document.querySelectorAll('.period-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const val = opt.getAttribute('data-val');
+        if (val !== currentPeriod) {
+          currentPeriod = val;
+          periodLabel.textContent = val;
+          updatePeriodChecks();
+          periodMenu.classList.remove('show');
+          loadRevenueGeography(false);
+        }
+      });
+    });
+
+    // Close menus on outside click
+    document.addEventListener('click', (e) => {
+      if (!tickerPopover.contains(e.target) && !tickerBtn.contains(e.target)) {
+        tickerPopover.classList.remove('show');
+      }
+      if (!periodMenu.contains(e.target) && !periodBtn.contains(e.target)) {
+        periodMenu.classList.remove('show');
+      }
+    });
+
+    // Fetch and render Plotly Chart
+    async function loadRevenueGeography(forceRefresh = false) {
+      loadingOverlay.style.display = 'flex';
+      noDataMsg.style.display = 'none';
+
+      try {
+        const url = `/openbb/fundamental/${encodeURIComponent(currentTicker)}/revenue-geography?period=${currentPeriod}${forceRefresh ? '&refresh=true' : ''}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const plotData = await res.json();
+
+        if (!plotData.data || plotData.data.length === 0) {
+          noDataMsg.style.display = 'flex';
+          Plotly.purge('plotly-chart');
+          return;
+        }
+
+        // Layout refinement to match Screenshot 1 perfectly
+        const layout = {
+          ...plotData.layout,
+          autosize: true,
+          margin: { l: 50, r: 25, t: 30, b: 35 },
+          paper_bgcolor: '#121214',
+          plot_bgcolor: '#121214',
+          font: { family: 'Inter, sans-serif', color: '#f4f4f5', size: 11 },
+          legend: {
+            orientation: 'h',
+            yanchor: 'bottom',
+            y: 1.02,
+            xanchor: 'center',
+            x: 0.5,
+            font: { size: 10.5, color: '#e4e4e7' },
+            itemclick: 'toggle',
+            itemdoubleclick: 'toggleothers'
+          },
+          xaxis: {
+            ...plotData.layout.xaxis,
+            gridcolor: '#222327',
+            tickfont: { size: 10.5, color: '#a1a1aa' }
+          },
+          yaxis: {
+            ...plotData.layout.yaxis,
+            gridcolor: '#222327',
+            tickfont: { size: 10.5, color: '#a1a1aa' }
+          }
+        };
+
+        const config = {
+          responsive: true,
+          displayModeBar: false,
+        };
+
+        Plotly.newPlot('plotly-chart', plotData.data, layout, config);
+      } catch (err) {
+        console.error('Failed to load geographic revenue segmentation:', err);
+        noDataMsg.style.display = 'flex';
+      } finally {
+        loadingOverlay.style.display = 'none';
+      }
+    }
+
+    // Responsive resize
+    window.addEventListener('resize', () => {
+      Plotly.Plots.resize('plotly-chart');
+    });
+
+    // OpenBB postMessage communication listener
+    window.addEventListener('message', (event) => {
+      if (!event.data) return;
+      const data = event.data;
+      if (data.type === 'props' && data.data) {
+        if (data.data.ticker && data.data.ticker.toUpperCase() !== currentTicker) {
+          selectTicker(data.data.ticker);
+        }
+        if (data.data.period && data.data.period.toUpperCase() !== currentPeriod) {
+          currentPeriod = data.data.period.toUpperCase();
+          periodLabel.textContent = currentPeriod;
+          updatePeriodChecks();
+          loadRevenueGeography(false);
+        }
+      }
+    });
+
+    // Initial load
+    populateTickerLists('');
+    loadRevenueGeography(false);
+  </script>
+</body>
+</html>

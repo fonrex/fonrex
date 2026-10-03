@@ -178,21 +178,28 @@ def format_candlestick_chart(
         }
     ]
 
-    layout: Dict[str, Any] = {
-        "title": title or f"{ticker} OHLCV",
+    dark_layout = {
+        "paper_bgcolor": "#121214",
+        "plot_bgcolor": "#121214",
+        "font": {"color": "#f4f4f5"},
+        "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         "xaxis": {
             "rangeslider": {"visible": False},
             "type": "date",
+            "gridcolor": "#27272a",
         },
         "yaxis": {
             "title": "Price",
+            "gridcolor": "#27272a",
         },
-        "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
     }
 
     return {
         "data": data_traces,
-        "layout": layout,
+        "layout": {
+            "title": title or f"{ticker} OHLCV",
+            **dark_layout,
+        },
     }
 
 
@@ -232,8 +239,11 @@ def format_indicator_chart(
         "data": data_traces,
         "layout": {
             "title": f"{ticker} {indicator_name.upper()}",
-            "xaxis": {"rangeslider": {"visible": False}},
-            "yaxis": {"title": indicator_name.upper()},
+            "paper_bgcolor": "#121214",
+            "plot_bgcolor": "#121214",
+            "font": {"color": "#f4f4f5"},
+            "xaxis": {"rangeslider": {"visible": False}, "gridcolor": "#27272a"},
+            "yaxis": {"title": indicator_name.upper(), "gridcolor": "#27272a"},
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         },
     }
@@ -279,8 +289,11 @@ def format_technical_multi_chart(
         "data": data_traces,
         "layout": {
             "title": f"{ticker} Technical Indicators",
-            "xaxis": {"rangeslider": {"visible": False}},
-            "yaxis": {"title": "Value"},
+            "paper_bgcolor": "#121214",
+            "plot_bgcolor": "#121214",
+            "font": {"color": "#f4f4f5"},
+            "xaxis": {"rangeslider": {"visible": False}, "gridcolor": "#27272a"},
+            "yaxis": {"title": "Value", "gridcolor": "#27272a"},
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         },
     }
@@ -322,10 +335,220 @@ def format_technical_chart_overlay(
         "data": data_traces,
         "layout": {
             "title": f"{ticker} Technical Chart",
-            "xaxis": {"rangeslider": {"visible": False}},
-            "yaxis": {"title": "Price"},
+            "paper_bgcolor": "#121214",
+            "plot_bgcolor": "#121214",
+            "font": {"color": "#f4f4f5"},
+            "xaxis": {"rangeslider": {"visible": False}, "gridcolor": "#27272a"},
+            "yaxis": {"title": "Price", "gridcolor": "#27272a"},
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         },
+    }
+
+
+_SEGMENT_COLORS = [
+    "#3b82f6",  # blue (Americas)
+    "#f97316",  # orange (Europe)
+    "#22c55e",  # green (Greater China)
+    "#06b6d4",  # cyan (Japan)
+    "#eab308",  # yellow (Rest of Asia Pacific)
+    "#a855f7",  # purple (Other Countries)
+    "#ec4899",  # pink
+    "#14b8a6",  # teal
+    "#6366f1",  # indigo
+    "#84cc16",  # lime
+]
+
+
+def format_revenue_geography_chart(
+    ticker: str,
+    data: Any,
+    title: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Format geographic revenue breakdown into a Plotly stacked bar chart figure."""
+    dict_data = _to_dict(data)
+    breakdown: Dict[str, Dict[str, float]] = dict_data.get("breakdown", {})
+
+    if not breakdown:
+        return {
+            "data": [],
+            "layout": {
+                "title": title or f"Revenue Per Geography — {ticker}",
+                "barmode": "stack",
+                "paper_bgcolor": "#121214",
+                "plot_bgcolor": "#121214",
+                "font": {"color": "#f4f4f5"},
+            },
+        }
+
+    def _period_sort_key(p: str) -> tuple:
+        import re
+
+        nums = re.findall(r"\d+", p)
+        return (int(nums[0]), p) if nums else (0, p)
+
+    sorted_periods = sorted(breakdown.keys(), key=_period_sort_key)
+
+    unique_segments: List[str] = []
+    for p in reversed(sorted_periods):
+        for seg in breakdown[p].keys():
+            if seg not in unique_segments:
+                unique_segments.append(seg)
+
+    data_traces: List[Dict[str, Any]] = []
+    for idx, seg in enumerate(unique_segments):
+        ys = []
+        for p in sorted_periods:
+            val = breakdown.get(p, {}).get(seg, 0.0)
+            ys.append(round(val / 1e9, 2) if val else 0.0)
+
+        color = _SEGMENT_COLORS[idx % len(_SEGMENT_COLORS)]
+        data_traces.append(
+            {
+                "type": "bar",
+                "name": seg,
+                "x": sorted_periods,
+                "y": ys,
+                "marker": {"color": color},
+            }
+        )
+
+    dark_layout = {
+        "title": title or f"Revenue Per Geography — {ticker}",
+        "barmode": "stack",
+        "paper_bgcolor": "#121214",
+        "plot_bgcolor": "#121214",
+        "font": {"color": "#f4f4f5"},
+        "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
+        "xaxis": {
+            "gridcolor": "#27272a",
+            "type": "category",
+        },
+        "yaxis": {
+            "ticksuffix": " B",
+            "gridcolor": "#27272a",
+        },
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+        },
+    }
+
+    return {
+        "data": data_traces,
+        "layout": dark_layout,
+    }
+
+
+def format_valuation_multiples_chart(
+    ticker: str,
+    data: Any,
+    period: str = "FY",
+    title: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Format historical valuation multiples into a multi-trace Plotly line chart
+    matching the OpenBB 'Valuation Multiples' widget contract.
+    Traces: P/E Ratio, P/S Ratio, P/B Ratio, EV/Sales Ratio, EV/EBITDA.
+    """
+    dict_data = _to_dict(data)
+    series = dict_data.get("series", [])
+
+    dates = []
+    pe_vals = []
+    ps_vals = []
+    pb_vals = []
+    ev_sales_vals = []
+    ev_ebitda_vals = []
+
+    for pt in series:
+        pt_dict = _to_dict(pt)
+        dt = pt_dict.get("date")
+        if not dt:
+            continue
+        dates.append(str(dt))
+        pe_vals.append(_to_plain_value(pt_dict.get("pe_ratio")))
+        ps_vals.append(_to_plain_value(pt_dict.get("ps_ratio")))
+        pb_vals.append(_to_plain_value(pt_dict.get("pb_ratio")))
+        ev_sales_vals.append(_to_plain_value(pt_dict.get("ev_sales_ratio")))
+        ev_ebitda_vals.append(_to_plain_value(pt_dict.get("ev_ebitda")))
+
+    traces = [
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "P/E Ratio",
+            "x": dates,
+            "y": pe_vals,
+            "connectgaps": True,
+            "line": {"color": "#3b82f6", "width": 2},
+        },
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "P/S Ratio",
+            "x": dates,
+            "y": ps_vals,
+            "connectgaps": True,
+            "line": {"color": "#f97316", "width": 2},
+        },
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "P/B Ratio",
+            "x": dates,
+            "y": pb_vals,
+            "connectgaps": True,
+            "line": {"color": "#22c55e", "width": 2},
+        },
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "EV/Sales Ratio",
+            "x": dates,
+            "y": ev_sales_vals,
+            "connectgaps": True,
+            "line": {"color": "#06b6d4", "width": 2},
+        },
+        {
+            "type": "scatter",
+            "mode": "lines",
+            "name": "EV/EBITDA",
+            "x": dates,
+            "y": ev_ebitda_vals,
+            "connectgaps": True,
+            "line": {"color": "#eab308", "width": 2},
+        },
+    ]
+
+    dark_layout = {
+        "title": title or "",
+        "paper_bgcolor": "#121214",
+        "plot_bgcolor": "#121214",
+        "font": {"color": "#f4f4f5"},
+        "margin": {"l": 50, "r": 20, "t": 30, "b": 60},
+        "xaxis": {
+            "gridcolor": "#27272a",
+            "type": "date",
+            "rangeslider": {"visible": False},
+        },
+        "yaxis": {
+            "gridcolor": "#27272a",
+        },
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "center",
+            "x": 0.5,
+        },
+    }
+
+    return {
+        "data": traces,
+        "layout": dark_layout,
     }
 
 
@@ -663,3 +886,179 @@ def format_etf_details_table(etf_data: Any) -> List[Dict[str, Any]]:
             rows.append({"metric": label, "value": _to_plain_value(val)})
 
     return rows
+
+
+def format_dividends_table(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Format dividend payment records into OpenBB AgGrid table rows.
+
+    Matches OpenBB 'Dividend Payment' table columns:
+    Date | Adjusted Dividend | Dividend | Record Date | Payment Date | Declaration Date
+    """
+    rows: List[Dict[str, Any]] = []
+    for r in records:
+        r_dict = _to_dict(r)
+        adj_div = r_dict.get("adjusted_dividend")
+        div = r_dict.get("dividend")
+        if adj_div is not None:
+            try:
+                adj_div = round(float(adj_div), 4)
+                if adj_div == round(adj_div, 2):
+                    adj_div = round(adj_div, 2)
+            except (ValueError, TypeError):
+                pass
+        if div is not None:
+            try:
+                div = round(float(div), 4)
+                if div == round(div, 2):
+                    div = round(div, 2)
+            except (ValueError, TypeError):
+                pass
+
+        row = {
+            "Date": r_dict.get("date") or r_dict.get("Date") or "N/A",
+            "Adjusted Dividend": adj_div,
+            "Dividend": div,
+            "Record Date": r_dict.get("record_date") or r_dict.get("Record Date") or "-",
+            "Payment Date": r_dict.get("payment_date") or r_dict.get("Payment Date") or "-",
+            "Declaration Date": r_dict.get("declaration_date") or r_dict.get("Declaration Date") or "-",
+            "currency": r_dict.get("currency") or r_dict.get("Currency") or "USD",
+        }
+        rows.append(row)
+    return rows
+
+
+def _format_amount(val: Optional[Any]) -> str:
+    """Format large numbers into B/M/K representation with suffix."""
+    if val is None or str(val).strip() in ("-", "None", ""):
+        return "-"
+    try:
+        val_f = float(val)
+    except (ValueError, TypeError):
+        return str(val)
+
+    if val_f == 0:
+        return "-"
+
+    abs_val = abs(val_f)
+    if abs_val >= 1e12:
+        return f"{val_f / 1e12:.3f} T"
+    elif abs_val >= 1e9:
+        num = val_f / 1e9
+        s = f"{num:.3f}"
+        if s.endswith("0") and len(s.split(".")[1]) > 2:
+            s = f"{num:.2f}"
+        return f"{s} B"
+    elif abs_val >= 1e6:
+        return f"{val_f / 1e6:.2f} M"
+    elif abs_val >= 1e3:
+        return f"{val_f / 1e3:.2f} K"
+    return f"{val_f:.2f}"
+
+
+def format_earnings_history_table(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Format earnings history records into OpenBB AgGrid table rows.
+
+    Matches OpenBB 'Earnings History' table columns:
+    Date | EPS | EPS Est. | Revenue | Revenue Est. | Transcript
+    """
+    rows: List[Dict[str, Any]] = []
+    for r in records:
+        r_dict = _to_dict(r)
+
+        # EPS
+        eps = r_dict.get("eps") if "eps" in r_dict else r_dict.get("EPS")
+        if eps is not None and str(eps).strip() not in ("-", "None", ""):
+            try:
+                eps_val = round(float(eps), 4)
+            except (ValueError, TypeError):
+                eps_val = eps
+        else:
+            eps_val = "-"
+
+        # EPS Est.
+        eps_est = (
+            r_dict.get("eps_estimate")
+            if "eps_estimate" in r_dict
+            else (r_dict.get("eps_est") if "eps_est" in r_dict else r_dict.get("EPS Est."))
+        )
+        if eps_est is not None and str(eps_est).strip() not in ("-", "None", ""):
+            try:
+                eps_est_val = round(float(eps_est), 4)
+            except (ValueError, TypeError):
+                eps_est_val = eps_est
+        else:
+            eps_est_val = "-"
+
+        # Revenue
+        rev = r_dict.get("revenue") if "revenue" in r_dict else r_dict.get("Revenue")
+        rev_val = _format_amount(rev)
+
+        # Revenue Est.
+        rev_est = (
+            r_dict.get("revenue_estimate")
+            if "revenue_estimate" in r_dict
+            else (r_dict.get("revenue_est") if "revenue_est" in r_dict else r_dict.get("Revenue Est."))
+        )
+        rev_est_val = _format_amount(rev_est)
+
+        # Transcript
+        transcript = (
+            r_dict.get("transcript")
+            if "transcript" in r_dict
+            else r_dict.get("Transcript")
+        )
+        if not transcript or str(transcript).strip() in ("-", "None", ""):
+            transcript_val = "" if eps_val == "-" else "View transcript"
+        else:
+            transcript_val = str(transcript)
+
+        row = {
+            "Date": r_dict.get("date") or r_dict.get("Date") or "N/A",
+            "EPS": eps_val,
+            "EPS Est.": eps_est_val,
+            "Revenue": rev_val,
+            "Revenue Est.": rev_est_val,
+            "Transcript": transcript_val,
+            "currency": r_dict.get("currency") or r_dict.get("Currency") or "USD",
+        }
+        rows.append(row)
+    return rows
+
+
+def format_stock_splits_table(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Format stock split records into OpenBB AgGrid table rows.
+
+    Matches OpenBB 'Stock Splits' table columns:
+    Execution Date | Split From | Split To
+    """
+    rows: List[Dict[str, Any]] = []
+    for r in records:
+        r_dict = _to_dict(r)
+        exec_date = (
+            r_dict.get("execution_date")
+            or r_dict.get("Execution Date")
+            or r_dict.get("date")
+            or r_dict.get("Date")
+            or "N/A"
+        )
+        split_from = (
+            r_dict.get("split_from")
+            if "split_from" in r_dict
+            else (r_dict.get("Split From") if "Split From" in r_dict else 1)
+        )
+        split_to = (
+            r_dict.get("split_to")
+            if "split_to" in r_dict
+            else (r_dict.get("Split To") if "Split To" in r_dict else 1)
+        )
+
+        rows.append(
+            {
+                "Execution Date": exec_date,
+                "Split From": split_from,
+                "Split To": split_to,
+            }
+        )
+    return rows
+
+

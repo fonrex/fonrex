@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Valuation Multiples</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #121214;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f4f4f5;
+    }
+    .widget-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: 12px 16px 8px 16px;
+      position: relative;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 38px;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .icon-clock {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #10b981;
+      opacity: 0.9;
+    }
+    .title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f4f4f5;
+      letter-spacing: -0.2px;
+      white-space: nowrap;
+    }
+    .ticker-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #1c1d22;
+      border: 1px solid #2e2f38;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s ease;
+    }
+    .ticker-pill:hover {
+      border-color: #3b82f6;
+    }
+    .group-num {
+      background: #3b82f6;
+      color: #fff;
+      font-size: 10px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-weight: 700;
+    }
+    .period-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .period-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #1c1d22;
+      border: 1px solid #2e2f38;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #e4e4e7;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+    .period-pill:hover {
+      border-color: #52525b;
+      background: #27272a;
+    }
+    .period-pill svg {
+      opacity: 0.7;
+    }
+    .period-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 50;
+      min-width: 100px;
+      overflow: hidden;
+    }
+    .period-menu.show {
+      display: block;
+    }
+    .period-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: #d4d4d8;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .period-option:hover {
+      background: #27272a;
+      color: #fff;
+    }
+    .period-option.active {
+      font-weight: 600;
+      color: #fff;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 5px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #a1a1aa;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .action-btn:hover {
+      background: #1f1f23;
+      border-color: #27272a;
+      color: #f4f4f5;
+    }
+    .action-btn.active {
+      background: #1e3a8a;
+      border-color: #3b82f6;
+      color: #60a5fa;
+    }
+    .chart-container {
+      flex: 1;
+      width: 100%;
+      height: calc(100% - 75px);
+      position: relative;
+    }
+    .summary-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 6px 12px;
+      background: #16161a;
+      border-radius: 6px;
+      border: 1px solid #232328;
+      margin-top: 4px;
+      font-size: 11px;
+      color: #a1a1aa;
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+    .summary-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .summary-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .summary-val {
+      font-weight: 600;
+      color: #f4f4f5;
+    }
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(18, 18, 20, 0.7);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: opacity 0.2s ease;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-container">
+    <div class="header">
+      <div class="header-left">
+        <div class="icon-clock">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
+        <div class="title">Valuation Multiples</div>
+        
+        <div class="ticker-pill" id="ticker-btn" title="Click to change ticker">
+          <span class="group-num">1</span>
+          <span id="ticker-label">AAPL</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+
+        <div class="period-dropdown">
+          <div class="period-pill" id="period-btn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <span id="period-label">FY</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+          <div class="period-menu" id="period-menu">
+            <div class="period-option active" data-val="FY"><span>FY</span> <span class="check">✓</span></div>
+            <div class="period-option" data-val="QTR"><span>QTR</span> <span class="check"></span></div>
+            <div class="period-option" data-val="TTM"><span>TTM</span> <span class="check"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button class="action-btn" title="Add note" onclick="alert('Fonrex Valuation Multiples v1.0')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><line x1="12" y1="8" x2="12" y2="14"></line><line x1="9" y1="11" x2="15" y2="11"></line></svg>
+        </button>
+        <button class="action-btn active" title="Multiples parameters">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+        <button class="action-btn" title="Refresh" onclick="loadMultiples(true)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="chart-container" id="plotly-chart"></div>
+
+    <div class="summary-bar" id="summary-bar">
+      <span style="font-weight: 600; color: #71717a;">LATEST MULTIPLES:</span>
+      <div class="summary-item"><span class="summary-dot" style="background:#3b82f6;"></span> P/E: <span class="summary-val" id="sum-pe">--</span></div>
+      <div class="summary-item"><span class="summary-dot" style="background:#f97316;"></span> P/S: <span class="summary-val" id="sum-ps">--</span></div>
+      <div class="summary-item"><span class="summary-dot" style="background:#22c55e;"></span> P/B: <span class="summary-val" id="sum-pb">--</span></div>
+      <div class="summary-item"><span class="summary-dot" style="background:#06b6d4;"></span> EV/Sales: <span class="summary-val" id="sum-evs">--</span></div>
+      <div class="summary-item"><span class="summary-dot" style="background:#eab308;"></span> EV/EBITDA: <span class="summary-val" id="sum-eveb">--</span></div>
+    </div>
+
+    <div class="loading-overlay" id="loading-overlay">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentTicker = (urlParams.get('ticker') || urlParams.get('symbol') || 'AAPL').toUpperCase();
+    let currentPeriod = (urlParams.get('period') || 'FY').toUpperCase();
+
+    const tickerLabel = document.getElementById('ticker-label');
+    const periodLabel = document.getElementById('period-label');
+    const periodBtn = document.getElementById('period-btn');
+    const periodMenu = document.getElementById('period-menu');
+    const loadingOverlay = document.getElementById('loading-overlay');
+
+    tickerLabel.textContent = currentTicker;
+    periodLabel.textContent = currentPeriod;
+
+    // Ticker changer prompt
+    document.getElementById('ticker-btn').addEventListener('click', () => {
+      const next = prompt('Enter Stock Ticker (e.g. AAPL, AIR.PA, MSFT, NVDA):', currentTicker);
+      if (next && next.trim() && next.trim().toUpperCase() !== currentTicker) {
+        currentTicker = next.trim().toUpperCase();
+        tickerLabel.textContent = currentTicker;
+        loadMultiples(false);
+      }
+    });
+
+    // Period menu toggle
+    periodBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      periodMenu.classList.toggle('show');
+    });
+
+    document.addEventListener('click', () => {
+      periodMenu.classList.remove('show');
+    });
+
+    document.querySelectorAll('.period-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const val = opt.getAttribute('data-val');
+        if (val !== currentPeriod) {
+          currentPeriod = val;
+          periodLabel.textContent = val;
+          document.querySelectorAll('.period-option').forEach(o => {
+            o.classList.toggle('active', o.getAttribute('data-val') === val);
+            o.querySelector('.check').textContent = o.getAttribute('data-val') === val ? '✓' : '';
+          });
+          periodMenu.classList.remove('show');
+          loadMultiples(false);
+        }
+      });
+    });
+
+    async function loadMultiples(forceRefresh = false) {
+      loadingOverlay.style.display = 'flex';
+      try {
+        const url = `/openbb/valuation/${encodeURIComponent(currentTicker)}/multiples?period=${currentPeriod}${forceRefresh ? '&refresh=true' : ''}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const plotData = await res.json();
+
+        // Custom config for responsive Plotly chart
+        const config = {
+          responsive: true,
+          displayModeBar: false,
+        };
+
+        Plotly.newPlot('plotly-chart', plotData.data, plotData.layout, config);
+
+        // Update latest values summary bar
+        updateSummary(plotData.data);
+      } catch (err) {
+        console.error('Failed to load valuation multiples:', err);
+      } finally {
+        loadingOverlay.style.display = 'none';
+      }
+    }
+
+    function updateSummary(traces) {
+      if (!traces || !traces.length) return;
+      const getLatest = (name) => {
+        const tr = traces.find(t => t.name === name);
+        if (!tr || !tr.y || !tr.y.length) return '--';
+        for (let i = tr.y.length - 1; i >= 0; i--) {
+          if (tr.y[i] !== null && tr.y[i] !== undefined && !isNaN(tr.y[i])) {
+            return Number(tr.y[i]).toFixed(2) + 'x';
+          }
+        }
+        return '--';
+      };
+
+      document.getElementById('sum-pe').textContent = getLatest('P/E Ratio');
+      document.getElementById('sum-ps').textContent = getLatest('P/S Ratio');
+      document.getElementById('sum-pb').textContent = getLatest('P/B Ratio');
+      document.getElementById('sum-evs').textContent = getLatest('EV/Sales Ratio');
+      document.getElementById('sum-eveb').textContent = getLatest('EV/EBITDA');
+    }
+
+    window.addEventListener('resize', () => {
+      Plotly.Plots.resize('plotly-chart');
+    });
+
+    loadMultiples(false);
+  </script>
+</body>
+</html>

@@ -46,15 +46,23 @@ directly inside OpenBB.
 | `fonrex_etf_details` | Fonrex ETF Details | Fundamentals | table | UCITS ETF details from JustETF |
 | `fonrex_index_constituents` | Fonrex Index Constituents | Market Data | table | Index constituents (S&P 500, CAC 40, NASDAQ 100, DAX) |
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates (FRED API) |
+| `fonrex_revenue_geography` | Revenue Per Geography | Fundamentals | iframe | Historical geographic revenue segmentation (stacked bar chart with ticker search and period switcher) |
+| `fonrex_valuation_multiples` | Valuation Multiples | Valuation | chart | Historical valuation multiples (P/E, P/S, P/B, EV/Sales, EV/EBITDA) over FY, QTR, TTM |
+| `fonrex_dividend_payment` | Dividend Payment | Calendar | table | Historical dividend payments with declaration, ex-dividend, record, and payment dates |
+| `fonrex_earnings_history` | Earnings History | Calendar | table | Historical and upcoming earnings reports (Date, Reported EPS, EPS Est., Revenue, Revenue Est., Transcripts) |
+| `fonrex_stock_splits` | Stock Splits | Calendar | table | Historical stock splits and reverse splits with execution dates and split ratios |
 
 ## Pre-assembled Apps
 
 ### Fonrex — EU Markets
 A comprehensive dashboard for analyzing a single ticker:
-- **Overview** tab: Quote, deep fundamentals, EOD chart
-- **Valuation** tab: DCF valuation + sensitivity matrix
-- **Technical** tab: Full technical chart with indicators
-- **News** tab: Latest news from 7 providers
+- **Overview** tab: TradingView Market Overview, Ticker Information, Key Metrics, Share Statistics, Ticker Profile, Real-Time Price Performance, and Historical Valuation Multiples chart
+- **Financials** tab: Deep fundamentals, fundamentals overview, and Revenue Per Geography (stacked bar chart)
+- **Technical Analysis** tab: Full interactive TradingView charting with drawing tools and indicators
+- **Comparison Analysis** tab: DCF models comparison & sensitivity matrix
+- **Ownership** tab: SEC insider transactions
+- **Company Calendar** tab: Earnings History (EPS and revenue actual vs estimates), Dividend Payment calendar, and Stock Splits
+- **Estimates** tab: DCF valuation model with dynamic WACC
 
 ### Fonrex — Screener & Macro
 An idea-generation dashboard:

@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import unicodedata
+import urllib.error
+import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 
 from cache.service import CacheService
 from concurrency import run_sync
@@ -19,6 +26,8 @@ from routers.dependencies import (
     get_ingestion_service,
     get_query_service,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Assets"])
 VALID_PERIODS = {
@@ -37,6 +46,148 @@ VALID_PERIODS = {
     "weekly",
     "monthly",
 }
+
+SEARCH_TOP_RESULTS = [
+    {"ticker": "AAPL", "name": "Apple Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "AAPL", "value": "AAPL"},
+    {"ticker": "ADBE", "name": "Adobe Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "ADBE", "value": "ADBE"},
+    {"ticker": "AGG", "name": "iShares Core U.S. Aggregate Bond ETF", "quote_type": "ETF", "exchange": "AMEX", "label": "AGG", "value": "AGG"},
+    {"ticker": "AMZN", "name": "Amazon.com, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "AMZN", "value": "AMZN"},
+    {"ticker": "BAC", "name": "Bank of America Corporation", "quote_type": "STOCK", "exchange": "NYSE", "label": "BAC", "value": "BAC"},
+    {"ticker": "COMP", "name": "Compass, Inc.", "quote_type": "STOCK", "exchange": "NYSE", "label": "COMP", "value": "COMP"},
+    {"ticker": "DIA", "name": "SPDR Dow Jones Industrial Average ETF Trust", "quote_type": "ETF", "exchange": "AMEX", "label": "DIA", "value": "DIA"},
+    {"ticker": "DIS", "name": "The Walt Disney Company", "quote_type": "STOCK", "exchange": "NYSE", "label": "DIS", "value": "DIS"},
+    {"ticker": "AIR.PA", "name": "Airbus SE", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "AIR.PA", "value": "AIR.PA"},
+    {"ticker": "TTE", "name": "TotalEnergies SE", "quote_type": "STOCK", "exchange": "NYSE", "label": "TTE", "value": "TTE"},
+    {"ticker": "GOOG", "name": "Alphabet Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "GOOG", "value": "GOOG"},
+    {"ticker": "MSFT", "name": "Microsoft Corporation", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "MSFT", "value": "MSFT"},
+    {"ticker": "NVDA", "name": "NVIDIA Corporation", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "NVDA", "value": "NVDA"},
+    {"ticker": "TSLA", "name": "Tesla, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "TSLA", "value": "TSLA"},
+]
+
+
+def strip_accents(text: str) -> str:
+    """Normalize text by stripping diacritics/accents (e.g. Crédit -> Credit)."""
+    if not text:
+        return ""
+    return "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
+
+
+def fetch_yahoo_search_quotes(query: str, limit: int = 10) -> list[dict]:
+    """Search Yahoo Finance for quotes matching query with accent normalization."""
+    if not query:
+        return []
+    clean_query = strip_accents(query.strip())
+    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={quote_plus(clean_query)}"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json, text/plain, */*",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            quotes = payload.get("quotes") or []
+            return quotes[:limit]
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, ValueError):
+        pass
+    return []
+
+
+def fetch_yahoo_search_quote(query: str) -> Optional[dict]:
+    """Backward-compatible helper returning first matching quote."""
+    quotes = fetch_yahoo_search_quotes(query, limit=1)
+    return quotes[0] if quotes else None
+
+
+@router.get("/api/search")
+@router.get("/search")
+@router.get("/openbb/search")
+async def search_tickers(
+    q: Optional[str] = Query(None),
+    db: DatabaseService = Depends(get_database_service),
+):
+    if not q or not q.strip():
+        return {"results": SEARCH_TOP_RESULTS}
+
+    query_raw = q.strip()
+    query_clean = strip_accents(query_raw).lower()
+
+    filtered = []
+    seen_tickers = set()
+
+    # 1. Base locale Fonrex en priorité (recherche par nom d'entreprise, ticker ou ISIN)
+    try:
+        db_results = await run_sync(db.search_assets_by_text, query_raw, limit=10)
+        for item in db_results:
+            sym = item.get("ticker")
+            if sym and sym not in seen_tickers:
+                seen_tickers.add(sym)
+                filtered.append(item)
+    except (SQLAlchemyError, ValueError, RuntimeError) as exc:
+        logger.warning("Erreur recherche assets text db: %s", exc)
+
+    # 2. Résultats statiques prédéfinis
+    for r in SEARCH_TOP_RESULTS:
+        r_ticker = r["ticker"]
+        if r_ticker in seen_tickers:
+            continue
+        if query_clean in strip_accents(r_ticker).lower() or query_clean in strip_accents(r["name"]).lower():
+            seen_tickers.add(r_ticker)
+            item = dict(r)
+            item["source"] = item.get("source", "catalog")
+            filtered.append(item)
+
+    # 3. Fallback externe Yahoo Finance si moins de 5 résultats trouvés localement
+    if len(filtered) < 5:
+        try:
+            quotes = await run_sync(fetch_yahoo_search_quotes, query_raw, 10)
+            exchange_names = {
+                "PAR": "EURONEXT PARIS",
+                "EPA": "EURONEXT PARIS",
+                "AMS": "EURONEXT AMSTERDAM",
+                "BRU": "EURONEXT BRUSSELS",
+                "LIS": "EURONEXT LISBON",
+                "GER": "XETRA",
+                "FRA": "XETRA",
+                "ETR": "XETRA",
+                "LSE": "LSE",
+                "MC": "BME",
+                "MIL": "BORSA ITALIANA",
+                "SWX": "SIX SWISS",
+                "NMS": "NASDAQ",
+                "NGS": "NASDAQ",
+                "NCM": "NASDAQ",
+                "NYQ": "NYSE",
+            }
+            for quote in quotes:
+                sym = quote.get("symbol")
+                if not sym or sym in seen_tickers:
+                    continue
+                seen_tickers.add(sym)
+
+                raw_type = (quote.get("quoteType") or "STOCK").upper()
+                if raw_type == "EQUITY":
+                    raw_type = "STOCK"
+
+                raw_exch = quote.get("exchange") or "UNKNOWN"
+                exch_name = exchange_names.get(raw_exch.upper(), raw_exch)
+
+                filtered.append({
+                    "ticker": sym,
+                    "name": quote.get("shortname") or quote.get("longname") or sym,
+                    "quote_type": raw_type,
+                    "exchange": exch_name,
+                    "label": sym,
+                    "value": sym,
+                    "source": "yahoo",
+                })
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, ValueError, RuntimeError) as exc:
+            logger.debug("Erreur fallback Yahoo quotes: %s", exc)
+
+    return {"results": filtered}
+
 
 
 @router.get("/assets/by-isin/{isin}")

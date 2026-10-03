@@ -15,7 +15,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from starlette.responses import JSONResponse
 
+from concurrency import run_sync
 from database.query import QueryService
+from database.service import DatabaseService
 from historical.ingestion_service import HistoricalIngestionService
 from integrations.openbb.adapters import (
     format_batch_quotes_table,
@@ -23,23 +25,32 @@ from integrations.openbb.adapters import (
     format_dcf_compare_table,
     format_dcf_sensitivity_table,
     format_dcf_table,
+    format_dividends_table,
+    format_earnings_history_table,
     format_etf_details_table,
     format_fundamentals_deep_table,
     format_fundamentals_table,
     format_indicator_chart,
     format_macro_rates_metric,
     format_quote_metric,
+    format_revenue_geography_chart,
+    format_stock_splits_table,
     format_technical_chart_overlay,
     format_technical_multi_chart,
+    format_valuation_multiples_chart,
 )
-from routers.assets import get_eod
+from routers.assets import fetch_yahoo_search_quotes, get_eod, strip_accents
 from routers.dependencies import (
     get_cache_service,
     get_database_service,
+    get_dividend_provider,
+    get_earnings_provider,
     get_ingestion_service,
     get_query_service,
     get_redis_client,
+    get_split_provider,
     get_technical_service,
+    get_valuation_multiples_service,
 )
 from routers.fundamentals import (
     get_all_information,
@@ -59,6 +70,7 @@ from routers.realtime import (
 )
 from routers.specialized import (
     get_etf_details,
+    get_geographic_revenue,
     get_index_constituents,
     get_index_name_enum,
     get_index_provider,
@@ -276,6 +288,181 @@ async def get_openbb_technical_chart(
         service=service,
     )
     return format_technical_chart_overlay(ticker.upper(), chart_payload)
+
+
+@router.get("/tickers")
+@router.get("/ticker-options")
+async def get_openbb_tickers(
+    q: Optional[str] = Query(None),
+    query: Optional[str] = Query(None),
+    db: DatabaseService = Depends(get_database_service),
+) -> List[Dict[str, Any]]:
+    """Return searchable ticker options with symbol, name, and exchange for OpenBB Workspace."""
+    all_tickers = [
+        {"ticker": "AAPL", "name": "Apple Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "AAPL", "value": "AAPL"},
+        {"ticker": "ADBE", "name": "Adobe Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "ADBE", "value": "ADBE"},
+        {"ticker": "AMZN", "name": "Amazon.com, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "AMZN", "value": "AMZN"},
+        {"ticker": "BAC", "name": "Bank of America Corporation", "quote_type": "STOCK", "exchange": "NYSE", "label": "BAC", "value": "BAC"},
+        {"ticker": "DIS", "name": "The Walt Disney Company", "quote_type": "STOCK", "exchange": "NYSE", "label": "DIS", "value": "DIS"},
+        {"ticker": "GOOG", "name": "Alphabet Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "GOOG", "value": "GOOG"},
+        {"ticker": "HD", "name": "The Home Depot, Inc.", "quote_type": "STOCK", "exchange": "NYSE", "label": "HD", "value": "HD"},
+        {"ticker": "JNJ", "name": "Johnson & Johnson", "quote_type": "STOCK", "exchange": "NYSE", "label": "JNJ", "value": "JNJ"},
+        {"ticker": "MSFT", "name": "Microsoft Corporation", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "MSFT", "value": "MSFT"},
+        {"ticker": "NVDA", "name": "NVIDIA Corporation", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "NVDA", "value": "NVDA"},
+        {"ticker": "META", "name": "Meta Platforms, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "META", "value": "META"},
+        {"ticker": "TSLA", "name": "Tesla, Inc.", "quote_type": "STOCK", "exchange": "NASDAQ", "label": "TSLA", "value": "TSLA"},
+        {"ticker": "AIR.PA", "name": "Airbus SE", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "AIR.PA", "value": "AIR.PA"},
+        {"ticker": "MC.PA", "name": "LVMH Moët Hennessy", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "MC.PA", "value": "MC.PA"},
+        {"ticker": "TTE.PA", "name": "TotalEnergies SE", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "TTE.PA", "value": "TTE.PA"},
+        {"ticker": "BNP.PA", "name": "BNP Paribas", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "BNP.PA", "value": "BNP.PA"},
+        {"ticker": "SAN.PA", "name": "Sanofi", "quote_type": "STOCK", "exchange": "EURONEXT", "label": "SAN.PA", "value": "SAN.PA"},
+    ]
+
+    search_raw = (q or query or "").strip()
+    if not search_raw:
+        return all_tickers
+
+    search_clean = strip_accents(search_raw).lower()
+    search_upper = search_raw.upper()
+    filtered = []
+    seen = set()
+
+    # 1. Base locale Fonrex en priorité (database-first)
+    try:
+        db_results = await run_sync(db.search_assets_by_text, search_raw, limit=10)
+        for item in db_results:
+            sym = item.get("ticker")
+            if sym and sym not in seen:
+                seen.add(sym)
+                filtered.append({
+                    "ticker": sym,
+                    "name": item.get("name") or sym,
+                    "quote_type": item.get("quote_type") or "STOCK",
+                    "exchange": item.get("exchange") or "UNKNOWN",
+                    "label": sym,
+                    "value": sym,
+                })
+    except Exception:
+        pass
+
+    # 2. Tickers prédéfinis du catalogue
+    for item in all_tickers:
+        sym = item["ticker"]
+        if sym in seen:
+            continue
+        if search_clean in strip_accents(sym).lower() or search_clean in strip_accents(item["name"]).lower():
+            seen.add(sym)
+            filtered.append(dict(item))
+
+    # 3. Fallback externe Yahoo si moins de 5 résultats
+    if len(filtered) < 5:
+        try:
+            quotes = await run_sync(fetch_yahoo_search_quotes, search_raw, limit=8)
+            for quote in quotes:
+                sym = quote.get("symbol")
+                if sym and sym not in seen:
+                    seen.add(sym)
+                    q_type = quote.get("quoteType") or "STOCK"
+                    if q_type == "EQUITY":
+                        q_type = "STOCK"
+                    filtered.append({
+                        "ticker": sym,
+                        "name": quote.get("shortname") or quote.get("longname") or sym,
+                        "quote_type": q_type,
+                        "exchange": quote.get("exchange") or "UNKNOWN",
+                        "label": sym,
+                        "value": sym,
+                    })
+        except Exception:
+            pass
+
+    if search_upper not in seen:
+        filtered.append({
+            "ticker": search_upper,
+            "name": search_upper,
+            "quote_type": "STOCK",
+            "exchange": "CUSTOM",
+            "label": search_upper,
+            "value": search_upper,
+        })
+    return filtered
+
+
+@router.get("/fundamental/revenue-geography/period-options")
+async def get_revenue_geography_period_options() -> List[Dict[str, str]]:
+    """Return available period options for Revenue Per Geography widget."""
+    return [
+        {"label": "FY", "value": "FY"},
+        {"label": "QTR", "value": "QTR"},
+    ]
+
+
+@router.get("/fundamental/{ticker}/revenue-geography")
+async def get_openbb_revenue_geography(
+    ticker: str,
+    period: str = "FY",
+    refresh: bool = False,
+    provider=Depends(get_sec_edgar_provider),
+    cache=Depends(get_cache_service),
+) -> Dict[str, Any]:
+    """Return geographic revenue segmentation formatted as a Plotly stacked bar chart."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    data = await get_geographic_revenue(
+        ticker=clean_ticker,
+        refresh=refresh,
+        period=period,
+        provider=provider,
+        cache=cache,
+    )
+    return format_revenue_geography_chart(clean_ticker.upper(), data)
+
+
+@router.get("/fundamental/revenue-geography")
+async def get_openbb_revenue_geography_query(
+    ticker: str = "AAPL",
+    period: str = "FY",
+    refresh: bool = False,
+    provider=Depends(get_sec_edgar_provider),
+    cache=Depends(get_cache_service),
+) -> Dict[str, Any]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_revenue_geography(
+        ticker=ticker,
+        period=period,
+        refresh=refresh,
+        provider=provider,
+        cache=cache,
+    )
+
+
+@router.get("/valuation/{ticker}/multiples")
+async def get_openbb_valuation_multiples(
+    ticker: str,
+    period: str = "FY",
+    refresh: bool = False,
+    service=Depends(get_valuation_multiples_service),
+) -> Dict[str, Any]:
+    """Return historical valuation multiples (P/E, P/S, P/B, EV/Sales, EV/EBITDA) formatted as a Plotly line chart."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    data = await service.get_multiples(ticker=clean_ticker, period=period, refresh=refresh)
+    return format_valuation_multiples_chart(clean_ticker.upper(), data, period=period)
+
+
+@router.get("/valuation/multiples")
+async def get_openbb_valuation_multiples_query(
+    ticker: str = "AAPL",
+    period: str = "FY",
+    refresh: bool = False,
+    service=Depends(get_valuation_multiples_service),
+) -> Dict[str, Any]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_valuation_multiples(
+        ticker=ticker, period=period, refresh=refresh, service=service
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -518,3 +705,100 @@ async def get_openbb_index_constituents(
     if isinstance(res, dict):
         return res.get("constituents", [])
     return getattr(res, "constituents", []) or []
+
+
+@router.get("/dividends/{ticker}")
+async def get_openbb_dividends(
+    ticker: str,
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_dividend_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Return historical dividend payments formatted as an OpenBB AgGrid table."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    records = await provider.get_dividends(
+        ticker=clean_ticker, limit=limit, refresh=refresh, cache=cache
+    )
+    return format_dividends_table(records)
+
+
+@router.get("/calendar/dividends")
+async def get_openbb_calendar_dividends_query(
+    ticker: str = "AAPL",
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_dividend_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_dividends(
+        ticker=ticker, limit=limit, refresh=refresh, provider=provider, cache=cache
+    )
+
+
+@router.get("/earnings/{ticker}")
+async def get_openbb_earnings(
+    ticker: str,
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_earnings_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Return historical and upcoming earnings data formatted as an OpenBB AgGrid table."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    records = await provider.get_earnings_history(
+        ticker=clean_ticker, limit=limit, refresh=refresh, cache=cache
+    )
+    return format_earnings_history_table(records)
+
+
+@router.get("/calendar/earnings")
+async def get_openbb_calendar_earnings_query(
+    ticker: str = "AAPL",
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_earnings_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_earnings(
+        ticker=ticker, limit=limit, refresh=refresh, provider=provider, cache=cache
+    )
+
+
+@router.get("/splits/{ticker}")
+async def get_openbb_splits(
+    ticker: str,
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_split_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Return historical stock splits formatted as an OpenBB AgGrid table."""
+    clean_ticker = (ticker or "").strip()
+    if clean_ticker.startswith("{") or clean_ticker.lower() in ("", "undefined", "none"):
+        clean_ticker = "AAPL"
+    records = await provider.get_stock_splits(
+        ticker=clean_ticker, limit=limit, refresh=refresh, cache=cache
+    )
+    return format_stock_splits_table(records)
+
+
+@router.get("/calendar/splits")
+async def get_openbb_calendar_splits_query(
+    ticker: str = "AAPL",
+    limit: int = 50,
+    refresh: bool = False,
+    provider=Depends(get_split_provider),
+    cache=Depends(get_cache_service),
+) -> List[Dict[str, Any]]:
+    """Fallback query-parameter route for OpenBB test requests."""
+    return await get_openbb_splits(
+        ticker=ticker, limit=limit, refresh=refresh, provider=provider, cache=cache
+    )
+

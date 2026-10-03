@@ -1,19 +1,4 @@
-"""
-TechnicalIndicatorService — Calculates technical indicators from
-prices_eod (EOD) or prices_intraday (intraday) via pandas-ta.
-
-Design:
-- Loads OHLCV data from TimescaleDB into a pandas DataFrame
-- Applies pandas-ta to calculate the requested indicators
-- Caches results in Redis (TTL configurable per indicator)
-- Returns typed time series via Pydantic
-
-Performance:
-- prices_eod   : stable data → Redis TTL 3600s (1h)
-- prices_intraday : live data → Redis TTL 60s
-- Lazy calculation: only calculate requested indicators
-- Batch: calculate multiple indicators in a single DataFrame pass
-"""
+"""Calculates technical indicators from prices_eod or prices_intraday via pandas-ta."""
 
 import asyncio
 import logging
@@ -26,8 +11,10 @@ from pydantic import ValidationError
 
 from concurrency import run_sync
 from schemas.technical import (
+    IndicatorCategory,
     IndicatorResult,
     MultiIndicatorResult,
+    OHLCVBar,
     TechnicalSeries,
 )
 from technical.calculation_engine import TechnicalCalculationEngine
@@ -122,6 +109,25 @@ class TechnicalIndicatorService:
             limit=limit,
         )
         if df.empty:
+            try:
+                if self._market_data and hasattr(self._market_data, "_database"):
+                    from historical.ingestion_service import HistoricalIngestionService
+                    ingester = HistoricalIngestionService(
+                        self._market_data._database,
+                        getattr(self._market_data, "_query_service", None),
+                    )
+                    await ingester.ingest(ticker=ticker, resolution=resolution, source="auto")
+                    df = await self._load_ohlcv_dataframe(
+                        asset_id=asset_id,
+                        resolution=resolution,
+                        from_date=from_date,
+                        to_date=to_date,
+                        limit=limit,
+                    )
+            except (RuntimeError, ValueError, KeyError, OSError) as exc:
+                logger.warning("Auto-ingestion attempt for %s failed: %s", ticker, exc)
+
+        if df.empty:
             raise TechnicalDataNotFound(f"No historical data found for {ticker}")
 
         # 6. Validate minimum periods
@@ -160,28 +166,18 @@ class TechnicalIndicatorService:
                 col_names.append(actual_name)
 
         series = await run_sync(
-            self._df_to_series,
-            calc_df,
-            col_names,
-            indicator_clean,
-            params_used,
+            self._df_to_series, calc_df, col_names, indicator_clean, params_used
         )
 
         # 9. Format response
-        from schemas.technical import IndicatorCategory
-
         result = IndicatorResult(
             ticker=ticker,
             indicator=indicator_clean,
             params=params_used,
             resolution=resolution,
             category=IndicatorCategory(indicator_info["category"]),
-            from_date=pd.to_datetime(calc_df.index[0]).to_pydatetime()
-            if not calc_df.empty
-            else None,
-            to_date=pd.to_datetime(calc_df.index[-1]).to_pydatetime()
-            if not calc_df.empty
-            else None,
+            from_date=pd.to_datetime(calc_df.index[0]).to_pydatetime() if not calc_df.empty else None,
+            to_date=pd.to_datetime(calc_df.index[-1]).to_pydatetime() if not calc_df.empty else None,
             count=len(calc_df),
             series=series,
             cached=False,
@@ -231,6 +227,25 @@ class TechnicalIndicatorService:
 
         indicator_results = {}
         errors = {}
+
+        if df.empty:
+            try:
+                if self._market_data and hasattr(self._market_data, "_database"):
+                    from historical.ingestion_service import HistoricalIngestionService
+                    ingester = HistoricalIngestionService(
+                        self._market_data._database,
+                        getattr(self._market_data, "_query_service", None),
+                    )
+                    await ingester.ingest(ticker=ticker, resolution=resolution, source="auto")
+                    df = await self._load_ohlcv_dataframe(
+                        asset_id=asset_id,
+                        resolution=resolution,
+                        from_date=from_date,
+                        to_date=to_date,
+                        limit=limit,
+                    )
+            except (RuntimeError, ValueError, KeyError, OSError) as exc:
+                logger.warning("Auto-ingestion attempt for %s failed: %s", ticker, exc)
 
         if df.empty:
             return MultiIndicatorResult(
@@ -289,20 +304,14 @@ class TechnicalIndicatorService:
                 # Format series
                 series = await run_sync(self._df_to_series, calc_df, col_names, ind_name, params)
 
-                from schemas.technical import IndicatorCategory
-
                 ind_res = IndicatorResult(
                     ticker=ticker,
                     indicator=ind_name,
                     params=params,
                     resolution=resolution,
                     category=IndicatorCategory(indicator_info["category"]),
-                    from_date=pd.to_datetime(calc_df.index[0]).to_pydatetime()
-                    if not calc_df.empty
-                    else None,
-                    to_date=pd.to_datetime(calc_df.index[-1]).to_pydatetime()
-                    if not calc_df.empty
-                    else None,
+                    from_date=pd.to_datetime(calc_df.index[0]).to_pydatetime() if not calc_df.empty else None,
+                    to_date=pd.to_datetime(calc_df.index[-1]).to_pydatetime() if not calc_df.empty else None,
                     count=len(calc_df),
                     series=series,
                     cached=False,
@@ -327,21 +336,17 @@ class TechnicalIndicatorService:
         # Assemble OHLCV bars if requested
         ohlcv_bars = None
         if include_ohlcv:
-            from schemas.technical import OHLCVBar
-
-            ohlcv_bars = []
-            for t, row in df.iterrows():
-                t_dt = t.to_pydatetime() if hasattr(t, "to_pydatetime") else t
-                ohlcv_bars.append(
-                    OHLCVBar(
-                        t=t_dt,
-                        o=Decimal(str(round(row["open"], 4))) if pd.notna(row["open"]) else None,
-                        h=Decimal(str(round(row["high"], 4))) if pd.notna(row["high"]) else None,
-                        l=Decimal(str(round(row["low"], 4))) if pd.notna(row["low"]) else None,
-                        c=Decimal(str(round(row["close"], 4))) if pd.notna(row["close"]) else None,
-                        v=int(row["volume"]) if pd.notna(row["volume"]) else None,
-                    )
+            ohlcv_bars = [
+                OHLCVBar(
+                    t=t.to_pydatetime() if hasattr(t, "to_pydatetime") else t,
+                    o=Decimal(str(round(row["open"], 4))) if pd.notna(row["open"]) else None,
+                    h=Decimal(str(round(row["high"], 4))) if pd.notna(row["high"]) else None,
+                    l=Decimal(str(round(row["low"], 4))) if pd.notna(row["low"]) else None,
+                    c=Decimal(str(round(row["close"], 4))) if pd.notna(row["close"]) else None,
+                    v=int(row["volume"]) if pd.notna(row["volume"]) else None,
                 )
+                for t, row in df.iterrows()
+            ]
 
         return MultiIndicatorResult(
             ticker=ticker,

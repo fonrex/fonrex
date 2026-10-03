@@ -11,12 +11,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.exceptions import RedisError
 
 from concurrency import run_sync
+from routers.dependencies import get_valuation_multiples_service
 from schemas.dcf import (
     DCFModelResult,
     DCFRequest,
     DCFResult,
     SensitivityResult,
 )
+from schemas.fundamentals import ValuationMultiplesResult
 from valuation.dcf_service import DCFService
 
 logger = logging.getLogger(__name__)
@@ -184,3 +186,14 @@ async def get_dcf_sensitivity(
         return result
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{ticker}/multiples", response_model=ValuationMultiplesResult)
+async def get_valuation_multiples(
+    ticker: str,
+    period: str = "FY",
+    refresh: bool = False,
+    service=Depends(get_valuation_multiples_service),
+) -> ValuationMultiplesResult:
+    """Compute and retrieve historical valuation multiples (P/E, P/S, P/B, EV/Sales, EV/EBITDA)."""
+    return await service.get_multiples(ticker=ticker, period=period, refresh=refresh)

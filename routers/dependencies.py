@@ -18,6 +18,10 @@ __all__ = [
     "get_technical_service",
     "get_cache_service",
     "get_redis_client",
+    "get_valuation_multiples_service",
+    "get_dividend_provider",
+    "get_earnings_provider",
+    "get_split_provider",
 ]
 
 
@@ -54,3 +58,47 @@ def get_cache_service(request: Request):
 
 def get_redis_client(request: Request):
     return getattr(request.app.state, "redis_client", None)
+
+
+def get_valuation_multiples_service(request: Request):
+    service = getattr(request.app.state, "multiples_service", None)
+    if service is None:
+        from valuation.multiples_service import ValuationMultiplesService
+
+        db_service = getattr(request.app.state, "db_service", None)
+        redis_client = getattr(request.app.state, "redis_client", None)
+        service = ValuationMultiplesService(db_service=db_service, redis_client=redis_client)
+        request.app.state.multiples_service = service
+    return service
+
+
+def get_dividend_provider(request: Request):
+    provider = getattr(request.app.state, "dividend_provider", None)
+    if provider is None:
+        from financials.providers.dividend_provider import DividendProvider
+
+        provider = DividendProvider()
+        request.app.state.dividend_provider = provider
+    return provider
+
+
+def get_earnings_provider(request: Request):
+    provider = getattr(request.app.state, "earnings_provider", None)
+    if provider is None:
+        from financials.providers.earnings_provider import EarningsProvider
+
+        db_service = getattr(request.app.state, "db_service", None)
+        provider = EarningsProvider(db_service=db_service)
+        request.app.state.earnings_provider = provider
+    return provider
+
+
+def get_split_provider(request: Request):
+    provider = getattr(request.app.state, "split_provider", None)
+    if provider is None:
+        from financials.providers.split_provider import SplitProvider
+
+        provider = SplitProvider()
+        request.app.state.split_provider = provider
+    return provider
+

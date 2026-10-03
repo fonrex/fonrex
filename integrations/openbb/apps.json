@@ -12,128 +12,207 @@
         "name": "Overview",
         "layout": [
           {
-            "i": "fonrex_quote",
+            "i": "fonrex_market_overview",
             "x": 0,
             "y": 0,
-            "w": 8,
-            "h": 4,
-            "state": { "params": { "ticker": "AIR.PA" } },
-            "groups": [
-              "Group 1"
-            ]
-          },
-          {
-            "i": "fonrex_macro_rates",
-            "x": 0,
-            "y": 4,
-            "w": 8,
-            "h": 4,
+            "w": 24,
+            "h": 6,
             "state": {}
           },
           {
-            "i": "fonrex_eod",
-            "x": 8,
-            "y": 0,
-            "w": 16,
-            "h": 8,
-            "state": { "params": { "ticker": "AIR.PA", "period": "1y" } },
-            "groups": [
-              "Group 1"
-            ]
-          },
-          {
-            "i": "fonrex_fundamentals_deep",
+            "i": "fonrex_quote",
             "x": 0,
-            "y": 8,
-            "w": 14,
-            "h": 10,
-            "state": { "params": { "ticker": "AIR.PA" } },
+            "y": 6,
+            "w": 24,
+            "h": 6,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
             "groups": [
               "Group 1"
             ]
           },
           {
-            "i": "fonrex_news",
-            "x": 14,
-            "y": 8,
-            "w": 10,
+            "i": "fonrex_key_metrics",
+            "x": 0,
+            "y": 12,
+            "w": 12,
+            "h": 8,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_share_statistics",
+            "x": 12,
+            "y": 12,
+            "w": 12,
+            "h": 8,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_ticker_profile",
+            "x": 0,
+            "y": 20,
+            "w": 24,
             "h": 10,
-            "state": { "params": { "ticker": "AIR.PA", "limit": "15" } },
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_price_performance",
+            "x": 0,
+            "y": 30,
+            "w": 24,
+            "h": 12,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_valuation_multiples",
+            "x": 0,
+            "y": 42,
+            "w": 24,
+            "h": 12,
+            "state": {
+              "params": {
+                "ticker": "AAPL",
+                "period": "FY"
+              }
+            },
             "groups": [
               "Group 1"
             ]
           }
         ]
       },
-      "valuation": {
-        "id": "valuation",
-        "name": "Valuation",
+      "financials": {
+        "id": "financials",
+        "name": "Financials",
         "layout": [
           {
-            "i": "fonrex_dcf",
+            "i": "fonrex_fundamentals_deep",
             "x": 0,
             "y": 0,
-            "w": 8,
-            "h": 10,
-            "state": { "params": { "ticker": "AIR.PA" } },
+            "w": 14,
+            "h": 12,
+            "state": {
+              "params": {
+                "ticker": "AIR.PA"
+              }
+            },
             "groups": [
               "Group 1"
             ]
           },
           {
-            "i": "fonrex_dcf_compare",
-            "x": 8,
+            "i": "fonrex_fundamentals",
+            "x": 14,
             "y": 0,
-            "w": 8,
+            "w": 10,
+            "h": 12,
+            "state": {
+              "params": {
+                "ticker": "AIR.PA"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_revenue_geography",
+            "x": 0,
+            "y": 12,
+            "w": 24,
+            "h": 12,
+            "state": {
+              "params": {
+                "ticker": "AAPL",
+                "period": "FY"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          }
+        ]
+      },
+      "technical_analysis": {
+        "id": "technical_analysis",
+        "name": "Technical Analysis",
+        "layout": [
+          {
+            "i": "fonrex_charting",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 16,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          }
+        ]
+      },
+      "comparison_analysis": {
+        "id": "comparison_analysis",
+        "name": "Comparison Analysis",
+        "layout": [
+          {
+            "i": "fonrex_dcf_compare",
+            "x": 0,
+            "y": 0,
+            "w": 12,
             "h": 10,
-            "state": { "params": { "ticker": "AIR.PA" } },
+            "state": {
+              "params": {
+                "ticker": "AIR.PA"
+              }
+            },
             "groups": [
               "Group 1"
             ]
           },
           {
             "i": "fonrex_dcf_sensitivity",
-            "x": 16,
+            "x": 12,
             "y": 0,
-            "w": 8,
-            "h": 10,
-            "state": { "params": { "ticker": "AIR.PA" } },
-            "groups": [
-              "Group 1"
-            ]
-          }
-        ]
-      },
-      "technical": {
-        "id": "technical",
-        "name": "Technical",
-        "layout": [
-          {
-            "i": "fonrex_technical_chart",
-            "x": 0,
-            "y": 0,
-            "w": 16,
+            "w": 12,
             "h": 10,
             "state": {
               "params": {
-                "ticker": "AIR.PA",
-                "indicators": "sma_20,rsi_14"
-              }
-            },
-            "groups": [
-              "Group 1"
-            ]
-          },
-          {
-            "i": "fonrex_technical_multi",
-            "x": 16,
-            "y": 0,
-            "w": 8,
-            "h": 10,
-            "state": {
-              "params": {
-                "ticker": "AIR.PA",
-                "indicators": "sma_20,ema_50,rsi_14"
+                "ticker": "AIR.PA"
               }
             },
             "groups": [
@@ -142,46 +221,96 @@
           }
         ]
       },
-      "news": {
-        "id": "news",
-        "name": "News",
+      "ownership": {
+        "id": "ownership",
+        "name": "Ownership",
         "layout": [
           {
-            "i": "fonrex_news",
-            "x": 0,
-            "y": 0,
-            "w": 14,
-            "h": 10,
-            "state": { "params": { "ticker": "AIR.PA", "limit": "20" } },
-            "groups": [
-              "Group 1"
-            ]
-          },
-          {
-            "i": "fonrex_news_feed",
-            "x": 14,
-            "y": 0,
-            "w": 10,
-            "h": 10,
-            "state": { "params": { "limit": "20" } }
-          }
-        ]
-      },
-      "watchlist": {
-        "id": "watchlist",
-        "name": "Watchlist",
-        "layout": [
-          {
-            "i": "fonrex_quotes_batch",
+            "i": "fonrex_insider_transactions",
             "x": 0,
             "y": 0,
             "w": 24,
             "h": 10,
             "state": {
               "params": {
-                "tickers": "AIR.PA,BNP.PA,MC.PA,OR.PA,SAN.PA,AAPL,MSFT,TSLA"
+                "ticker": "AAPL"
               }
-            }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          }
+        ]
+      },
+      "company_calendar": {
+        "id": "company_calendar",
+        "name": "Company Calendar",
+        "layout": [
+          {
+            "i": "fonrex_earnings_history",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_dividend_payment",
+            "x": 0,
+            "y": 10,
+            "w": 14,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          },
+          {
+            "i": "fonrex_stock_splits",
+            "x": 14,
+            "y": 10,
+            "w": 10,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AAPL"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
+          }
+        ]
+      },
+      "estimates": {
+        "id": "estimates",
+        "name": "Estimates",
+        "layout": [
+          {
+            "i": "fonrex_dcf",
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 10,
+            "state": {
+              "params": {
+                "ticker": "AIR.PA"
+              }
+            },
+            "groups": [
+              "Group 1"
+            ]
           }
         ]
       }
@@ -191,72 +320,31 @@
         "name": "Group 1",
         "type": "param",
         "paramName": "ticker",
-        "defaultValue": "AIR.PA",
+        "defaultValue": "AAPL",
         "widgetIds": [
           "fonrex_quote",
           "fonrex_eod",
           "fonrex_fundamentals_deep",
+          "fonrex_fundamentals",
           "fonrex_news",
           "fonrex_dcf",
           "fonrex_dcf_compare",
           "fonrex_dcf_sensitivity",
           "fonrex_technical_chart",
-          "fonrex_technical_multi"
+          "fonrex_technical_multi",
+          "fonrex_insider_transactions",
+          "fonrex_ticker_profile",
+          "fonrex_price_performance",
+          "fonrex_key_metrics",
+          "fonrex_share_statistics",
+          "fonrex_charting",
+          "fonrex_revenue_geography",
+          "fonrex_valuation_multiples",
+          "fonrex_earnings_history",
+          "fonrex_dividend_payment",
+          "fonrex_stock_splits"
         ]
       }
     ]
-  },
-  {
-    "name": "Fonrex — Screener & Macro",
-    "description": "Technical screener for idea generation combined with macro-economic context and index composition",
-    "img": "https://fonrex.io/openbb-app-screener-preview.png",
-    "img_dark": "",
-    "img_light": "",
-    "allowCustomization": true,
-    "tabs": {
-      "screener": {
-        "id": "screener",
-        "name": "Screener",
-        "layout": [
-          {
-            "i": "fonrex_screener",
-            "x": 0,
-            "y": 0,
-            "w": 24,
-            "h": 12,
-            "state": {
-              "params": {
-                "indicator": "rsi",
-                "operator": "lt",
-                "value": "50"
-              }
-            }
-          }
-        ]
-      },
-      "macro_context": {
-        "id": "macro_context",
-        "name": "Macro Context",
-        "layout": [
-          {
-            "i": "fonrex_macro_rates",
-            "x": 0,
-            "y": 0,
-            "w": 10,
-            "h": 6,
-            "state": {}
-          },
-          {
-            "i": "fonrex_index_constituents",
-            "x": 10,
-            "y": 0,
-            "w": 14,
-            "h": 12,
-            "state": { "params": { "index_name": "cac40" } }
-          }
-        ]
-      }
-    },
-    "groups": []
   }
 ]

@@ -9,6 +9,7 @@ from typing import Protocol, TypeAlias
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from concurrency import run_sync
@@ -123,6 +124,32 @@ class SqlAlchemyTechnicalRepository:
                     )
                     if asset:
                         return asset.id
+
+                # Auto-create asset record for valid ticker if missing in database
+                clean_ticker = normalized
+                new_asset = Asset(
+                    ticker=clean_ticker,
+                    name=f"{clean_ticker} Corporation",
+                    exchange="EURONEXT" if clean_ticker.endswith(".PA") else "NASDAQ",
+                    currency="EUR" if clean_ticker.endswith(".PA") else "USD",
+                    is_active=True,
+                )
+                session.add(new_asset)
+                session.flush()
+
+                new_listing = AssetListing(
+                    asset_id=new_asset.id,
+                    ticker=clean_ticker,
+                    exchange=new_asset.exchange,
+                    currency=new_asset.currency,
+                    is_primary=True,
+                    is_active=True,
+                )
+                session.add(new_listing)
+                session.commit()
+                return new_asset.id
+            except SQLAlchemyError:
+                session.rollback()
                 return None
             finally:
                 if close_session:

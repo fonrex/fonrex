@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Share Statistics</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #121214;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f4f4f5;
+    }
+    .wrapper {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: 12px 16px;
+      overflow-y: auto;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #27272a;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ticker-badge {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.1));
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #a1a1aa;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .source-badge {
+      background: #18181b;
+      border: 1px solid #27272a;
+      color: #71717a;
+      font-size: 10px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .breakdown-section {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .breakdown-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #a1a1aa;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    .breakdown-bar {
+      width: 100%;
+      height: 8px;
+      background: #27272a;
+      border-radius: 4px;
+      display: flex;
+      overflow: hidden;
+    }
+    .bar-institutions {
+      height: 100%;
+      background: #3b82f6;
+      transition: width 0.5s ease;
+    }
+    .bar-insiders {
+      height: 100%;
+      background: #10b981;
+      transition: width 0.5s ease;
+    }
+    .bar-public {
+      height: 100%;
+      background: #8b5cf6;
+      transition: width 0.5s ease;
+    }
+    .breakdown-legend {
+      display: flex;
+      gap: 12px;
+      margin-top: 6px;
+      font-size: 10px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .legend-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      flex: 1;
+    }
+    .metric-card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .metric-card:hover {
+      border-color: #3f3f46;
+      transform: translateY(-1px);
+    }
+    .metric-label {
+      font-size: 11px;
+      color: #a1a1aa;
+      font-weight: 500;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .metric-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fafafa;
+      letter-spacing: -0.3px;
+    }
+    .metric-sub {
+      font-size: 10px;
+      color: #71717a;
+      margin-top: 2px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .badge-purple { background: rgba(139, 92, 246, 0.15); color: #c084fc; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <div class="header-left">
+        <span class="ticker-badge" id="ticker-badge">AAPL</span>
+        <span class="title">Share Statistics</span>
+      </div>
+      <span class="source-badge" id="source-badge">Fonrex / EDGAR</span>
+    </div>
+
+    <div class="breakdown-section">
+      <div class="breakdown-header">
+        <span>Ownership Breakdown</span>
+        <span id="free-float-pct">Free Float: --</span>
+      </div>
+      <div class="breakdown-bar">
+        <div class="bar-institutions" id="bar-inst" style="width: 0%;"></div>
+        <div class="bar-insiders" id="bar-ins" style="width: 0%;"></div>
+        <div class="bar-public" id="bar-pub" style="width: 0%;"></div>
+      </div>
+      <div class="breakdown-legend">
+        <div class="legend-item"><span class="legend-dot" style="background: #3b82f6;"></span> Institutions: <span id="leg-inst" style="color: #60a5fa; font-weight: 600; margin-left: 2px;">--</span></div>
+        <div class="legend-item"><span class="legend-dot" style="background: #10b981;"></span> Insiders: <span id="leg-ins" style="color: #34d399; font-weight: 600; margin-left: 2px;">--</span></div>
+        <div class="legend-item"><span class="legend-dot" style="background: #8b5cf6;"></span> Public: <span id="leg-pub" style="color: #c084fc; font-weight: 600; margin-left: 2px;">--</span></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="metric-card">
+        <div class="metric-label">Shares Outstanding <span class="badge badge-blue">Total</span></div>
+        <div class="metric-value" id="val-out">--</div>
+        <div class="metric-sub" id="sub-out">Implied total units</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Float Shares <span class="badge badge-green">Tradable</span></div>
+        <div class="metric-value" id="val-float">--</div>
+        <div class="metric-sub" id="sub-float">Available for trading</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Short Interest</div>
+        <div class="metric-value" id="val-short">--</div>
+        <div class="metric-sub" id="sub-short">% of Float: --</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Short Ratio</div>
+        <div class="metric-value" id="val-ratio">--</div>
+        <div class="metric-sub">Days to cover</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const ticker = (urlParams.get('ticker') || urlParams.get('symbol') || 'AAPL').toUpperCase();
+    document.getElementById('ticker-badge').textContent = ticker;
+
+    function formatNumber(num) {
+      if (num === null || num === undefined || isNaN(num)) return '--';
+      const abs = Math.abs(num);
+      if (abs >= 1e12) return (num / 1e12).toFixed(2) + 'T';
+      if (abs >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+      if (abs >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+      if (abs >= 1e3) return (num / 1e3).toFixed(2) + 'k';
+      return Number(num).toLocaleString();
+    }
+
+    function formatPercent(val) {
+      if (val === null || val === undefined || isNaN(val)) return '--';
+      return (Number(val) * (Math.abs(val) <= 1 ? 100 : 1)).toFixed(2) + '%';
+    }
+
+    async function fetchShareStats() {
+      try {
+        const res = await fetch(`/openbb/fundamental/deep?ticker=${encodeURIComponent(ticker)}`);
+        if (!res.ok) throw new Error('Failed to fetch data');
+        const rows = await res.json();
+        const data = {};
+        for (const r of rows) {
+          data[r.field] = r.value;
+        }
+
+        if (data.source) {
+          document.getElementById('source-badge').textContent = `Source: ${data.source.toUpperCase()}`;
+        }
+
+        const out = data.shares_outstanding;
+        const flt = data.float_shares;
+
+        if (out) document.getElementById('val-out').textContent = formatNumber(out);
+        if (flt) document.getElementById('val-float').textContent = formatNumber(flt);
+
+        if (out && flt && out > 0) {
+          const floatPct = (flt / out) * 100;
+          document.getElementById('free-float-pct').textContent = `Free Float: ${floatPct.toFixed(1)}%`;
+        }
+
+        const inst = Number(data.pct_institutions || 0);
+        const ins = Number(data.pct_insiders || 0);
+        const instPct = inst <= 1 ? inst * 100 : inst;
+        const insPct = ins <= 1 ? ins * 100 : ins;
+        const pubPct = Math.max(0, 100 - instPct - insPct);
+
+        document.getElementById('bar-inst').style.width = `${instPct}%`;
+        document.getElementById('bar-ins').style.width = `${insPct}%`;
+        document.getElementById('bar-pub').style.width = `${pubPct}%`;
+
+        document.getElementById('leg-inst').textContent = `${instPct.toFixed(1)}%`;
+        document.getElementById('leg-ins').textContent = `${insPct.toFixed(1)}%`;
+        document.getElementById('leg-pub').textContent = `${pubPct.toFixed(1)}%`;
+
+        if (data.shares_short) {
+          document.getElementById('val-short').textContent = formatNumber(data.shares_short);
+        }
+        if (data.short_percent_float !== null && data.short_percent_float !== undefined) {
+          document.getElementById('sub-short').textContent = `% of Float: ${formatPercent(data.short_percent_float)}`;
+        }
+
+        if (data.short_ratio !== null && data.short_ratio !== undefined) {
+          document.getElementById('val-ratio').textContent = Number(data.short_ratio).toFixed(2);
+        }
+      } catch (err) {
+        console.warn('Could not load share statistics', err);
+      }
+    }
+
+    fetchShareStats();
+  </script>
+</body>
+</html>

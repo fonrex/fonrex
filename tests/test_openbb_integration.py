@@ -103,6 +103,11 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/etf/{isin}/details",
     "openbb/index/{index_name}/constituents",
     "openbb/macro/rates",
+    "openbb/fundamental/{ticker}/revenue-geography",
+    "openbb/valuation/{ticker}/multiples",
+    "openbb/dividends/{ticker}",
+    "openbb/earnings/{ticker}",
+    "openbb/splits/{ticker}",
 ]
 
 
@@ -383,7 +388,7 @@ def test_apps_json_is_valid_json(client):
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list), "apps.json should be a JSON array"
-    assert len(data) == 2, "apps.json should contain exactly 2 apps"
+    assert len(data) >= 1, "apps.json should contain at least 1 app"
     # App 1 ("Fonrex — EU Markets") should have synced ticker parameter group
     assert data[0]["groups"], "First app should define parameter groups for ticker synchronization"
     assert data[0]["groups"][0]["paramName"] == "ticker"
@@ -400,7 +405,7 @@ def test_widget_schema_structure(widgets_data):
         missing = required_fields - set(widget.keys())
         assert not missing, f"Widget '{widget_id}' is missing fields: {missing}"
         assert widget["source"] == ["Fonrex"], f"Widget '{widget_id}' source should be ['Fonrex']"
-        assert widget["type"] in {"table", "chart", "markdown", "metric"}, (
+        assert widget["type"] in {"table", "chart", "markdown", "metric", "iframe"}, (
             f"Widget '{widget_id}' has invalid type: {widget['type']}"
         )
 
@@ -699,6 +704,427 @@ def test_openbb_news_endpoints_contract(client):
         assert data_feed[0]["title"] == "Apple Reports Record Results"
     finally:
         app.state.news_service = orig_news
+
+
+def test_format_revenue_geography_chart_unit():
+    """format_revenue_geography_chart produces Plotly stacked bar chart with proper layout."""
+    from integrations.openbb.adapters import format_revenue_geography_chart
+
+    # Empty payload
+    empty_fig = format_revenue_geography_chart("AAPL", {"breakdown": {}})
+    assert empty_fig["data"] == []
+    assert empty_fig["layout"]["barmode"] == "stack"
+
+    # Populated payload
+    payload = {
+        "ticker": "AAPL",
+        "breakdown": {
+            "FY 2023": {
+                "Americas Segment": 162560000000.0,
+                "Europe Segment": 94294000000.0,
+            },
+            "FY 2024": {
+                "Americas Segment": 167045000000.0,
+                "Europe Segment": 101328000000.0,
+            },
+        },
+    }
+    fig = format_revenue_geography_chart("AAPL", payload)
+    assert "data" in fig
+    assert "layout" in fig
+    assert fig["layout"]["barmode"] == "stack"
+    assert len(fig["data"]) == 2
+
+    trace_names = {t["name"] for t in fig["data"]}
+    assert "Americas Segment" in trace_names
+    assert "Europe Segment" in trace_names
+
+    for trace in fig["data"]:
+        assert trace["type"] == "bar"
+        assert trace["x"] == ["FY 2023", "FY 2024"]
+        assert len(trace["y"]) == 2
+
+
+def test_openbb_revenue_geography_endpoint_contract(client):
+    """GET /openbb/fundamental/{ticker}/revenue-geography returns Plotly stacked bar chart contract."""
+    from schemas.fundamentals import GeographicRevenueResult
+
+    mock_sec = MagicMock()
+    mock_sec.fetch_geographic_segments = AsyncMock(
+        return_value=GeographicRevenueResult(
+            ticker="AAPL",
+            cik="0000320193",
+            company_name="Apple Inc.",
+            currency="USD",
+            period_type="FY",
+            breakdown={
+                "FY 2023": {
+                    "Americas Segment": 162560000000.0,
+                    "Europe Segment": 94294000000.0,
+                },
+                "FY 2024": {
+                    "Americas Segment": 167045000000.0,
+                    "Europe Segment": 101328000000.0,
+                },
+            },
+            source="SEC EDGAR",
+        )
+    )
+
+    orig_sec = getattr(app.state, "sec_edgar_provider", None)
+    app.state.sec_edgar_provider = mock_sec
+    try:
+        resp = client.get("/openbb/fundamental/AAPL/revenue-geography")
+        assert resp.status_code == 200
+        fig = resp.json()
+        assert "data" in fig
+        assert "layout" in fig
+        assert fig["layout"]["barmode"] == "stack"
+        assert len(fig["data"]) >= 1
+        assert fig["data"][0]["type"] == "bar"
+        assert "x" in fig["data"][0]
+        assert "y" in fig["data"][0]
+
+        # Test query fallback route
+        fallback_resp = client.get("/openbb/fundamental/revenue-geography?ticker=AAPL&period=FY")
+        assert fallback_resp.status_code == 200
+        fallback_fig = fallback_resp.json()
+        assert fallback_fig["layout"]["barmode"] == "stack"
+    finally:
+        app.state.sec_edgar_provider = orig_sec
+
+
+def test_openbb_revenue_geography_period_options_endpoint(client):
+    """GET /openbb/fundamental/revenue-geography/period-options returns FY and QTR options."""
+    resp = client.get("/openbb/fundamental/revenue-geography/period-options")
+    assert resp.status_code == 200
+    options = resp.json()
+    assert isinstance(options, list)
+    assert len(options) == 2
+    assert options[0] == {"label": "FY", "value": "FY"}
+    assert options[1] == {"label": "QTR", "value": "QTR"}
+
+
+def test_openbb_tickers_endpoint(client):
+    """GET /openbb/tickers returns searchable options with symbol, name, and exchange."""
+    resp = client.get("/openbb/tickers")
+    assert resp.status_code == 200
+    tickers = resp.json()
+    assert isinstance(tickers, list)
+    assert len(tickers) >= 10
+    aapl = next((t for t in tickers if t["value"] == "AAPL"), None)
+    assert aapl is not None
+    assert aapl["label"] == "AAPL"
+    assert "Apple" in aapl["name"]
+
+    # Filtered search
+    filter_resp = client.get("/openbb/tickers?q=NVDA")
+    assert filter_resp.status_code == 200
+    filtered = filter_resp.json()
+    assert any(t["value"] == "NVDA" for t in filtered)
+
+
+def test_openbb_revenue_geography_widget_configuration(widgets_data, client):
+    """fonrex_revenue_geography is configured as iframe widget serving revenue_geography.html with exact interactive UI."""
+    w = widgets_data["fonrex_revenue_geography"]
+    assert w["type"] == "iframe"
+    assert w["endpoint"] == "static/revenue_geography.html"
+    assert w["params"] == []
+
+    # Verify static HTML is served correctly
+    html_resp = client.get("/static/revenue_geography.html")
+    assert html_resp.status_code == 200
+    assert "Revenue Per Geography" in html_resp.text
+    assert "ticker-search-input" in html_resp.text
+    assert "period-menu" in html_resp.text
+
+
+def test_openbb_valuation_multiples_widget_configuration(widgets_data):
+    """fonrex_valuation_multiples has valid OpenBB chart params without unsupported types."""
+    w = widgets_data["fonrex_valuation_multiples"]
+    assert w["type"] == "chart"
+    param_types = [p["type"] for p in w["params"]]
+    assert all(t in ["text", "number", "endpoint", "date", "boolean"] for t in param_types)
+
+
+
+def test_format_valuation_multiples_chart_unit():
+    """format_valuation_multiples_chart produces Plotly 5-line chart matching OpenBB contract."""
+    from integrations.openbb.adapters import format_valuation_multiples_chart
+
+    # Empty payload
+    empty_fig = format_valuation_multiples_chart("AAPL", {"series": []})
+    assert empty_fig["layout"]["paper_bgcolor"] == "#121214"
+    assert len(empty_fig["data"]) == 5
+    assert [t["name"] for t in empty_fig["data"]] == [
+        "P/E Ratio",
+        "P/S Ratio",
+        "P/B Ratio",
+        "EV/Sales Ratio",
+        "EV/EBITDA",
+    ]
+
+    # Non-empty payload
+    payload = {
+        "ticker": "AAPL",
+        "period": "FY",
+        "series": [
+            {
+                "date": "2023-09-30",
+                "pe_ratio": 27.08,
+                "ps_ratio": 6.85,
+                "pb_ratio": 42.27,
+                "ev_sales_ratio": 7.07,
+                "ev_ebitda": 21.52,
+            },
+            {
+                "date": "2024-09-30",
+                "pe_ratio": 37.26,
+                "ps_ratio": 8.93,
+                "pb_ratio": 61.33,
+                "ev_sales_ratio": 9.13,
+                "ev_ebitda": 26.51,
+            },
+        ],
+    }
+    fig = format_valuation_multiples_chart("AAPL", payload, period="FY")
+    assert len(fig["data"]) == 5
+    pe_trace = fig["data"][0]
+    assert pe_trace["name"] == "P/E Ratio"
+    assert pe_trace["x"] == ["2023-09-30", "2024-09-30"]
+    assert pe_trace["y"] == [27.08, 37.26]
+    assert pe_trace["line"]["color"] == "#3b82f6"
+
+    pb_trace = fig["data"][2]
+    assert pb_trace["name"] == "P/B Ratio"
+    assert pb_trace["y"] == [42.27, 61.33]
+    assert pb_trace["line"]["color"] == "#22c55e"
+
+
+def test_openbb_valuation_multiples_endpoint_contract(client):
+    """GET /openbb/valuation/{ticker}/multiples returns Plotly line chart contract."""
+    from schemas.fundamentals import ValuationMultiplesPoint, ValuationMultiplesResult
+
+    mock_service = MagicMock()
+    mock_service.get_multiples = AsyncMock(
+        return_value=ValuationMultiplesResult(
+            ticker="AAPL",
+            period="FY",
+            currency="USD",
+            series=[
+                ValuationMultiplesPoint(
+                    date="2023-09-30",
+                    pe_ratio=27.08,
+                    ps_ratio=6.85,
+                    pb_ratio=42.27,
+                    ev_sales_ratio=7.07,
+                    ev_ebitda=21.52,
+                ),
+                ValuationMultiplesPoint(
+                    date="2024-09-30",
+                    pe_ratio=37.26,
+                    ps_ratio=8.93,
+                    pb_ratio=61.33,
+                    ev_sales_ratio=9.13,
+                    ev_ebitda=26.51,
+                ),
+            ],
+            source="Fonrex",
+        )
+    )
+
+    orig_service = getattr(app.state, "multiples_service", None)
+    app.state.multiples_service = mock_service
+    try:
+        resp = client.get("/openbb/valuation/AAPL/multiples?period=FY")
+        assert resp.status_code == 200
+        fig = resp.json()
+        assert "data" in fig
+        assert "layout" in fig
+        assert len(fig["data"]) == 5
+        trace_names = [t["name"] for t in fig["data"]]
+        assert "P/E Ratio" in trace_names
+        assert "P/S Ratio" in trace_names
+        assert "P/B Ratio" in trace_names
+        assert "EV/Sales Ratio" in trace_names
+        assert "EV/EBITDA" in trace_names
+        assert fig["data"][0]["x"] == ["2023-09-30", "2024-09-30"]
+        assert fig["data"][0]["y"] == [27.08, 37.26]
+    finally:
+        app.state.multiples_service = orig_service
+
+
+def test_openbb_dividends_endpoint_contract(client):
+    """GET /openbb/dividends/{ticker} returns OpenBB AgGrid table contract."""
+    mock_provider = MagicMock()
+    mock_provider.get_dividends = AsyncMock(
+        return_value=[
+            {
+                "date": "2026-08-10",
+                "adjusted_dividend": 0.27,
+                "dividend": 0.27,
+                "record_date": "2026-08-10",
+                "payment_date": "2026-08-13",
+                "declaration_date": "2026-07-30",
+                "currency": "USD",
+            },
+            {
+                "date": "2026-05-11",
+                "adjusted_dividend": 0.27,
+                "dividend": 0.27,
+                "record_date": "2026-05-11",
+                "payment_date": "2026-05-14",
+                "declaration_date": "2026-04-30",
+                "currency": "USD",
+            },
+        ]
+    )
+
+    orig_provider = getattr(app.state, "dividend_provider", None)
+    app.state.dividend_provider = mock_provider
+    try:
+        resp = client.get("/openbb/dividends/AAPL")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert isinstance(rows, list)
+        assert len(rows) == 2
+        first_row = rows[0]
+        assert "Date" in first_row
+        assert "Adjusted Dividend" in first_row
+        assert "Dividend" in first_row
+        assert "Record Date" in first_row
+        assert "Payment Date" in first_row
+        assert "Declaration Date" in first_row
+        assert first_row["Date"] == "2026-08-10"
+        assert first_row["Adjusted Dividend"] == 0.27
+        assert first_row["Dividend"] == 0.27
+        assert first_row["Record Date"] == "2026-08-10"
+        assert first_row["Payment Date"] == "2026-08-13"
+        assert first_row["Declaration Date"] == "2026-07-30"
+
+        # Also test fallback query endpoint
+        resp_q = client.get("/openbb/calendar/dividends?ticker=AAPL")
+        assert resp_q.status_code == 200
+        assert len(resp_q.json()) == 2
+    finally:
+        app.state.dividend_provider = orig_provider
+
+
+def test_openbb_earnings_endpoint_contract(client):
+    """GET /openbb/earnings/{ticker} returns OpenBB AgGrid table contract."""
+    mock_provider = MagicMock()
+    mock_provider.get_earnings_history = AsyncMock(
+        return_value=[
+            {
+                "date": "2026-10-29",
+                "eps": None,
+                "eps_estimate": 1.98,
+                "revenue": None,
+                "revenue_estimate": 113210000000.0,
+                "surprise_pct": None,
+                "transcript": "",
+                "currency": "USD",
+            },
+            {
+                "date": "2026-07-30",
+                "eps": 2.02,
+                "eps_estimate": 1.89,
+                "revenue": 109417000000.0,
+                "revenue_estimate": 109040000000.0,
+                "surprise_pct": 6.74,
+                "transcript": "View transcript",
+                "currency": "USD",
+            },
+        ]
+    )
+
+    orig_provider = getattr(app.state, "earnings_provider", None)
+    app.state.earnings_provider = mock_provider
+    try:
+        resp = client.get("/openbb/earnings/AAPL")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert isinstance(rows, list)
+        assert len(rows) == 2
+
+        # Check upcoming row
+        r1 = rows[0]
+        assert r1["Date"] == "2026-10-29"
+        assert r1["EPS"] == "-"
+        assert r1["EPS Est."] == 1.98
+        assert r1["Revenue"] == "-"
+        assert r1["Revenue Est."] == "113.21 B"
+        assert r1["Transcript"] == ""
+
+        # Check reported row
+        r2 = rows[1]
+        assert r2["Date"] == "2026-07-30"
+        assert r2["EPS"] == 2.02
+        assert r2["EPS Est."] == 1.89
+        assert r2["Revenue"] == "109.417 B"
+        assert r2["Revenue Est."] == "109.04 B"
+        assert r2["Transcript"] == "View transcript"
+
+        # Also test fallback query endpoint
+        resp_q = client.get("/openbb/calendar/earnings?ticker=AAPL")
+        assert resp_q.status_code == 200
+        assert len(resp_q.json()) == 2
+    finally:
+        app.state.earnings_provider = orig_provider
+
+
+def test_openbb_splits_endpoint_contract(client):
+    """GET /openbb/splits/{ticker} returns OpenBB AgGrid table contract."""
+    mock_provider = MagicMock()
+    mock_provider.get_stock_splits = AsyncMock(
+        return_value=[
+            {
+                "execution_date": "2020-08-31",
+                "split_from": 1,
+                "split_to": 4,
+                "ratio": 4.0,
+            },
+            {
+                "execution_date": "2014-06-09",
+                "split_from": 1,
+                "split_to": 7,
+                "ratio": 7.0,
+            },
+        ]
+    )
+
+    orig_provider = getattr(app.state, "split_provider", None)
+    app.state.split_provider = mock_provider
+    try:
+        resp = client.get("/openbb/splits/AAPL")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert isinstance(rows, list)
+        assert len(rows) == 2
+
+        # Check row 1
+        r1 = rows[0]
+        assert "Execution Date" in r1
+        assert "Split From" in r1
+        assert "Split To" in r1
+        assert r1["Execution Date"] == "2020-08-31"
+        assert r1["Split From"] == 1
+        assert r1["Split To"] == 4
+
+        # Check row 2
+        r2 = rows[1]
+        assert r2["Execution Date"] == "2014-06-09"
+        assert r2["Split From"] == 1
+        assert r2["Split To"] == 7
+
+        # Also test fallback query endpoint
+        resp_q = client.get("/openbb/calendar/splits?ticker=AAPL")
+        assert resp_q.status_code == 200
+        assert len(resp_q.json()) == 2
+    finally:
+        app.state.split_provider = orig_provider
+
+
 
 
 

@@ -1,8 +1,9 @@
 """Asset identity, listing and profile persistence operations."""
 
 import logging
+import unicodedata
 
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
@@ -449,6 +450,114 @@ class AssetRepository(DatabaseComponent):
         finally:
             session.close()
 
+    def search_assets_by_text(self, query: str, limit: int = 10) -> list[dict]:
+        """
+        Recherche textuelle d'actifs en base locale Fonrex par nom d'entreprise, ticker ou ISIN.
+        Permet de retrouver les instruments déjà présents en base de données avant tout appel externe.
+        """
+        if not query or not query.strip():
+            return []
+
+        clean_query = query.strip()
+        stripped_query = "".join(
+            c for c in unicodedata.normalize("NFD", clean_query) if unicodedata.category(c) != "Mn"
+        )
+        patterns = [f"%{clean_query}%"]
+        if stripped_query.lower() != clean_query.lower():
+            patterns.append(f"%{stripped_query}%")
+
+        session = self.get_session()
+        try:
+            conds = []
+            for p in patterns:
+                conds.extend([
+                    AssetListing.ticker.ilike(p),
+                    Asset.ticker.ilike(p),
+                    Asset.name.ilike(p),
+                    Asset.display_name.ilike(p),
+                    Asset.official_symbol.ilike(p),
+                    Asset.isin.ilike(p),
+                ])
+
+            rows = (
+                session.query(AssetListing, Asset)
+                .join(Asset, AssetListing.asset_id == Asset.id)
+                .filter(AssetListing.is_active.is_(True))
+                .filter(or_(*conds))
+                .order_by(
+                    # Exact ticker match first
+                    (AssetListing.ticker == clean_query.upper()).desc(),
+                    # Starts with ticker
+                    AssetListing.ticker.ilike(f"{clean_query}%").desc(),
+                    AssetListing.is_primary.desc(),
+                    AssetListing.ticker.asc(),
+                )
+                .limit(limit)
+                .all()
+            )
+
+            results = []
+            seen_tickers = set()
+
+            for listing, asset in rows:
+                sym = listing.ticker or asset.ticker
+                if sym in seen_tickers:
+                    continue
+                seen_tickers.add(sym)
+
+                comp_name = asset.display_name or asset.name or sym
+                exch = listing.exchange or asset.exchange or "UNKNOWN"
+                q_type = asset.quote_type or "STOCK"
+
+                results.append({
+                    "ticker": sym,
+                    "name": comp_name,
+                    "quote_type": q_type,
+                    "exchange": exch,
+                    "label": sym,
+                    "value": sym,
+                    "source": "database",
+                })
+
+            if len(results) < limit:
+                remaining = limit - len(results)
+                asset_conds = []
+                for p in patterns:
+                    asset_conds.extend([
+                        Asset.ticker.ilike(p),
+                        Asset.name.ilike(p),
+                        Asset.display_name.ilike(p),
+                        Asset.isin.ilike(p),
+                    ])
+                unlisted = (
+                    session.query(Asset)
+                    .filter(Asset.is_active.is_(True))
+                    .filter(or_(*asset_conds))
+                    .limit(remaining)
+                    .all()
+                )
+                for asset in unlisted:
+                    sym = asset.ticker
+                    if sym in seen_tickers:
+                        continue
+                    seen_tickers.add(sym)
+                    results.append({
+                        "ticker": sym,
+                        "name": asset.display_name or asset.name or sym,
+                        "quote_type": asset.quote_type or "STOCK",
+                        "exchange": asset.exchange or "UNKNOWN",
+                        "label": sym,
+                        "value": sym,
+                        "source": "database",
+                    })
+
+            return results
+        except SQLAlchemyError as e:
+            logger.error(f"Erreur recherche assets text query='{query}': {e}")
+            return []
+        finally:
+            session.close()
+
     def get_listing_by_identity(
         self, ticker=None, isin=None, exchange=None, currency=None, include_mappings=False
     ):
@@ -605,6 +714,76 @@ class AssetRepository(DatabaseComponent):
             "details": self._asset_to_dict(asset, listing),
             "mappings": deduped_mappings,
         }
+
+    def ensure_asset(self, ticker=None, isin=None, exchange=None, currency=None, name=None):
+        """
+        S'assure qu'un actif existe en base de données pour un ticker donné.
+        S'il n'existe pas, il est créé avec un listing primaire par défaut.
+        """
+        if not ticker and not isin:
+            return None
+
+        asset = self.get_asset_by_identity(
+            ticker=ticker, isin=isin, exchange=exchange, currency=currency, include_mappings=True
+        )
+        if asset:
+            return asset
+
+        clean_ticker = (ticker or isin or "").strip().upper()
+        if not clean_ticker:
+            return None
+
+        determined_exchange = exchange or ("EURONEXT" if clean_ticker.endswith(".PA") else "NASDAQ")
+        determined_currency = currency or ("EUR" if clean_ticker.endswith(".PA") else "USD")
+        asset_name = name or f"{clean_ticker} Corporation"
+
+        session = self.get_session()
+        try:
+            new_asset = Asset(
+                ticker=clean_ticker,
+                name=asset_name,
+                exchange=determined_exchange,
+                currency=determined_currency,
+                isin=isin.strip().upper() if isin else None,
+                is_active=True,
+            )
+            session.add(new_asset)
+            session.flush()
+
+            new_listing = AssetListing(
+                asset_id=new_asset.id,
+                ticker=clean_ticker,
+                exchange=determined_exchange,
+                currency=determined_currency,
+                is_primary=True,
+                is_active=True,
+            )
+            session.add(new_listing)
+            session.commit()
+            return new_asset
+        except SQLAlchemyError as e:
+            session.rollback()
+            logger.warning("ensure_asset rollback pour %s: %s", clean_ticker, e)
+            return None
+        finally:
+            session.close()
+
+    def ensure_asset_context(self, ticker=None, isin=None, exchange=None, currency=None, name=None):
+        """
+        Garantit l'existence d'un actif et retourne son contexte complet.
+        """
+        context = self.get_asset_context(
+            ticker=ticker, isin=isin, exchange=exchange, currency=currency
+        )
+        if context:
+            return context
+
+        self.ensure_asset(
+            ticker=ticker, isin=isin, exchange=exchange, currency=currency, name=name
+        )
+        return self.get_asset_context(
+            ticker=ticker, isin=isin, exchange=exchange, currency=currency
+        )
 
     def get_asset_mappings(self, ticker=None, isin=None, exchange=None, currency=None):
         """Return an asset with its mapping relationships eagerly loaded.

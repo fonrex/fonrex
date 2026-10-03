@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Key Metrics</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #121214;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f4f4f5;
+    }
+    .wrapper {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: 12px 16px;
+      overflow-y: auto;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #27272a;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ticker-badge {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.1));
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #60a5fa;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #a1a1aa;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .tab-toggle {
+      display: flex;
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: #71717a;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .tab-btn.active {
+      background: #27272a;
+      color: #f4f4f5;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      flex: 1;
+    }
+    .metric-card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .metric-card:hover {
+      border-color: #3f3f46;
+      transform: translateY(-1px);
+    }
+    .metric-label {
+      font-size: 11px;
+      color: #a1a1aa;
+      font-weight: 500;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .metric-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fafafa;
+      letter-spacing: -0.3px;
+    }
+    .metric-sub {
+      font-size: 10px;
+      color: #71717a;
+      margin-top: 2px;
+    }
+    .range-bar-container {
+      margin-top: 8px;
+    }
+    .range-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #71717a;
+      margin-top: 4px;
+    }
+    .range-track {
+      width: 100%;
+      height: 6px;
+      background: #27272a;
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+    }
+    .range-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #10b981);
+      border-radius: 3px;
+      transition: width 0.5s ease;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    
+    #tv-container {
+      display: none;
+      width: 100%;
+      height: 100%;
+    }
+    .loading-pulse {
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper" id="metrics-view">
+    <div class="header">
+      <div class="header-left">
+        <span class="ticker-badge" id="ticker-badge">AAPL</span>
+        <span class="title">Key Metrics</span>
+      </div>
+      <div class="tab-toggle">
+        <button class="tab-btn active" id="btn-fonrex" onclick="showView('fonrex')">Fonrex</button>
+        <button class="tab-btn" id="btn-tv" onclick="showView('tv')">TradingView</button>
+      </div>
+    </div>
+
+    <div class="grid" id="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Market Cap <span class="badge badge-blue" id="currency-badge">USD</span></div>
+        <div class="metric-value" id="val-mcap">--</div>
+        <div class="metric-sub" id="sub-ev">Enterprise: --</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Beta (5Y Monthly)</div>
+        <div class="metric-value" id="val-beta">--</div>
+        <div class="metric-sub" id="sub-beta">--</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">P/E (TTM)</div>
+        <div class="metric-value" id="val-pe">--</div>
+        <div class="metric-sub" id="sub-pe">Fwd P/E: --</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">EPS (TTM)</div>
+        <div class="metric-value" id="val-eps">--</div>
+        <div class="metric-sub" id="sub-eps">Fwd EPS: --</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Div Yield</div>
+        <div class="metric-value" id="val-div">--</div>
+        <div class="metric-sub" id="sub-div">Payout: --</div>
+      </div>
+      <div class="metric-card" style="grid-column: span 2;">
+        <div class="metric-label">52-Week Range <span class="badge badge-green" id="range-badge">--</span></div>
+        <div class="range-bar-container">
+          <div class="range-track">
+            <div class="range-fill" id="range-fill" style="width: 50%;"></div>
+          </div>
+          <div class="range-labels">
+            <span id="val-52low">Low: --</span>
+            <span id="val-52high">High: --</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tv-container">
+    <div class="tradingview-widget-container" style="width: 100%; height: 100%;">
+      <div class="tradingview-widget-container__widget" style="width: 100%; height: 100%;"></div>
+    </div>
+  </div>
+
+  <script>
+    function getTvSymbol(raw) {
+      if (!raw) return "NASDAQ:AAPL";
+      raw = raw.trim().toUpperCase();
+      if (raw.includes(":")) return raw;
+      if (raw.endsWith(".PA")) return "EURONEXT:" + raw.replace(".PA", "");
+      if (raw.endsWith(".MC")) return "BME:" + raw.replace(".MC", "");
+      if (raw.endsWith(".DE")) return "XETR:" + raw.replace(".DE", "");
+      if (raw.endsWith(".L")) return "LSE:" + raw.replace(".L", "");
+      return raw;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const ticker = (urlParams.get('ticker') || urlParams.get('symbol') || 'AAPL').toUpperCase();
+    document.getElementById('ticker-badge').textContent = ticker;
+
+    function formatNumber(num, isCurrency = false, currency = '$') {
+      if (num === null || num === undefined || isNaN(num)) return '--';
+      const abs = Math.abs(num);
+      const prefix = isCurrency ? currency : '';
+      if (abs >= 1e12) return prefix + (num / 1e12).toFixed(2) + 'T';
+      if (abs >= 1e9) return prefix + (num / 1e9).toFixed(2) + 'B';
+      if (abs >= 1e6) return prefix + (num / 1e6).toFixed(2) + 'M';
+      if (abs >= 1e3) return prefix + (num / 1e3).toFixed(2) + 'k';
+      return prefix + Number(num).toFixed(2);
+    }
+
+    function formatPercent(val) {
+      if (val === null || val === undefined || isNaN(val)) return '--';
+      return (Number(val) * (Math.abs(val) <= 1 ? 100 : 1)).toFixed(2) + '%';
+    }
+
+    let tvLoaded = false;
+    function loadTvWidget() {
+      if (tvLoaded) return;
+      tvLoaded = true;
+      const script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-financials.js';
+      script.async = true;
+      script.innerHTML = JSON.stringify({
+        "symbol": getTvSymbol(ticker),
+        "colorTheme": "dark",
+        "isTransparent": true,
+        "displayMode": "regular",
+        "width": "100%",
+        "height": "100%",
+        "locale": "en"
+      });
+      document.querySelector('#tv-container .tradingview-widget-container').appendChild(script);
+    }
+
+    function showView(view) {
+      const metricsView = document.getElementById('metrics-view');
+      const tvContainer = document.getElementById('tv-container');
+      const btnFonrex = document.getElementById('btn-fonrex');
+      const btnTv = document.getElementById('btn-tv');
+
+      if (view === 'tv') {
+        metricsView.style.display = 'none';
+        tvContainer.style.display = 'block';
+        btnFonrex.classList.remove('active');
+        btnTv.classList.add('active');
+        loadTvWidget();
+      } else {
+        metricsView.style.display = 'flex';
+        tvContainer.style.display = 'none';
+        btnTv.classList.remove('active');
+        btnFonrex.classList.add('active');
+      }
+    }
+
+    async function fetchMetrics() {
+      try {
+        const res = await fetch(`/openbb/fundamental/deep?ticker=${encodeURIComponent(ticker)}`);
+        if (!res.ok) throw new Error('Failed to fetch fundamentals');
+        const rows = await res.json();
+        const data = {};
+        for (const r of rows) {
+          data[r.field] = r.value;
+        }
+
+        const curr = data.currency || 'USD';
+        const currSym = curr === 'EUR' ? '€' : (curr === 'GBP' ? '£' : '$');
+        document.getElementById('currency-badge').textContent = curr;
+
+        // Market Cap
+        if (data.market_cap) {
+          document.getElementById('val-mcap').textContent = formatNumber(data.market_cap, true, currSym);
+        }
+        if (data.enterprise_value) {
+          document.getElementById('sub-ev').textContent = `EV: ${formatNumber(data.enterprise_value, true, currSym)}`;
+        }
+
+        // Beta
+        if (data.beta !== null && data.beta !== undefined) {
+          const beta = Number(data.beta);
+          document.getElementById('val-beta').textContent = beta.toFixed(2);
+          const betaDesc = beta > 1.2 ? 'High Volatility' : (beta < 0.8 ? 'Low Volatility' : 'Moderate Vol.');
+          document.getElementById('sub-beta').textContent = betaDesc;
+        }
+
+        // P/E
+        if (data.pe_ratio) {
+          document.getElementById('val-pe').textContent = Number(data.pe_ratio).toFixed(2);
+        }
+        if (data.pe_forward) {
+          document.getElementById('sub-pe').textContent = `Fwd P/E: ${Number(data.pe_forward).toFixed(2)}`;
+        }
+
+        // EPS
+        if (data.eps_trailing) {
+          document.getElementById('val-eps').textContent = currSym + Number(data.eps_trailing).toFixed(2);
+        }
+        if (data.eps_forward) {
+          document.getElementById('sub-eps').textContent = `Fwd EPS: ${currSym}${Number(data.eps_forward).toFixed(2)}`;
+        }
+
+        // Div
+        if (data.dividend_yield !== null && data.dividend_yield !== undefined) {
+          document.getElementById('val-div').textContent = formatPercent(data.dividend_yield);
+        }
+        if (data.payout_ratio) {
+          document.getElementById('sub-div').textContent = `Payout: ${formatPercent(data.payout_ratio)}`;
+        }
+
+        // 52-Week Range
+        const low = data.week_52_low;
+        const high = data.week_52_high;
+        if (low !== null && high !== null && high > low) {
+          document.getElementById('val-52low').textContent = `Low: ${currSym}${Number(low).toFixed(2)}`;
+          document.getElementById('val-52high').textContent = `High: ${currSym}${Number(high).toFixed(2)}`;
+          const spread = high - low;
+          document.getElementById('range-badge').textContent = `Spread: ${currSym}${spread.toFixed(2)}`;
+          // Price if available or approximate 50%
+          const pct = Math.min(100, Math.max(0, 50));
+          document.getElementById('range-fill').style.width = `${pct}%`;
+        }
+      } catch (err) {
+        console.warn('Could not load deep fundamentals, falling back to TradingView view', err);
+        showView('tv');
+      }
+    }
+
+    fetchMetrics();
+  </script>
+</body>
+</html>

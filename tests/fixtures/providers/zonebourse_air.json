@@ -1,0 +1,15 @@
+{
+  "provider": "ZoneBourse",
+  "ticker": "AIR",
+  "source_url": "https://www.zonebourse.com/cours/action/AIRBUS-SE-4637/",
+  "captured_on": "2026-10-03",
+  "expected": {
+    "dividend_yield": 1.81,
+    "esg_score": "BBB",
+    "name": "Airbus SE",
+    "net_income": 5858280870.0,
+    "pe_ratio": 25.5,
+    "revenue": 80945151250.0
+  },
+  "known_gaps": {}
+}

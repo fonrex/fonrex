@@ -15,6 +15,10 @@ NC := \033[0m
 
 .PHONY: help install install-dev clean test test-cov lint typecheck syntax migration-check quality ci run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
 
+# The API requires a key by default: export FONREX_API_KEY so the curl-based
+# targets below can authenticate (e.g. `FONREX_API_KEY=frx_live_... make example-quote`).
+AUTH_HEADER := $(if $(FONREX_API_KEY),-H "X-API-KEY: $(FONREX_API_KEY)",)
+
 TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py
 
 .DEFAULT_GOAL := help
@@ -71,11 +75,11 @@ quality: lint typecheck syntax migration-check test-cov ## Run complete local qu
 
 ci: quality ## CI pipeline entrypoint
 
-run: ## Run FastAPI application locally with uvicorn
+run: ## Run FastAPI application locally with uvicorn (loads .env when present)
 	@echo -e "$(BLUE)🚀 Starting application...$(NC)"
 	@echo -e "$(CYAN)🔗 API: http://localhost:$(PORT)$(NC)"
 	@echo -e "$(CYAN)🔗 Docs: http://localhost:$(PORT)/docs$(NC)"
-	uvicorn main:app --reload --port $(PORT)
+	set -a; [ -f .env ] && . ./.env; set +a; uvicorn main:app --reload --port $(PORT)
 
 docker-build: ## Build Docker images
 	@echo -e "$(BLUE)🐳 Building Docker images...$(NC)"
@@ -131,15 +135,15 @@ db-seed: ## Seed default asset catalog into database
 
 cache-clear: ## Clear global Redis cache
 	@echo -e "$(BLUE)🗑️ Clearing Redis cache...$(NC)"
-	@curl -X POST http://localhost:$(PORT)/cache/clear 2>/dev/null || echo -e "$(RED)❌ Error clearing cache$(NC)"
+	@curl -X POST $(AUTH_HEADER) http://localhost:$(PORT)/cache/clear 2>/dev/null || echo -e "$(RED)❌ Error clearing cache$(NC)"
 
 example-quote: ## Example: Fetch real-time price snapshot (REST) for AAPL
 	@echo -e "$(BLUE)📈 Fetching quote for AAPL...$(NC)"
-	@curl -s "http://localhost:$(PORT)/quote/AAPL" | python3 -m json.tool
+	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quote/AAPL" | python3 -m json.tool
 
 example-quotes: ## Example: Batch fetch quotes for AAPL, AIR.PA, BNP.PA (REST)
 	@echo -e "$(BLUE)📈 Batch fetching quotes...$(NC)"
-	@curl -s "http://localhost:$(PORT)/quotes?tickers=AAPL,AIR.PA,BNP.PA" | python3 -m json.tool
+	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quotes?tickers=AAPL,AIR.PA,BNP.PA" | python3 -m json.tool
 
 example-client: ## Example: Run real-time python client (WebSocket/REST) for AAPL
 	@echo -e "$(BLUE)⚡ Starting real-time client (Ctrl+C to quit)...$(NC)"

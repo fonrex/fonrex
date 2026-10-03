@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import httpx
 from selectolax.parser import HTMLParser, Node
@@ -32,6 +32,9 @@ class ZoneBourseProvider(BaseProvider):
     - Retries with exponential backoff
     - Data mapping to FinancialMetrics
     """
+
+    # Scale suffixes of abbreviated amounts ("80,95 Md", "12 M", "3 k").
+    _SCALES = {"md": 1_000_000_000, "mds": 1_000_000_000, "m": 1_000_000, "k": 1_000}
 
     BASE_URL = "https://www.zonebourse.com"
     SEARCH_URL = "https://www.zonebourse.com/recherche/?q={symbol}"
@@ -212,7 +215,8 @@ class ZoneBourseProvider(BaseProvider):
             # Header often contains the name
             h1 = parser.css_first("h1")
             if h1:
-                metrics.name = h1.text(strip=True)
+                # The quote page heading reads "Cours <company name>".
+                metrics.name = re.sub(r"^Cours\s+", "", h1.text(strip=True))
 
             # Extract ISIN - usually labeled
             # Try to find text "ISIN:" nearby
@@ -282,80 +286,109 @@ class ZoneBourseProvider(BaseProvider):
     def _extract_financial_table_data(self, parser: HTMLParser, metrics: FinancialMetrics):
         """
         Scans all tables for financial keywords and extracts data.
+
+        For each metric the first matching row wins (current year or estimate).
         """
         for table in parser.css("table"):
-            rows = table.css("tr")
-            if not rows:
-                continue
+            for row in table.css("tr"):
+                for label, value_cells in self._row_pairs(row):
+                    value = self._find_first_number(value_cells)
+                    if value is not None:
+                        self._assign_metric(metrics, label.lower(), value)
 
-            # Check header to see if it's a financial table (Years?)
-            # Heuristic: headers look like years (2023, 2024...)
+    @staticmethod
+    def _row_pairs(row: Node) -> List[Tuple[str, List[Node]]]:
+        """Splits a table row into (label, value cells) pairs.
 
-            for row in rows:
-                cells = row.css("td")
-                header = row.css_first("th")
+        ZoneBourse serves two layouts:
+        - label in the first cell (<th> or <td>), values in the following <td> cells;
+        - label in a <td>, values in the following <th> cells, with possibly several
+          label/value pairs on the same row (valuation block, financial estimates).
+        """
+        cells = [cell for cell in row.iter() if cell.tag in ("td", "th")]
+        if not cells:
+            return []
 
-                # Determine label
-                label = ""
-                if header:
-                    label = header.text(strip=True)
-                elif cells:
-                    label = cells[0].text(strip=True)  # First cell effectively header
-                else:
-                    continue
+        if cells[0].tag == "td" and any(cell.tag == "th" for cell in cells):
+            pairs: List[Tuple[str, List[Node]]] = []
+            for cell in cells:
+                if cell.tag == "td":
+                    pairs.append((cell.text(strip=True), []))
+                elif pairs:
+                    pairs[-1][1].append(cell)
+            return [(label, values) for label, values in pairs if label and values]
 
-                if not label:
-                    continue
+        label = cells[0].text(strip=True)
+        values = [cell for cell in cells[1:] if cell.tag == "td"]
+        return [(label, values)] if label else []
 
-                # Get the first numeric value
-                # We iterate values to find the first valid number (often current year/estimate)
-                idx_offset = 0 if header else 1  # If first cell was label, skip it
+    @staticmethod
+    def _assign_metric(metrics: FinancialMetrics, label_lower: str, value: float) -> None:
+        """Maps a row label to a metric; an already extracted metric is kept."""
+        if "chiffre d'affaires" in label_lower or "net sales" in label_lower:
+            field = "revenue"
+        elif "résultat net" in label_lower or "net income" in label_lower:
+            field = "net_income"
+        elif re.search(r"\b(bna|bpa|eps)\b", label_lower):
+            field = "eps"
+        elif re.search(r"\bper\b|p/e", label_lower):
+            field = "pe_ratio"
+        elif "rendement" in label_lower or "yield" in label_lower:
+            # Returned as displayed, i.e. as a percentage (see monitoring/units.py).
+            field = "dividend_yield"
+        elif "ebitda" in label_lower:
+            field = "ebitda"
+        elif "marge d'exploitation" in label_lower or "operating margin" in label_lower:
+            field = "operating_margin"
+        elif "marge nette" in label_lower or "net margin" in label_lower:
+            field = "profit_margin"
+        else:
+            return
 
-                relevant_cells = row.css("td")[idx_offset:] if header else cells[1:]
-
-                # Helper to set if not already set
-                current_val = self._find_first_number(relevant_cells)
-
-                if current_val is not None:
-                    label_lower = label.lower()
-
-                    if "chiffre d'affaires" in label_lower or "net sales" in label_lower:
-                        metrics.revenue = current_val
-                    elif "résultat net" in label_lower or "net income" in label_lower:
-                        metrics.net_income = current_val
-                    elif "bna" in label_lower or "bpa" in label_lower or "eps" in label_lower:
-                        metrics.eps = current_val
-                    elif "per" in label_lower or "p/e" in label_lower:
-                        metrics.pe_ratio = current_val
-                    elif "rendement" in label_lower or "yield" in label_lower:
-                        # Sometimes yield is %, handle in helper
-                        metrics.dividend_yield = current_val  # Assuming handled in cleaning
-                    elif "ebitda" in label_lower:
-                        metrics.ebitda = current_val
-                    elif "dette nette" in label_lower or "net debt" in label_lower:
-                        # Mapping to debt_to_equity if strictly ratio, but here it's likely absolute.
-                        # FinancialMetrics has debt_to_equity.
-                        # We might need to compute it or find the ratio line.
-                        pass
-                    elif "marge d'exploitation" in label_lower or "operating margin" in label_lower:
-                        metrics.operating_margin = current_val
-                    elif "marge nette" in label_lower or "net margin" in label_lower:
-                        metrics.profit_margin = current_val
+        if getattr(metrics, field, None) is None:
+            setattr(metrics, field, value)
 
     def _find_first_number(self, cells: List[Node]) -> Optional[float]:
         """Iterates cells to find the first valid float."""
         for cell in cells:
-            txt = cell.text(strip=True)
-            val = self._clean_number(txt)
+            val = self._cell_number(cell)
             if val is not None:
                 return val
         return None
+
+    def _cell_number(self, cell: Node) -> Optional[float]:
+        """Reads the number of a value cell.
+
+        Amounts are rendered once per currency (<span class="efd_EUR">,
+        <span class="efd_USD c-none">, ...): only the visible one is read, from
+        its exact ``title`` value when available.
+        """
+        variants = cell.css("span[class*='efd_']")
+        if not variants:
+            return self._clean_number(cell.text(strip=True))
+
+        visible = next(
+            (v for v in variants if "c-none" not in (v.attributes.get("class") or "")),
+            variants[0],
+        )
+        exact = visible.css_first("span[title]")
+        if exact:
+            value = self._clean_number(exact.attributes.get("title") or "")
+            if value is not None:
+                return value
+        return self._clean_number(visible.text(strip=True))
 
     def _clean_number(self, text: str) -> Optional[float]:
         """Converts French/US number formats to float."""
         if not text or text == "-":
             return None
         try:
+            # Abbreviated amounts: "80,95 Md" (milliards), "12 M", "3 k"
+            scale = 1
+            scale_match = re.search(r"\d\s*(Mds?|M|k|K)\b", text)
+            if scale_match:
+                scale = self._SCALES[scale_match.group(1).lower()]
+
             # Remove currency symbols and percentages
             clean = re.sub(r"[€$%\sA-Za-z]", "", text)
             # Replace comma with dot for decimals (French format handle)
@@ -374,7 +407,7 @@ class ZoneBourseProvider(BaseProvider):
                 pass
 
             if clean:
-                return float(clean)
+                return float(clean) * scale
         except ValueError:
             pass
         return None

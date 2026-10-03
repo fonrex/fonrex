@@ -133,7 +133,11 @@ class GoogleFinanceProvider(BaseProvider):
                     google_ticker = ticker
 
                 # Normalisation finale pour l'URL (SYMBOL:EXCHANGE)
-                url_ticker = self._normalize_ticker(google_ticker)
+                if is_url and ":" in ticker:
+                    # A quote URL already carries SYMBOL:EXCHANGE: it must not be swapped.
+                    url_ticker = google_ticker
+                else:
+                    url_ticker = self._normalize_ticker(google_ticker)
 
                 # 3. Build URL
                 url = self.QUOTE_URL.format(ticker=url_ticker)
@@ -258,7 +262,13 @@ class GoogleFinanceProvider(BaseProvider):
                 or "couldn't find any match" in response.text
             ):
                 return None
-            return HTMLParser(response.text)
+            parser = HTMLParser(response.text)
+            # An unknown SYMBOL:EXCHANGE is answered with HTTP 200 and the generic
+            # home page, whose title is just "Google Finance".
+            title = parser.css_first("title")
+            if title and title.text(strip=True) == "Google Finance":
+                return None
+            return parser
         return None
 
     async def _fetch_with_retry(
@@ -310,9 +320,7 @@ class GoogleFinanceProvider(BaseProvider):
         try:
             # 1. Basic Info
             # Name is usually available in a specific H1 class or just the first H1
-            h1 = parser.css_first("h1")  # Google often calls it class="zzDege" but let's be generic
-            if h1:
-                metrics.name = h1.text(strip=True)
+            metrics.name = self._extract_name(parser)
 
             # Price (usually huge font, heuristics)
             # We don't strictly need price in FinancialMetrics base (it's in StockSummary?)
@@ -352,6 +360,14 @@ class GoogleFinanceProvider(BaseProvider):
             # Let's look for "Revenue" specifically.
             self._extract_financial_row(parser, metrics)
 
+            # The "EPS" statistic is the trailing-twelve-month figure; the financials
+            # table above only holds the latest quarter.
+            eps_node = self._find_stat_by_label(parser, "EPS")
+            if eps_node:
+                eps = self._clean_number(eps_node)
+                if eps is not None:
+                    metrics.eps = eps
+
             # 4. About / Description
             # Usually in a section "About"
             about_header = self._find_text_node(parser, "About")
@@ -363,6 +379,24 @@ class GoogleFinanceProvider(BaseProvider):
             logger.error(f"Error parsing Google Finance page: {e}")
 
         return metrics
+
+    @staticmethod
+    def _extract_name(parser: HTMLParser) -> Optional[str]:
+        """Company name of a quote page.
+
+        The page title reads "<Company> (<TICKER>) Stock Price & News - Google Finance".
+        The first <h1> of the live page is the product name ("Finance"), so it is only
+        used as a fallback for simpler documents.
+        """
+        title = parser.css_first("title")
+        if title:
+            match = re.match(r"\s*(.+?)\s*\([^()]+\)\s+Stock Price", title.text())
+            if match:
+                return match.group(1)
+
+        h1 = parser.css_first("h1")
+        name = h1.text(strip=True) if h1 else None
+        return None if name == "Finance" else name
 
     def _find_stat_by_label(self, parser: HTMLParser, label: str) -> Optional[str]:
         """

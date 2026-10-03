@@ -41,6 +41,11 @@ jobs:
       - name: Run quality gate
         run: make ci PYTHON=python
 
+      # Shown on the run page, reachable from the "Checks" tab of the pull request.
+      - name: Publish coverage summary
+        if: always() && hashFiles('coverage.json') != ''
+        run: python scripts/check_coverage_distribution.py coverage.json --summary "$GITHUB_STEP_SUMMARY"
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4

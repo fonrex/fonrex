@@ -1,0 +1,10 @@
+{
+  "provider": "Fortuneo",
+  "ticker": "AIR",
+  "source_url": "https://bourse.fortuneo.fr/actions/cours-airbus-AIR-NL0000235190-23",
+  "captured_on": "2026-10-03",
+  "expected": {
+    "name": "AIRBUS"
+  },
+  "known_gaps": {}
+}

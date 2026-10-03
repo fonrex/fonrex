@@ -1,0 +1,13 @@
+{
+  "provider": "Barrons",
+  "ticker": "AAPL",
+  "source_url": "https://www.barrons.com/market-data/stocks/aapl",
+  "captured_on": "2026-10-03",
+  "expected": {
+    "dividend_yield": 0.32,
+    "eps": 8.72,
+    "name": "Apple Inc.",
+    "pe_ratio": 38.25
+  },
+  "known_gaps": {}
+}

@@ -10,6 +10,10 @@ __pycache__/
 # Assets statiques lourds (logos, images) — montés via volume en prod
 static/logos/
 
+# Core dumps d'un worker planté
+core
+core.[0-9]*
+
 # Logs et cache locaux
 logs/
 *.log

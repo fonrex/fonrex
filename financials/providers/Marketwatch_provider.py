@@ -168,6 +168,16 @@ class MarketwatchProvider(BaseProvider):
     def _find_value_by_label(self, parser: HTMLParser, labels: list) -> Optional[float]:
         import re
 
+        # Key data list of the quote page:
+        # <li class="kv__item"><small class="label">P/E Ratio</small><span class="primary">38.25</span>
+        wanted = {label.lower() for label in labels}
+        for item in parser.css("li.kv__item"):
+            label_node = item.css_first(".label")
+            value_node = item.css_first(".primary")
+            if label_node and value_node and label_node.text(strip=True).lower() in wanted:
+                match = re.search(r"-?\d[\d,]*\.?\d*", value_node.text(strip=True))
+                return float(match.group(0).replace(",", "")) if match else None
+
         for node in parser.css("div, span, td, li"):
             txt = node.text(strip=True)
             for label in labels:

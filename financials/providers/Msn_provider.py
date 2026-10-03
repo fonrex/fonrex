@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Optional
 
 import httpx
@@ -78,4 +79,11 @@ class MsnProvider(BaseProvider):
         h1 = parser.css_first("h1")
         if h1:
             metrics.name = h1.text(strip=True)
+        else:
+            # The server-rendered page has no <h1>; its title reads
+            # "<TICKER> : <Company> - MSN Finances".
+            title = parser.css_first("title")
+            match = re.match(r"[^:]+:\s*(.+?)\s+-\s+MSN\b", title.text()) if title else None
+            if match:
+                metrics.name = match.group(1)
         return metrics

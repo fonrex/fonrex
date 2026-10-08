@@ -87,11 +87,8 @@ class DatabaseService:
     def get_cached_tickers(self):
         return self.maintenance.get_cached_tickers()
 
-    def cleanup_old_data(self, days_to_keep=730):
-        return self.maintenance.cleanup_old_data(days_to_keep)
-
-    def _cleanup_old_data(self, days_to_keep=730):
-        return self.maintenance._cleanup_old_data(days_to_keep)
+    def cleanup_old_data(self, days_to_keep=730, dry_run=False):
+        return self.maintenance.cleanup_old_data(days_to_keep, dry_run)
 
     # Asset identity and profile
     def find_listings(self, *args, **kwargs):
@@ -187,3 +184,9 @@ class DatabaseService:
     # Usage analytics
     def log_usage(self, *args, **kwargs):
         return self.usage.log_usage(*args, **kwargs)
+
+    def log_usage_batch(self, entries):
+        return self.usage.log_usage_batch(entries)
+
+    def purge_usage_logs(self, days):
+        return self.usage.purge_older_than(days)

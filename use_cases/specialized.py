@@ -23,7 +23,7 @@ class GetInsiderTransactions:
             raise DependencyUnavailable("Provider SECEdgar non disponible")
 
         cache_key = (
-            self.cache.generate_key(ticker, cache_type="insider_transactions")
+            self.cache.generate_key(ticker, cache_type="insider_transactions", limit=limit)
             if self.cache
             else None
         )

@@ -8,8 +8,15 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 
 from news.news_service import NewsService
 from schemas.news import NewsFeedResponse, NewsResponse
+from settings import env_int
 
 router = APIRouter(prefix="/news", tags=["News"])
+
+# Largest number of articles one request may ask for.
+NEWS_MAX_LIMIT = env_int("NEWS_MAX_LIMIT", 100, minimum=1)
+# Number of articles returned for a ticker when the request gives no limit.
+NEWS_DEFAULT_LIMIT = min(env_int("NEWS_DEFAULT_LIMIT", 20, minimum=1), NEWS_MAX_LIMIT)
+NEWS_FEED_DEFAULT_LIMIT = min(50, NEWS_MAX_LIMIT)
 
 
 def get_news_service(request: Request) -> NewsService:
@@ -27,7 +34,7 @@ async def get_news_stats(service: NewsService = Depends(get_news_service)):
 
 @router.get("/feed", response_model=NewsFeedResponse)
 async def get_news_feed(
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(default=NEWS_FEED_DEFAULT_LIMIT, ge=1, le=NEWS_MAX_LIMIT),
     language: Optional[str] = None,
     tickers: Optional[str] = None,
     service: NewsService = Depends(get_news_service),
@@ -44,7 +51,7 @@ async def get_news_feed(
 @router.get("/{ticker}", response_model=NewsResponse)
 async def get_ticker_news(
     ticker: str,
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=NEWS_DEFAULT_LIMIT, ge=1, le=NEWS_MAX_LIMIT),
     language: Optional[str] = None,
     force_refresh: bool = False,
     service: NewsService = Depends(get_news_service),

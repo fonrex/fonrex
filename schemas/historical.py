@@ -39,11 +39,15 @@ class IngestResult(BaseModel):
     resolution: str
     status: str  # "success" | "partial" | "up_to_date" | "failed"
     source_used: Optional[str] = None
+    # Symbol the prices were fetched with at the source (e.g. "SYBC.DE" for EUCO).
+    provider_symbol: Optional[str] = None
     records_added: int = 0
     from_date: Optional[date] = None
     to_date: Optional[date] = None
     duration_ms: Optional[int] = None
     error: Optional[str] = None
+    # Why the first source (Yahoo) was not the one that answered, when another did.
+    note: Optional[str] = None
 
 
 class HistoryResponse(BaseModel):

@@ -113,7 +113,7 @@ def get_api_documentation():
             "database_cleanup": {
                 "url": "/database/cleanup",
                 "method": "POST",
-                "description": "Clean up old data (optional parameter: days_to_keep)",
+                "description": "Delete prices older than days_to_keep days (default 730, minimum 30); dry_run=true only counts",
             },
             "ticker_stats": {
                 "url": "/database/ticker/<ticker>",

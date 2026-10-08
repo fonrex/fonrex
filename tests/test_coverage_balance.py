@@ -1,6 +1,6 @@
 """Focused tests for previously under-covered application boundaries."""
 
-from datetime import date
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +14,7 @@ from financials.enrichment.adapters import (
     YFinanceAssetProfileEnricher,
     YFinanceDeepFundamentalsEnricher,
 )
+from technical.contracts import MarketSeries
 from use_cases.errors import DependencyUnavailable, UpstreamFailure
 from use_cases.specialized import (
     GetEtfDetails,
@@ -69,14 +70,40 @@ def _query_session(rows: list[dict[str, object]]) -> MagicMock:
     return session
 
 
+SERIES = MarketSeries(asset_id=42, listing_id=7)
+
+
 @pytest.mark.parametrize(
-    ("resolution", "expected_table", "expected_column"),
-    [("1D", "prices_eod", "time"), ("5min", "prices_intraday", "timestamp")],
+    ("resolution", "expected_table", "expected_column", "series_filter", "expected_bounds"),
+    [
+        # End-of-day prices: one series per listing, bounds at midnight UTC of the session.
+        (
+            "1D",
+            "prices_eod",
+            "time",
+            "asset_listing_id = :series_id",
+            {
+                "series_id": 7,
+                "from_date": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                "to_date": datetime(2026, 1, 3, tzinfo=timezone.utc),
+            },
+        ),
+        # Intraday prices: still one series per instrument.
+        (
+            "5min",
+            "prices_intraday",
+            "timestamp",
+            "asset_id = :series_id",
+            {"series_id": 42, "from_date": date(2026, 1, 1), "to_date": date(2026, 1, 3)},
+        ),
+    ],
 )
 def test_technical_data_source_builds_resolution_specific_query(
     resolution: str,
     expected_table: str,
     expected_column: str,
+    series_filter: str,
+    expected_bounds: dict,
 ):
     rows = [
         {
@@ -93,7 +120,7 @@ def test_technical_data_source_builds_resolution_specific_query(
     source = SqlAlchemyTechnicalRepository(database)
 
     frame = source._load_ohlcv_sync(
-        42,
+        SERIES,
         resolution,
         from_date=date(2026, 1, 1),
         to_date=date(2026, 1, 3),
@@ -102,14 +129,9 @@ def test_technical_data_source_builds_resolution_specific_query(
 
     statement, parameters = session.execute.call_args.args
     assert expected_table in str(statement)
+    assert series_filter in str(statement)
     assert f"{expected_column} >= :from_date" in str(statement)
-    assert parameters == {
-        "asset_id": 42,
-        "resolution": resolution,
-        "limit": 25,
-        "from_date": date(2026, 1, 1),
-        "to_date": date(2026, 1, 3),
-    }
+    assert parameters == {"resolution": resolution, "limit": 25, **expected_bounds}
     assert frame.iloc[0]["close"] == 11.0
     assert frame.index.tz is not None
     session.close.assert_called_once()
@@ -132,34 +154,26 @@ async def test_technical_data_source_loads_in_worker_thread():
     source = SqlAlchemyTechnicalRepository(MagicMock())
     expected = pd.DataFrame({"close": [1.0]})
     with patch.object(source, "_load_ohlcv_sync", return_value=expected) as load:
-        result = await source.load_ohlcv(7, "1D", limit=10)
+        result = await source.load_ohlcv(SERIES, "1D", limit=10)
     assert result is expected
-    load.assert_called_once_with(7, "1D", None, None, 10)
+    load.assert_called_once_with(SERIES, "1D", None, None, 10)
 
 
 @pytest.mark.asyncio
-async def test_technical_data_source_resolves_listing_then_asset_fallback():
-    listing_session = MagicMock()
-    listing_query = MagicMock()
-    listing_query.filter.return_value.order_by.return_value.first.return_value = SimpleNamespace(
-        asset_id=11
+async def test_technical_data_source_resolves_the_series_of_a_ticker():
+    session = MagicMock()
+    session.execute.return_value.first.return_value = (11, 3)
+    source = SqlAlchemyTechnicalRepository(
+        SimpleNamespace(get_session=MagicMock(return_value=session))
     )
-    listing_session.query.return_value = listing_query
-    listing_source = SqlAlchemyTechnicalRepository(
-        SimpleNamespace(get_session=MagicMock(return_value=listing_session))
-    )
-    assert await listing_source.resolve_asset_id(" air.pa ") == 11
-    listing_session.close.assert_called_once()
+    assert await source.resolve_series(" air.pa ") == MarketSeries(asset_id=11, listing_id=3)
+    session.close.assert_called_once()
 
-    asset_session = MagicMock()
-    listing_query = MagicMock()
-    listing_query.filter.return_value.order_by.return_value.first.return_value = None
-    asset_query = MagicMock()
-    asset_query.filter.return_value.first.return_value = SimpleNamespace(id=12)
-    asset_session.query.side_effect = [listing_query, asset_query]
-    asset_source = SqlAlchemyTechnicalRepository(lambda: asset_session)
-    assert await asset_source.resolve_asset_id("aapl") == 12
-    asset_session.close.assert_called_once()
+    unknown_session = MagicMock()
+    unknown_session.execute.return_value.first.return_value = None
+    unknown_source = SqlAlchemyTechnicalRepository(lambda: unknown_session)
+    assert await unknown_source.resolve_series("nope") is None
+    unknown_session.close.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -185,6 +199,24 @@ async def test_profile_enricher_tries_candidates_until_metadata_is_useful():
             {"asset_id": 1, "listing_id": 2}, "AAPL"
         )
     database.update_asset_profile_from_metadata.assert_called_once_with(1, {"longName": "Apple"}, 2)
+
+
+@pytest.mark.asyncio
+async def test_profile_enricher_asks_only_the_verified_symbol_when_given_one():
+    """The tickers of the profile (``SPFF``) are not tried: they may name another instrument."""
+    database = SimpleNamespace(
+        asset_profile_needs_enrichment=MagicMock(return_value=True),
+        asset_profile_enrichment_tickers=MagicMock(return_value=["SPFF"]),
+        metadata_has_profile_enrichment=MagicMock(return_value=True),
+        update_asset_profile_from_metadata=MagicMock(return_value=True),
+    )
+    with patch("import_assets.fetch_yfinance_data", return_value={"longName": "SPDR"}) as fetch:
+        await YFinanceAssetProfileEnricher(database).enrich(
+            {"asset_id": 3, "listing_id": 5}, "SPFF", symbol="SPFF.DE"
+        )
+
+    fetch.assert_called_once_with("SPFF.DE")
+    database.asset_profile_enrichment_tickers.assert_not_called()
 
 
 @pytest.mark.asyncio

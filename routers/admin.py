@@ -5,17 +5,23 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cache.service import CacheService
 from concurrency import run_sync
+from database.maintenance import MAX_DAYS_TO_KEEP, MIN_DAYS_TO_KEEP
 from database.service import DatabaseService
 
 router = APIRouter(tags=["Operations"])
 
 
 class CleanupRequest(BaseModel):
-    days_to_keep: int = 730
+    """What ``POST /database/cleanup`` deletes: prices older than ``days_to_keep`` days."""
+
+    # Bounded: 0 or a negative number would delete the whole price history.
+    days_to_keep: int = Field(730, ge=MIN_DAYS_TO_KEEP, le=MAX_DAYS_TO_KEEP)
+    # Count what would be deleted, delete nothing.
+    dry_run: bool = False
 
 
 def get_cache_service(request: Request) -> CacheService:
@@ -33,13 +39,20 @@ def get_database_service(request: Request) -> DatabaseService:
 
 
 @router.get("/health")
-async def health_check(cache: CacheService = Depends(get_cache_service)):
+async def health_check(request: Request, cache: CacheService = Depends(get_cache_service)):
     redis_status = await run_sync(cache.get_status)
+    # Providers that could not be imported at start-up (missing or incompatible
+    # dependency): they are skipped by every request until the cause is fixed.
+    unavailable = getattr(request.app.state, "providers_unavailable", None) or {}
     return {
         "status": "healthy",
         "service": "FonRex API",
         "timestamp": datetime.now().isoformat(),
         "yfinance_available": True,
+        "providers": {
+            "loaded": len(getattr(request.app.state, "providers_available", None) or {}),
+            "unavailable": sorted(unavailable),
+        },
         "cache": {
             "enabled": cache.enabled,
             "status": redis_status,
@@ -113,7 +126,9 @@ async def database_cleanup(
     payload: CleanupRequest,
     db: DatabaseService = Depends(get_database_service),
 ):
-    success, result, error = await run_sync(db.cleanup_old_data, payload.days_to_keep)
+    success, result, error = await run_sync(
+        db.cleanup_old_data, payload.days_to_keep, payload.dry_run
+    )
     if not success:
         raise HTTPException(status_code=500, detail=error)
     return result

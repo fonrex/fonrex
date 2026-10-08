@@ -36,6 +36,22 @@ def _to_decimal(value) -> Decimal | None:
         return None
 
 
+# Statement columns stored as integers (share counts).
+_WHOLE_NUMBER_COLUMNS = frozenset({"shares_basic", "shares_diluted"})
+
+
+def _percent_to_ratio(value) -> Decimal | None:
+    """Store as a ratio a figure Yahoo publishes in percent.
+
+    ``dividendYield`` is ``0.32`` for a yield of 0.32 %. Every reader of the
+    stored highlights (valuation, validation ranges, rendered document) expects
+    the ratio ``0.0032``: stored as published, the dividend rebuilt from the
+    yield by the valuation was a hundred times too large.
+    """
+    percent = _to_decimal(value)
+    return None if percent is None else percent / Decimal(100)
+
+
 def _to_int(value) -> int | None:
     """Convertit une valeur en int, retourne None si impossible."""
     if value is None:
@@ -202,7 +218,7 @@ class YFinanceEnricher:
                 "book_value_per_share": _to_decimal(info.get("bookValue")),
                 "revenue_per_share": _to_decimal(info.get("revenuePerShare")),
                 # Dividende
-                "dividend_yield": _to_decimal(info.get("dividendYield")),
+                "dividend_yield": _percent_to_ratio(info.get("dividendYield")),
                 "dividend_rate": _to_decimal(info.get("dividendRate")),
                 "dividend_ex_date": _safe_date(info.get("exDividendDate")),
                 "payout_ratio": _to_decimal(info.get("payoutRatio")),
@@ -281,6 +297,13 @@ class YFinanceEnricher:
         "Net Income": "net_income",
         "Basic EPS": "eps_basic",
         "Diluted EPS": "eps_diluted",
+        # Read by the valuation (cost of debt, tax rate, dividend per share) and
+        # by the solvency ratios: left out, they were always missing there.
+        "EBIT": "ebit",
+        "Interest Expense": "interest_expense",
+        "Tax Provision": "tax_provision",
+        "Basic Average Shares": "shares_basic",
+        "Diluted Average Shares": "shares_diluted",
     }
 
     BALANCE_MAPPING = {
@@ -298,6 +321,9 @@ class YFinanceEnricher:
         "Financing Cash Flow": "financing_cashflow",
         "Free Cash Flow": "free_cashflow",
         "Capital Expenditure": "capex",
+        # Dividends of the year, for the dividend model (first line that has a value).
+        "Cash Dividends Paid": "dividends_paid",
+        "Common Stock Dividend Paid": "dividends_paid",
     }
 
     def _fetch_statements(self, asset_id: int, t: yf.Ticker) -> None:
@@ -362,6 +388,9 @@ class YFinanceEnricher:
                         if values[model_col] is not None:
                             continue
                     val = _to_decimal(column_data.get(yf_key))
+                    if val is not None and model_col in _WHOLE_NUMBER_COLUMNS:
+                        # Share counts are stored in integer columns.
+                        val = int(val)
                     values[model_col] = val
 
                 # Upsert
@@ -782,19 +811,24 @@ class YFinanceEnricher:
     def _fetch_solvency_ratios(self, asset_id: int) -> None:
         """Calcule les ratios de solvabilité et le coût de la dette à partir des données en base."""
         try:
+            from financials.fiscal_years import fiscal_years
             from models import FinancialStatement, FundamentalsHighlights
-            
+
             session = self.db_service.get_session()
             try:
-                # 1. Récupérer les états financiers annuels triés par date décroissante
-                statements = (
+                # 1. The last three fiscal years. A fiscal year is three rows (income
+                # statement, balance sheet, cash flow): they are put together, so
+                # that the debt of the balance sheet meets the interest of the
+                # income statement. Three *rows* were one year, read one statement
+                # at a time.
+                rows = (
                     session.query(FinancialStatement)
                     .filter_by(asset_id=asset_id, period_type="annual")
                     .order_by(FinancialStatement.period_end.desc())
-                    .limit(3)
                     .all()
                 )
-                
+                statements = fiscal_years(rows, limit=3)
+
                 if not statements:
                     return
 

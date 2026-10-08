@@ -5,12 +5,14 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from starlette.requests import HTTPConnection
 
 from auth.dependencies import (
     get_api_key_from_connection,
+    get_api_key_from_request,
     is_auth_enforced,
+    is_read_only_key,
     validate_api_key,
 )
 from routers.errors import raise_http_error
@@ -78,24 +80,43 @@ async def websocket_realtime(
         "ts": "2026-05-22T14:32:01Z"
     }
     """
+    is_read_only = False
     if is_auth_enforced():
         api_key = get_api_key_from_connection(websocket)
         if not api_key or not validate_api_key(api_key):
             await websocket.close(code=1008, reason="Unauthorized: Missing or invalid API key")
             return
+        is_read_only = is_read_only_key(api_key)
 
     ticker = ticker.upper()
     worker = _require_realtime_worker(worker)
 
     await ws_manager.connect(ticker, websocket)
 
-    # S'assurer que le ticker est streamé par le worker
+    # S'assurer que le ticker est streamé par le worker. A read-only key cannot
+    # start a stream: the client is told so, and still receives the ticks if a
+    # full-access key subscribes the ticker later.
     active_tickers = await worker.get_active_tickers()
-    if ticker not in active_tickers:
+    not_streaming = ticker not in active_tickers and is_read_only
+    if ticker not in active_tickers and not is_read_only:
         asyncio.create_task(worker.subscribe(ticker))
 
     pubsub = None
     try:
+        if not_streaming:
+            await websocket.send_json(
+                WebSocketMessage(
+                    type="not_streaming",
+                    ticker=ticker,
+                    error=(
+                        "This ticker is not streamed and a read-only API key cannot start "
+                        "a stream; subscribe it with POST /realtime/subscribe and a "
+                        "full-access key."
+                    ),
+                    ts=datetime.now(timezone.utc),
+                ).model_dump(mode="json")
+            )
+
         # Snapshot immédiat depuis Redis
         quote = await worker.get_quote_from_cache(ticker)
         if quote:
@@ -113,7 +134,13 @@ async def websocket_realtime(
         await pubsub.subscribe(f"price:{ticker}")
 
         async def _redis_listener():
-            """Lit les messages Redis Pub/Sub et les envoie aux clients WS."""
+            """Read the price channel and push each tick to this client.
+
+            Every connection has its own subscription to the channel, so it
+            sends to its own client only. Broadcasting to the whole group from
+            each listener delivered a tick once per connected client: with three
+            clients on a ticker, each of them received every tick three times.
+            """
             async for message in pubsub.listen():
                 if message["type"] != "message":
                     continue
@@ -128,9 +155,14 @@ async def websocket_realtime(
                         data=tick_data,
                         ts=datetime.now(timezone.utc),
                     )
-                    await ws_manager.broadcast(ticker, msg.model_dump(mode="json"))
                 except Exception as e:
                     logger.debug(f"[WS:{ticker}] Erreur traitement message Redis: {e}")
+                    continue
+                try:
+                    await websocket.send_json(msg.model_dump(mode="json"))
+                except (WebSocketDisconnect, RuntimeError):
+                    # The client is gone: nothing more to send on this connection.
+                    return
 
         async def _client_listener():
             """Écoute les messages entrants du client (ping, unsubscribe)."""
@@ -175,9 +207,21 @@ async def websocket_realtime(
 @router.get("/quote/{ticker}", response_model=QuoteSnapshot)
 async def get_quote(
     ticker: str,
-    subscribe_if_missing: bool = True,
+    request: Request,
+    subscribe_if_missing: bool = False,
     worker=Depends(get_realtime_worker),
 ):
+    """Return the latest quote of a ticker.
+
+    A GET changes nothing by default (AGENTS.md, rule 7): the realtime stream of a
+    ticker is started by ``POST /realtime/subscribe``. ``subscribe_if_missing=true``
+    remains an explicit opt-in for a full-access key; it is ignored for a
+    read-only key.
+    """
+    if subscribe_if_missing:
+        api_key = get_api_key_from_request(request)
+        if api_key and is_read_only_key(api_key):
+            subscribe_if_missing = False
     try:
         return await GetQuote(worker).execute(ticker, subscribe_if_missing)
     except UseCaseError as error:

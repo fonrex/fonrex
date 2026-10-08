@@ -34,7 +34,7 @@ class GetQuote:
     def __init__(self, worker=None):
         self.worker = worker
 
-    async def execute(self, ticker: str, subscribe_if_missing: bool = True):
+    async def execute(self, ticker: str, subscribe_if_missing: bool = False):
         ticker = ticker.upper()
         if self.worker:
             cached = await self.worker.get_quote_from_cache(ticker)

@@ -1,7 +1,12 @@
 // =============================================================================
 // Fonrex Sheets Connector — Code.gs
-// Version : 1.0
+// Version : 1.1
 // Documentation : https://docs.fonrex.io
+//
+// This script talks to YOUR self-hosted Fonrex instance. Google's servers cannot
+// reach "localhost": expose the instance through a tunnel (zrok, Cloudflare
+// Tunnel, Tailscale Funnel, ngrok…) and give the script its public HTTPS URL.
+// See README.md.
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -11,6 +16,7 @@
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Fonrex')
+    .addItem('Configure Instance URL', 'configureInstanceUrl')
     .addItem('Configure API Key', 'configureApiKey')
     .addSeparator()
     .addItem('Refresh Fundamentals', 'refreshFundamentals')
@@ -23,8 +29,95 @@ function onOpen() {
 }
 
 // ---------------------------------------------------------------------------
-// 1. API KEY CONFIGURATION
+// 1. CONNECTION CONFIGURATION
 // ---------------------------------------------------------------------------
+
+/**
+ * Menu: Fonrex > Configure Instance URL
+ *
+ * Stores the public HTTPS URL of your self-hosted Fonrex instance (the URL
+ * printed by your tunnel) in the User Properties, like the API key.
+ */
+function configureInstanceUrl() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.prompt(
+    'Fonrex Instance URL',
+    'Paste the public HTTPS URL of your Fonrex instance (the URL given by your tunnel), ' +
+    'e.g. https://myfonrex.share.zrok.io :',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (response.getSelectedButton() != ui.Button.OK) return;
+
+  const url = _normalizeBaseUrl(response.getResponseText());
+  const problem = _baseUrlProblem(url);
+  if (problem) {
+    ui.alert(problem);
+    return;
+  }
+  PropertiesService.getUserProperties().setProperty('FONREX_BASE_URL', url);
+  _updateConfigSheetStatus(false);
+  ui.alert('Instance URL saved: ' + url);
+}
+
+/**
+ * Trims the value and removes trailing slashes.
+ *
+ * @private
+ */
+function _normalizeBaseUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+/**
+ * Returns a message explaining why a URL cannot be used, or '' when it can.
+ *
+ * @private
+ */
+function _baseUrlProblem(url) {
+  if (!url) return 'The URL is empty.';
+  if (!/^https:\/\//i.test(url)) {
+    return 'The URL must start with https:// — tunnels provide an HTTPS URL.';
+  }
+  if (/^https:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\]|10\.|192\.168\.)/i.test(url)) {
+    return 'Google Sheets runs on Google\'s servers and cannot reach a local address. ' +
+      'Expose your instance through a tunnel and paste the public URL it gives you.';
+  }
+  return '';
+}
+
+/**
+ * Returns the configured instance URL, or '' when none is configured.
+ * A URL set in the Script Properties (by the owner of the file) is used as a
+ * fallback for users who have not configured their own.
+ *
+ * @private
+ */
+function _getBaseUrl() {
+  const own = PropertiesService.getUserProperties().getProperty('FONREX_BASE_URL');
+  const shared = PropertiesService.getScriptProperties().getProperty('FONREX_BASE_URL');
+  return _normalizeBaseUrl(own || shared);
+}
+
+/**
+ * Tells the user what is missing before a refresh. Returns the API key when
+ * the connection is fully configured, null otherwise.
+ *
+ * @private
+ */
+function _requireConnection() {
+  if (!_getBaseUrl()) {
+    SpreadsheetApp.getUi().alert(
+      'Please configure your Fonrex instance URL first (Fonrex > Configure Instance URL).'
+    );
+    return null;
+  }
+  const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
+  if (!apiKey) {
+    SpreadsheetApp.getUi().alert('Please configure your API key first (Fonrex > Configure API Key).');
+    return null;
+  }
+  return apiKey;
+}
 
 /**
  * Menu: Fonrex > Configure API Key
@@ -39,13 +132,14 @@ function configureApiKey() {
   const ui = SpreadsheetApp.getUi();
   const response = ui.prompt(
     'Fonrex API Key',
-    'Paste your Fonrex Relay API key (frx_live_...):',
+    'Paste an API key of your Fonrex instance. Prefer a read-only key ' +
+    '(FONREX_READ_ONLY_API_KEYS in the .env of the instance):',
     ui.ButtonSet.OK_CANCEL
   );
   if (response.getSelectedButton() == ui.Button.OK) {
     const key = response.getResponseText().trim();
-    if (!key.startsWith('frx_live_')) {
-      ui.alert('Invalid key format. Expected a key starting with frx_live_');
+    if (!key) {
+      ui.alert('The key is empty.');
       return;
     }
     PropertiesService.getUserProperties().setProperty('FONREX_API_KEY', key);
@@ -66,11 +160,8 @@ function configureApiKey() {
  * into the "Fundamentals" sheet.
  */
 function refreshFundamentals() {
-  const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
-  if (!apiKey) {
-    SpreadsheetApp.getUi().alert('Please configure your API key first (Fonrex > Configure API Key).');
-    return;
-  }
+  const apiKey = _requireConnection();
+  if (!apiKey) return;
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const watchlistSheet = ss.getSheetByName('Watchlist');
@@ -145,11 +236,8 @@ function refreshFundamentals() {
  * recommendations in this connector.
  */
 function refreshDCF() {
-  const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
-  if (!apiKey) {
-    SpreadsheetApp.getUi().alert('Please configure your API key first.');
-    return;
-  }
+  const apiKey = _requireConnection();
+  if (!apiKey) return;
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const watchlistSheet = ss.getSheetByName('Watchlist');
@@ -213,11 +301,8 @@ function refreshDCF() {
  * ("Bullish", "Bearish") is automatically inserted.
  */
 function refreshTechnicals() {
-  const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
-  if (!apiKey) {
-    SpreadsheetApp.getUi().alert('Please configure your API key first.');
-    return;
-  }
+  const apiKey = _requireConnection();
+  if (!apiKey) return;
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const watchlistSheet = ss.getSheetByName('Watchlist');
@@ -381,37 +466,55 @@ function FONREX_RSI(ticker) {
  * in a readable way for non-technical users.
  *
  * @param {string} path   Endpoint path (e.g. /fundamental/deep?ticker=AIR.PA)
- * @param {string} apiKey Fonrex Relay API Key (frx_live_...)
+ * @param {string} apiKey API key of your Fonrex instance
  * @return {Object} Parsed JSON object of the response
  */
 function fetchFonrexEndpoint(path, apiKey) {
-  const baseUrl = PropertiesService.getScriptProperties().getProperty('FONREX_BASE_URL')
-                  || 'https://api.fonrex.io';
+  const baseUrl = _getBaseUrl();
+  if (!baseUrl) {
+    throw new Error('Configure your instance URL first (Fonrex > Configure Instance URL)');
+  }
 
-  const response = UrlFetchApp.fetch(baseUrl + path, {
-    method: 'get',
-    headers: { 'Authorization': 'Bearer ' + apiKey },
-    muteHttpExceptions: true,
-  });
+  let response;
+  try {
+    response = UrlFetchApp.fetch(baseUrl + path, {
+      method: 'get',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        // Ask the tunnel to forward the request instead of showing its
+        // browser warning page (zrok and ngrok respectively).
+        'skip_zrok_interstitial': '1',
+        'ngrok-skip-browser-warning': '1',
+      },
+      muteHttpExceptions: true,
+    });
+  } catch (e) {
+    throw new Error('Instance unreachable — check that the tunnel is running');
+  }
 
   const code = response.getResponseCode();
   if (code === 401) {
-    throw new Error('Invalid or expired API key');
+    throw new Error('Missing API key');
   }
-  if (code === 429) {
-    throw new Error('Quota exceeded — check your Fonrex plan');
+  if (code === 403) {
+    throw new Error('API key refused by your instance');
   }
   if (code === 404) {
     throw new Error('Ticker not found');
   }
   if (code >= 500) {
-    throw new Error('Fonrex service temporarily unavailable');
+    throw new Error('Instance error or tunnel down (status ' + code + ')');
   }
   if (code >= 400) {
     throw new Error('API request failed with status ' + code);
   }
 
-  return JSON.parse(response.getContentText());
+  try {
+    return JSON.parse(response.getContentText());
+  } catch (e) {
+    // A tunnel answers with an HTML page when the instance behind it is down.
+    throw new Error('The tunnel answered instead of Fonrex — check that the instance is running');
+  }
 }
 
 /**
@@ -458,7 +561,11 @@ function _updateConfigSheetStatus(updateTimestamp = true) {
 
   const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
   const statusCell = configSheet.getRange('B3');
-  statusCell.setValue(apiKey ? '✅ API Key configured' : '❌ API Key not configured');
+  if (!_getBaseUrl()) {
+    statusCell.setValue('❌ Instance URL not configured');
+  } else {
+    statusCell.setValue(apiKey ? '✅ Instance URL and API key configured' : '❌ API Key not configured');
+  }
 
   if (updateTimestamp) {
     const lastRefreshCell = configSheet.getRange('B5');

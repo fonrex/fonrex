@@ -1,12 +1,12 @@
 import json
 import logging
+import re
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class MsnProvider(BaseProvider):
         self.timeout = timeout
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             search_data = await self._search_id(client, ticker)
             if not search_data:
                 return None
@@ -41,7 +41,7 @@ class MsnProvider(BaseProvider):
                 logger.error(f"Msn fetch error: {e}")
         return None
 
-    async def _search_id(self, client: httpx.AsyncClient, query: str) -> Optional[dict]:
+    async def _search_id(self, client: ProviderSession, query: str) -> Optional[dict]:
         # Query params: query=..., count=5
         try:
             resp = await client.get(
@@ -78,4 +78,11 @@ class MsnProvider(BaseProvider):
         h1 = parser.css_first("h1")
         if h1:
             metrics.name = h1.text(strip=True)
+        else:
+            # The server-rendered page has no <h1>; its title reads
+            # "<TICKER> : <Company> - MSN Finances".
+            title = parser.css_first("title")
+            match = re.match(r"[^:]+:\s*(.+?)\s+-\s+MSN\b", title.text()) if title else None
+            if match:
+                metrics.name = match.group(1)
         return metrics

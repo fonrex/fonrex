@@ -12,6 +12,7 @@ from financials.enrichment.adapters import (
 )
 from financials.formatter import FinancialsFormatter
 from financials.provider_runner import FinancialProviderRunner
+from historical.yahoo_symbols import YahooSymbolResolver
 from routers.dependencies import get_cache_service, get_database_service, get_redis_client
 from routers.errors import raise_http_error
 from use_cases.errors import UseCaseError
@@ -57,6 +58,7 @@ async def get_all_information(
         profile_enricher=(YFinanceAssetProfileEnricher(database) if database else None),
         ticker_normalizer=normalize_google_finance_ticker,
         sec_edgar_provider=sec_edgar_provider,
+        symbols=YahooSymbolResolver(database) if database else None,
     )
     try:
         result = await use_case.execute(
@@ -90,6 +92,7 @@ async def get_fundamental_deep(
             database,
             cache,
             enricher=YFinanceDeepFundamentalsEnricher(database),
+            symbols=YahooSymbolResolver(database) if database else None,
         ).execute(
             ticker=ticker,
             isin=isin,

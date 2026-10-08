@@ -11,7 +11,7 @@ import os
 import sys
 import unittest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from sqlalchemy import create_engine
@@ -59,13 +59,16 @@ def _seed_asset(session, *, asset_id, ticker, listings=(), rows=()):
         )
         session.add(listing)
         session.commit()
-        listing_id_map[spec["ticker"]] = listing.id
+        listing_id_map[spec.get("key", spec["ticker"])] = listing.id
+    # Prices belong to a listing: a row goes to the listing named by its
+    # "listing" key (the ticker of the listing), the first listing by default.
+    default_listing_id = next(iter(listing_id_map.values()), None)
     for row in rows:
         session.add(
             PriceEOD(
                 timestamp=row["timestamp"],
                 asset_id=asset_id,
-                asset_listing_id=row.get("asset_listing_id"),
+                asset_listing_id=listing_id_map.get(row.get("listing"), default_listing_id),
                 open=row.get("open"),
                 high=row.get("high"),
                 low=row.get("low"),
@@ -129,16 +132,35 @@ class DataSourceTests(unittest.TestCase):
         Base.metadata.create_all(self.engine)
         self.Session = scoped_session(sessionmaker(bind=self.engine))
         session = self.Session()
-        # Two assets: AAPL (with primary listing + secondary), MSFT (no listing).
+        # Two assets: AAPL (primary USD listing + secondary EUR listing, each
+        # with its own prices) and MSFT (one listing).
         _seed_asset(
             session,
             asset_id=1,
             ticker="AAPL",
             listings=[
                 {"ticker": "AAPL", "exchange": "NASDAQ", "currency": "USD", "is_primary": True},
-                {"ticker": "AAPL", "exchange": "XETRA", "currency": "EUR", "is_primary": False},
+                {
+                    "ticker": "AAPL",
+                    "key": "AAPL@XETRA",
+                    "exchange": "XETRA",
+                    "currency": "EUR",
+                    "is_primary": False,
+                },
             ],
             rows=[
+                # Same session, other listing, other currency: must never be
+                # mixed with the series of the primary listing.
+                {
+                    "listing": "AAPL@XETRA",
+                    "timestamp": datetime(2024, 1, 2, tzinfo=timezone.utc),
+                    "open": 91.0,
+                    "high": 93.0,
+                    "low": 90.0,
+                    "close": 92.0,
+                    "adj_close": 92.0,
+                    "volume": 10_000,
+                },
                 {
                     "timestamp": datetime(2024, 1, 2, tzinfo=timezone.utc),
                     "open": 100.0,
@@ -172,7 +194,7 @@ class DataSourceTests(unittest.TestCase):
             session,
             asset_id=2,
             ticker="MSFT",
-            listings=(),
+            listings=[{"ticker": "MSFT", "exchange": "NASDAQ", "currency": "USD", "is_primary": True}],
             rows=[
                 {
                     "timestamp": datetime(2024, 1, 2, tzinfo=timezone.utc),
@@ -209,6 +231,10 @@ class DataSourceTests(unittest.TestCase):
         self.assertEqual(aapl.metadata.start_date, pd.Timestamp("2024-01-02"))
         self.assertEqual(aapl.metadata.end_date, pd.Timestamp("2024-01-05"))
         self.assertEqual(aapl.metadata.auto_close_date, pd.Timestamp("2024-01-06"))
+        # One series only: the three sessions of the primary (USD) listing, not
+        # the bar of the EUR listing quoted on the same day.
+        self.assertEqual(len(aapl.frame), 3)
+        self.assertEqual(aapl.frame.loc[pd.Timestamp("2024-01-02"), "close"], 101.0)
         # adj_close wins over close when available.
         self.assertEqual(aapl.frame.loc[pd.Timestamp("2024-01-03"), "close"], 102.5)
         # NaN volume is coerced to 0 float.
@@ -384,6 +410,30 @@ class HelpersTests(unittest.TestCase):
             ["start_date", "end_date", "auto_close_date", "symbol", "exchange"],
         )
         self.assertTrue(frame.empty)
+
+    def test_default_database_address_is_the_local_one_of_the_project(self):
+        """Without ``DATABASE_URL`` the bundle reads the local database of the project.
+
+        The default had become a text that is not an address (``******localhost...``):
+        a bundle started without the variable failed before connecting.
+        """
+        from pathlib import Path
+
+        from sqlalchemy.engine import make_url
+
+        from zipline_bundle.data_source import _resolve_database_url
+
+        example = next(
+            line.split("=", 1)[1].strip()
+            for line in (Path(__file__).parent.parent / ".env.example").read_text().splitlines()
+            if line.startswith("DATABASE_URL=")
+        )
+        with patch.dict(os.environ):
+            os.environ.pop("DATABASE_URL", None)
+            default = make_url(_resolve_database_url(None))
+
+        self.assertEqual(default.drivername, "postgresql+psycopg2")
+        self.assertEqual(default.set(drivername="postgresql"), make_url(example))
 
     def test_fonrex_equities_factory_returns_bundle_ingest_callable(self):
         callable_ingest = fonrex_equities(tickers=["AAPL"])

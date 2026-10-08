@@ -120,3 +120,123 @@ async def test_get_risk_free_rate_fallback(mock_env, fred_service):
     
     assert val == Decimal("0.038")
     assert source == "env_fallback"
+
+
+# ── The stored rate is refreshed ──────────────────────────────────────────────
+#
+# The value kept in ``macro_rates_cache`` used to be returned before FRED was
+# asked, whatever its age: the risk-free rate of every valuation stayed the one
+# of the first successful call.
+
+
+@pytest.fixture
+def stored_rates():
+    """A real table of stored rates, and a service reading it without Redis."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import scoped_session, sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from models import Base, MacroRateCache
+
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    Session = scoped_session(sessionmaker(bind=engine))
+    database = MagicMock()
+    database.get_session.side_effect = lambda: Session()
+
+    def store(value, observed, age):
+        session = Session()
+        session.add(
+            MacroRateCache(
+                series_id="DGS10",
+                label="10Y",
+                value=Decimal(value),
+                unit="percent",
+                observation_date=observed,
+                fetched_at=datetime.now(timezone.utc) - age,
+            )
+        )
+        session.commit()
+
+    def rows():
+        return Session().query(MacroRateCache).order_by(MacroRateCache.observation_date).all()
+
+    service = FREDService(database, redis_client=None)
+    service.api_key = "test_key"
+    yield MagicMock(service=service, store=store, rows=rows, timedelta=timedelta)
+    Session.remove()
+    engine.dispose()
+
+
+def _fred_answers(observed, value):
+    response = MagicMock()
+    response.json.return_value = {"observations": [{"date": observed, "value": value}]}
+    response.raise_for_status = MagicMock()
+    return response
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_old_stored_rate_is_refreshed_from_fred(mock_get, stored_rates):
+    stored_rates.store("0.0400", date(2026, 9, 1), stored_rates.timedelta(days=30))
+    mock_get.return_value = _fred_answers("2026-10-02", "4.75")
+
+    rate = await stored_rates.service._get_series("DGS10", "10Y")
+
+    assert rate.value == Decimal("0.0475")
+    assert rate.observation_date == date(2026, 10, 2)
+    assert [row.observation_date for row in stored_rates.rows()] == [date(2026, 9, 1), date(2026, 10, 2)]
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_rate_read_from_fred_recently_is_not_asked_again(mock_get, stored_rates):
+    stored_rates.store("0.0400", date(2026, 10, 2), stored_rates.timedelta(hours=1))
+
+    rate = await stored_rates.service._get_series("DGS10", "10Y")
+
+    assert rate.value == Decimal("0.0400")
+    mock_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_old_stored_rate_is_what_is_left_when_fred_fails(mock_get, stored_rates):
+    stored_rates.store("0.0400", date(2026, 9, 1), stored_rates.timedelta(days=30))
+    mock_get.side_effect = RuntimeError("FRED is down")
+
+    rate = await stored_rates.service._get_series("DGS10", "10Y")
+
+    assert rate.value == Decimal("0.0400")
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_without_api_key_the_stored_rate_is_used(mock_get, stored_rates):
+    stored_rates.store("0.0400", date(2026, 9, 1), stored_rates.timedelta(days=30))
+    stored_rates.service.api_key = None
+
+    rate = await stored_rates.service._get_series("DGS10", "10Y")
+
+    assert rate.value == Decimal("0.0400")
+    mock_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_same_observation_confirms_the_row_instead_of_adding_one(mock_get, stored_rates):
+    stored_rates.store("0.0400", date(2026, 10, 2), stored_rates.timedelta(days=3))
+    mock_get.return_value = _fred_answers("2026-10-02", "4.10")  # revised by FRED
+
+    await stored_rates.service._get_series("DGS10", "10Y")
+    # Confirmed a moment ago: the next request does not ask FRED again.
+    again = await stored_rates.service._get_series("DGS10", "10Y")
+
+    (row,) = stored_rates.rows()
+    assert row.value == Decimal("0.0410")
+    assert again.value == Decimal("0.0410")
+    assert mock_get.call_count == 1

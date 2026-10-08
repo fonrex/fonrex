@@ -17,12 +17,14 @@ from schemas.dcf import (
     DCFResult,
     SensitivityResult,
 )
+from settings import env_int
 from valuation.dcf_service import DCFService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dcf", tags=["Valuation"])
-DCF_CACHE_TTL = 21600
+# Lifetime of a cached valuation in Redis, in seconds (6 h by default).
+DCF_CACHE_TTL = env_int("DCF_CACHE_TTL", 21600, minimum=1)
 
 
 def get_dcf_service(request: Request) -> DCFService:

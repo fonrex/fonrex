@@ -3,11 +3,16 @@ import os
 from datetime import date
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from models import Asset, AssetListing
+from database.price_series import (
+    PriceSeries,
+    resolve_price_series_async,
+    session_date,
+    session_timestamp,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,38 +41,27 @@ class QueryService:
         self.async_session = sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
         self._owns_engine = True
 
+    async def get_series(
+        self,
+        ticker: str,
+        currency: Optional[str] = None,
+        exchange: Optional[str] = None,
+    ) -> Optional[PriceSeries]:
+        """Return the price series (instrument and listing) a ticker designates.
+
+        The rule is the one used when the prices are written
+        (``database/price_series.py``): what is read is what was ingested.
+        ``currency`` and ``exchange`` name one listing among those sharing the ticker.
+        """
+        async with self.async_session() as session:
+            return await resolve_price_series_async(
+                session, ticker, currency=currency, exchange=exchange
+            )
+
     async def get_asset_id(self, ticker: str) -> Optional[int]:
         """Récupère l'ID d'un actif à partir d'une cotation ou du ticker legacy."""
-        async with self.async_session() as session:
-            normalized_ticker = ticker.strip().upper()
-            tickers_to_try = [normalized_ticker]
-            if "." in normalized_ticker:
-                base_symbol = normalized_ticker.split(".")[0]
-                if base_symbol and base_symbol not in tickers_to_try:
-                    tickers_to_try.append(base_symbol)
-
-            for sym in tickers_to_try:
-                stmt = (
-                    select(AssetListing.asset_id)
-                    .where(AssetListing.ticker == sym)
-                    .order_by(
-                        AssetListing.is_primary.desc(),
-                        AssetListing.currency.asc(),
-                        AssetListing.exchange.asc(),
-                    )
-                )
-                result = await session.execute(stmt)
-                asset_id = result.scalars().first()
-                if asset_id:
-                    return asset_id
-
-                stmt = select(Asset.id).where(Asset.ticker == sym)
-                result = await session.execute(stmt)
-                asset_id = result.scalars().first()
-                if asset_id:
-                    return asset_id
-
-            return None
+        series = await self.get_series(ticker)
+        return series.asset_id if series else None
 
     async def get_history(
         self,
@@ -75,6 +69,8 @@ class QueryService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         interval: str = "1D",
+        currency: Optional[str] = None,
+        exchange: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Récupère l'historique des prix pour un ticker donné.
@@ -85,8 +81,8 @@ class QueryService:
             end_date: Date de fin (optionnel).
             interval: Résolution ('1D', '1W', '1M' ou legacy 'daily', 'weekly', 'monthly').
         """
-        asset_id = await self.get_asset_id(ticker)
-        if not asset_id:
+        series = await self.get_series(ticker, currency, exchange)
+        if not series:
             return []
 
         # Normalisation de l'intervalle en résolution
@@ -105,20 +101,23 @@ class QueryService:
 
         async with self.async_session() as session:
             # Query standard sur prices_eod en filtrant par resolution
+            # One series = one listing and one resolution. A bar is stored at
+            # midnight UTC of its session date: the bounds are sent as such, so
+            # the comparison does not depend on the time zone of the session.
             query = """
                 SELECT time, open, high, low, close, adj_close, volume, resolution, source
                 FROM prices_eod
-                WHERE asset_id = :asset_id AND resolution = :resolution
+                WHERE asset_listing_id = :listing_id AND resolution = :resolution
             """
-            params = {"asset_id": asset_id, "resolution": res}
+            params = {"listing_id": series.listing_id, "resolution": res}
 
             if start_date:
                 query += " AND time >= :start_date"
-                params["start_date"] = start_date
+                params["start_date"] = session_timestamp(start_date)
 
             if end_date:
                 query += " AND time <= :end_date"
-                params["end_date"] = end_date
+                params["end_date"] = session_timestamp(end_date)
 
             query += " ORDER BY time DESC"
 
@@ -142,15 +141,15 @@ class QueryService:
                     fallback_query = f"""
                         SELECT bucket as time, open, high, low, close, volume
                         FROM {view_name}
-                        WHERE asset_id = :asset_id
+                        WHERE asset_listing_id = :listing_id
                     """
-                    fallback_params = {"asset_id": asset_id}
+                    fallback_params = {"listing_id": series.listing_id}
                     if start_date:
                         fallback_query += " AND bucket >= :start_date"
-                        fallback_params["start_date"] = start_date
+                        fallback_params["start_date"] = session_timestamp(start_date)
                     if end_date:
                         fallback_query += " AND bucket <= :end_date"
-                        fallback_params["end_date"] = end_date
+                        fallback_params["end_date"] = session_timestamp(end_date)
                     fallback_query += " ORDER BY bucket DESC"
 
                     result = await session.execute(text(fallback_query), fallback_params)
@@ -158,30 +157,36 @@ class QueryService:
 
             return [dict(row) for row in rows]
 
-    async def get_history_range(self, ticker: str, resolution: str = "1D") -> Dict[str, Any]:
+    async def get_history_range(
+        self,
+        ticker: str,
+        resolution: str = "1D",
+        currency: Optional[str] = None,
+        exchange: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
-        Récupère les dates minimales et maximales ainsi que le compte de données en base pour un actif.
+        Récupère les dates minimales et maximales ainsi que le compte de données en base pour une cotation.
         """
-        asset_id = await self.get_asset_id(ticker)
-        if not asset_id:
+        series = await self.get_series(ticker, currency, exchange)
+        if not series:
             return {"min_date": None, "max_date": None, "count": 0}
 
         async with self.async_session() as session:
             query = """
                 SELECT MIN(time) as min_date, MAX(time) as max_date, COUNT(*) as count
                 FROM prices_eod
-                WHERE asset_id = :asset_id AND resolution = :resolution
+                WHERE asset_listing_id = :listing_id AND resolution = :resolution
             """
             result = await session.execute(
-                text(query), {"asset_id": asset_id, "resolution": resolution}
+                text(query), {"listing_id": series.listing_id, "resolution": resolution}
             )
             row = result.mappings().first()
             if row and row["count"] > 0:
                 min_dt = row["min_date"]
                 max_dt = row["max_date"]
                 return {
-                    "min_date": min_dt.date() if min_dt else None,
-                    "max_date": max_dt.date() if max_dt else None,
+                    "min_date": session_date(min_dt) if min_dt else None,
+                    "max_date": session_date(max_dt) if max_dt else None,
                     "count": row["count"],
                 }
             return {"min_date": None, "max_date": None, "count": 0}

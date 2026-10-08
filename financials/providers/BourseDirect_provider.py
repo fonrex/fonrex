@@ -1,11 +1,11 @@
 import logging
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import parse_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class BourseDirectProvider(BaseProvider):
         self.timeout = timeout
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             url_path = await self._search_url(client, ticker)
             if not url_path:
                 return None
@@ -51,7 +51,7 @@ class BourseDirectProvider(BaseProvider):
                 logger.error(f"BourseDirect fetch error: {e}")
         return None
 
-    async def _search_url(self, client: httpx.AsyncClient, query: str) -> Optional[str]:
+    async def _search_url(self, client: ProviderSession, query: str) -> Optional[str]:
         # URL needs replacing {query}
         url = self.SEARCH_API.format(query=query)
         try:
@@ -103,11 +103,5 @@ class BourseDirectProvider(BaseProvider):
         return metrics
 
     def _clean_number(self, text: str) -> Optional[float]:
-        try:
-            # Nettoyage format français "1 234,56" -> "1234.56"
-            clean = (
-                text.replace(" ", "").replace(",", ".").replace("%", "").replace("+", "").strip()
-            )
-            return float(clean)
-        except (ValueError, TypeError):
-            return None
+        """French format: "1 234,56", "+1,99 %"."""
+        return parse_number(text, decimal=",")

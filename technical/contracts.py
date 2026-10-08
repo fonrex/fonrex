@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Mapping
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, TypedDict
@@ -36,19 +37,31 @@ class AsyncRedisPort(Protocol):
     def setex(self, key: str, ttl: int, value: str) -> Awaitable[object]: ...
 
 
+@dataclass(frozen=True)
+class MarketSeries:
+    """What a ticker designates: an instrument and the listing whose prices are read.
+
+    End-of-day prices belong to a listing (one currency, one exchange); intraday
+    prices are still stored per instrument.
+    """
+
+    asset_id: int
+    listing_id: int
+
+
 class TechnicalMarketDataPort(Protocol):
     """Market-data operations required by technical-analysis use cases."""
 
     async def load_ohlcv(
         self,
-        asset_id: int,
+        series: MarketSeries,
         resolution: str,
         from_date: date | None = None,
         to_date: date | None = None,
         limit: int = 500,
     ) -> pd.DataFrame: ...
 
-    async def resolve_asset_id(self, ticker: str) -> int | None: ...
+    async def resolve_series(self, ticker: str) -> MarketSeries | None: ...
 
 
 class TechnicalCachePort(Protocol):

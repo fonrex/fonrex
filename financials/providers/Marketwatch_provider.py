@@ -3,11 +3,11 @@ import os
 import random
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import find_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class MarketwatchProvider(BaseProvider):
         self.timeout = timeout
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             try:
                 search_result = await self._search_result(client, ticker)
                 if not search_result:
@@ -51,7 +51,7 @@ class MarketwatchProvider(BaseProvider):
                 logger.error(f"Marketwatch error {ticker}: {e}")
                 return None
 
-    async def _search_result(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
+    async def _search_result(self, client: ProviderSession, ticker: str) -> Optional[dict]:
         params = {
             "q": ticker,
             "t": "marketwatch-topic,marketwatch-search-link,symbol",
@@ -75,7 +75,7 @@ class MarketwatchProvider(BaseProvider):
             logger.warning(f"Marketwatch search API error: {e}")
         return None
 
-    async def _search_symbol(self, client: httpx.AsyncClient, ticker: str):
+    async def _search_symbol(self, client: ProviderSession, ticker: str):
         search_result = await self._search_result(client, ticker)
         if search_result:
             return search_result.get("url_ticker") or search_result.get(
@@ -142,16 +142,15 @@ class MarketwatchProvider(BaseProvider):
             instrument_type=search_result.get("instrument_type"),
         )
 
-    async def _fetch_page(self, client: httpx.AsyncClient, url: str) -> Optional[HTMLParser]:
-        for attempt in range(self.max_retries):
-            try:
-                headers = {"User-Agent": random.choice(USER_AGENTS)}
-                resp = await client.get(url, headers=headers)
-                if resp.status_code == 200:
-                    return HTMLParser(resp.text)
-                logger.warning(f"Marketwatch page fetch status {resp.status_code} for {url}")
-            except Exception:
-                pass
+    async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:
+        try:
+            # A new User-Agent is drawn at each attempt of the shared retry policy.
+            resp = await client.get(url, headers=lambda: {"User-Agent": random.choice(USER_AGENTS)})
+            if resp.status_code == 200:
+                return HTMLParser(resp.text)
+            logger.warning(f"Marketwatch page fetch status {resp.status_code} for {url}")
+        except Exception as e:
+            logger.warning(f"Marketwatch page fetch error: {e}")
         return None
 
     def _parse_page(self, parser: HTMLParser, ticker_input: str) -> FinancialMetrics:
@@ -166,19 +165,26 @@ class MarketwatchProvider(BaseProvider):
         return metrics
 
     def _find_value_by_label(self, parser: HTMLParser, labels: list) -> Optional[float]:
-        import re
+        # Key data list of the quote page:
+        # <li class="kv__item"><small class="label">P/E Ratio</small><span class="primary">38.25</span>
+        wanted = {label.lower() for label in labels}
+        for item in parser.css("li.kv__item"):
+            label_node = item.css_first(".label")
+            value_node = item.css_first(".primary")
+            if label_node and value_node and label_node.text(strip=True).lower() in wanted:
+                return find_number(value_node.text(strip=True))
 
         for node in parser.css("div, span, td, li"):
             txt = node.text(strip=True)
             for label in labels:
                 if label.lower() in txt.lower() and len(txt) < 50:
-                    nums = re.findall(r"(\d+\.?\d*)", txt)
-                    if nums and ":" in txt:
-                        return float(nums[-1])
+                    if ":" in txt:
+                        value = find_number(txt, last=True)
+                        if value is not None:
+                            return value
                     sibling = node.next
                     if sibling:
-                        sib_txt = sibling.text(strip=True)
-                        sib_nums = re.findall(r"(\d+\.?\d*)", sib_txt)
-                        if sib_nums:
-                            return float(sib_nums[0])
+                        value = find_number(sibling.text(strip=True))
+                        if value is not None:
+                            return value
         return None

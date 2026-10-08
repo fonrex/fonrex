@@ -101,3 +101,10 @@ class TestGetAsyncDatabaseUrl:
             os.environ.pop("ASYNC_DATABASE_URL", None)
             result = get_async_database_url()
             assert result == "postgresql+asyncpg://u:p@h/postgresql"
+
+
+def test_empty_async_url_is_derived_from_database_url():
+    """docker-compose.yml empties ASYNC_DATABASE_URL: it must then be derived."""
+    env = {"ASYNC_DATABASE_URL": "", "DATABASE_URL": "postgresql://fonrex:pw@db:5432/fonrex"}
+    with patch.dict(os.environ, env, clear=False):
+        assert get_async_database_url() == "postgresql+asyncpg://fonrex:pw@db:5432/fonrex"

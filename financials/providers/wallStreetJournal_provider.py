@@ -1,13 +1,12 @@
-import asyncio
 import logging
 import os
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import find_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class WallStreetJournalProvider(BaseProvider):
         self.timeout = timeout
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             try:
                 search_result = await self._search_result(client, ticker)
                 if not search_result:
@@ -58,7 +57,7 @@ class WallStreetJournalProvider(BaseProvider):
                 logger.error(f"WSJ error {ticker}: {e}")
                 return None
 
-    async def _search_result(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
+    async def _search_result(self, client: ProviderSession, ticker: str) -> Optional[dict]:
         params = {
             "q": ticker,
             "it": "fund,exchangetradedfund,stock,Index,Currency,Benchmark,Future,Bond,CryptoCurrency",
@@ -72,13 +71,15 @@ class WallStreetJournalProvider(BaseProvider):
             "Accept": "application/json",
             "Accept-Language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
             "Referer": "https://www.wsj.com/",
-            "dylan2010.entitlementtoken": self.TOKEN,
             "Origin": "https://www.wsj.com",
             "Connection": "keep-alive",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "cross-site",
         }
+        if self.TOKEN:
+            # A header cannot carry None: without WSJ_TOKEN the request goes out without it.
+            headers["dylan2010.entitlementtoken"] = self.TOKEN
         try:
             response = await client.get(self.SEARCH_API, params=params, headers=headers)
             if response.status_code == 200:
@@ -92,7 +93,7 @@ class WallStreetJournalProvider(BaseProvider):
             logger.warning(f"WSJ search API error: {e}")
         return None
 
-    async def _search_symbol(self, client: httpx.AsyncClient, ticker: str):
+    async def _search_symbol(self, client: ProviderSession, ticker: str):
         search_result = await self._search_result(client, ticker)
         if search_result:
             return (
@@ -102,34 +103,30 @@ class WallStreetJournalProvider(BaseProvider):
             )
         return ticker, "US", "XNYS"
 
-    async def _fetch_page(self, client: httpx.AsyncClient, url: str) -> Optional[HTMLParser]:
-        for attempt in range(self.max_retries):
-            try:
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                    "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
-                    "Accept-Encoding": "gzip, deflate, br",
-                    "Referer": "https://www.wsj.com/",
-                    "DNT": "1",
-                    "Connection": "keep-alive",
-                    "Upgrade-Insecure-Requests": "1",
-                    "Sec-Fetch-Dest": "document",
-                    "Sec-Fetch-Mode": "navigate",
-                    "Sec-Fetch-Site": "none",
-                    "Sec-Fetch-User": "?1",
-                    "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                    "Sec-Ch-Ua-Mobile": "?0",
-                    "Sec-Ch-Ua-Platform": '"macOS"',
-                }
-                resp = await client.get(url, headers=headers)
-                if resp.status_code == 200:
-                    return HTMLParser(resp.text)
-                logger.warning(f"WSJ page fetch status {resp.status_code} for {url}")
-                # Wait before retry
-                await asyncio.sleep(1)
-            except Exception as e:
-                logger.warning(f"WSJ fetch error: {e}")
+    async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:
+        headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
+                "Referer": "https://www.wsj.com/",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"macOS"',
+        }
+        try:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return HTMLParser(resp.text)
+            logger.warning(f"WSJ page fetch status {resp.status_code} for {url}")
+        except Exception as e:
+            logger.warning(f"WSJ fetch error: {e}")
         return None
 
     @staticmethod
@@ -265,19 +262,17 @@ class WallStreetJournalProvider(BaseProvider):
         return data
 
     def _find_value_by_label(self, parser: HTMLParser, labels: list) -> Optional[float]:
-        import re
-
         for node in parser.css("div, span, td, li"):
             txt = node.text(strip=True)
             for label in labels:
                 if label.lower() in txt.lower() and len(txt) < 50:
-                    nums = re.findall(r"(\d+\.?\d*)", txt)
-                    if nums and ":" in txt:
-                        return float(nums[-1])
+                    if ":" in txt:
+                        value = find_number(txt, last=True)
+                        if value is not None:
+                            return value
                     sibling = node.next
                     if sibling:
-                        sib_txt = sibling.text(strip=True)
-                        sib_nums = re.findall(r"(\d+\.?\d*)", sib_txt)
-                        if sib_nums:
-                            return float(sib_nums[0])
+                        value = find_number(sibling.text(strip=True))
+                        if value is not None:
+                            return value
         return None

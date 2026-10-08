@@ -34,7 +34,6 @@ class YFinanceProvider(BaseProvider):
         stock = yf.Ticker(ticker)
         info = stock.info
 
-        print(info)
         if not info:
             return None
 

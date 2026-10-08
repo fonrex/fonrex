@@ -1,10 +1,13 @@
 import asyncio
 import logging
+import re
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from concurrency import run_sync
 
 logger = logging.getLogger(__name__)
+
+_ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}\d")
 
 
 class FinancialProviderRunner:
@@ -49,9 +52,15 @@ class FinancialProviderRunner:
         asset_mappings: Dict[str, Any],
         provider_default_tickers: Optional[Dict[str, str]] = None,
         asset_profile: Optional[Dict[str, Any]] = None,
+        verified_symbols: Optional[Dict[str, str]] = None,
     ):
         """Détermine l'identifiant le plus fiable pour un provider donné."""
         provider_key = provider_name.lower()
+        # A symbol verified for the listing (ISIN and currency checked) is used as
+        # it is: nothing guessed from the ticker or the exchange may replace it.
+        verified = (verified_symbols or {}).get(provider_key)
+        if verified:
+            return verified, f"Verified symbol: {verified}"
         provider_default_tickers = provider_default_tickers or {}
         search_term = provider_default_tickers.get(provider_key) or ticker
         used_source = None
@@ -140,6 +149,7 @@ class FinancialProviderRunner:
                 "boursedirect",
                 "boursorama",
                 "gurufocus",
+                "investirlesechos",
             }
         ):
             search_term = target_isin
@@ -212,13 +222,28 @@ class FinancialProviderRunner:
         asset_mappings: Dict[str, Any],
         provider_default_tickers: Optional[Dict[str, str]] = None,
         asset_profile: Optional[Dict[str, Any]] = None,
+        verified_symbols: Optional[Dict[str, str]] = None,
+        refused_providers: Optional[Dict[str, str]] = None,
     ):
-        """Exécute les providers demandés en parallèle et retourne résultats + sources utilisées."""
+        """Exécute les providers demandés en parallèle et retourne résultats + sources utilisées.
+
+        ``verified_symbols`` gives, per provider (lower case), the symbol to query
+        instead of anything derived from the ticker. ``refused_providers`` gives the
+        providers that must not be queried, with the reason: asking them with the
+        ticker would return another instrument.
+        """
         providers_to_use, results = self.resolve_providers(provider_params)
         raw_providers = {}
         requested_set = {p.strip().lower() for p in provider_params if p and p.strip()}
+        refused_providers = refused_providers or {}
+        profile_isin = asset_profile.get("isin") if asset_profile else None
+        target_isin = isin or profile_isin
 
         async def execute(provider_name: str):
+            refusal = refused_providers.get(provider_name.lower())
+            if refusal:
+                raw_providers[provider_name] = f"Not queried: {refusal}"
+                return provider_name, {"error": refusal}
             search_term, raw_provider = self.build_search_term(
                 provider_name,
                 ticker,
@@ -226,6 +251,7 @@ class FinancialProviderRunner:
                 asset_mappings,
                 provider_default_tickers=provider_default_tickers,
                 asset_profile=asset_profile,
+                verified_symbols=verified_symbols,
             )
             raw_providers[provider_name] = raw_provider
             try:
@@ -240,8 +266,26 @@ class FinancialProviderRunner:
                 if provider_url:
                     raw_providers[provider_name] = provider_url
                 if isinstance(payload, dict):
-                    if isin:
-                        payload["isin"] = isin
+                    found = str(payload.get("isin") or "").strip().upper()
+                    if (
+                        target_isin
+                        and _ISIN.fullmatch(found)
+                        and found != target_isin.strip().upper()
+                        # Yahoo is asked with a verified symbol; the ISIN yfinance
+                        # gives for a symbol comes from another search and is not reliable.
+                        and provider_name.lower() != "yahoofinance"
+                    ):
+                        # Searched by ticker, the site answered with a homonym
+                        # ("SPFF" is another fund in the US): its figures are not
+                        # those of the instrument, and must not carry its ISIN.
+                        logger.warning(
+                            "%s answered with ISIN %s for %s (%s)", provider_name, found, ticker, target_isin
+                        )
+                        return provider_name, {
+                            "error": f"Another instrument was found (ISIN {found}, expected {target_isin})"
+                        }
+                    if target_isin:
+                        payload["isin"] = target_isin
                 return provider_name, payload
             except TimeoutError:
                 logger.warning(f"Timeout provider {provider_name} après {self.timeout_seconds}s")

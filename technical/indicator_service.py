@@ -35,6 +35,7 @@ from technical.catalog import CACHE_TTL, INDICATOR_DEFAULTS, INDICATOR_REGISTRY
 from technical.contracts import (
     CachePayload,
     IndicatorParams,
+    MarketSeries,
     TechnicalCachePort,
     TechnicalMarketDataPort,
 )
@@ -71,7 +72,7 @@ class TechnicalIndicatorService:
         from_date: date | None = None,
         to_date: date | None = None,
         limit: int = 500,
-        asset_id: int | None = None,
+        series: MarketSeries | None = None,
     ) -> IndicatorResult:
         # 1. Normalize indicator name
         indicator_clean = indicator.strip().lower()
@@ -92,9 +93,12 @@ class TechnicalIndicatorService:
         if indicator_clean == "vwap" and resolution in ["1D", "1W", "1M"]:
             raise UnsupportedIndicatorResolution("VWAP only available on intraday data")
 
-        # 3. Check Cache
+        if not series:
+            if not (series := await self._resolve_series(ticker)):
+                raise TechnicalDataNotFound(f"Ticker not found: {ticker}")
+        # 4. Check Cache
         cache_key = self._cache_key(
-            ticker, indicator_clean, params_used, resolution, from_date, to_date
+            ticker, indicator_clean, params_used, resolution, from_date, to_date, limit, series
         )
         cache_enabled = os.environ.get("TECHNICAL_CACHE_ENABLED", "true").lower() == "true"
         if cache_enabled:
@@ -107,15 +111,9 @@ class TechnicalIndicatorService:
                 except ValidationError as e:
                     logger.warning(f"Failed to parse cached technical indicator: {e}")
 
-        # 4. Resolve asset_id if not provided
-        if not asset_id:
-            asset_id = await self._resolve_asset_id(ticker)
-            if not asset_id:
-                raise TechnicalDataNotFound(f"Ticker not found: {ticker}")
-
         # 5. Load DataFrame
         df = await self._load_ohlcv_dataframe(
-            asset_id=asset_id,
+            series=series,
             resolution=resolution,
             from_date=from_date,
             to_date=to_date,
@@ -206,12 +204,12 @@ class TechnicalIndicatorService:
         to_date: date | None = None,
         limit: int = 500,
         include_ohlcv: bool = True,
-        asset_id: int | None = None,
+        series: MarketSeries | None = None,
     ) -> MultiIndicatorResult:
-        # 1. Resolve asset_id if not provided
-        if not asset_id:
-            asset_id = await self._resolve_asset_id(ticker)
-            if not asset_id:
+        # 1. Resolve the price series of the ticker if not provided
+        if not series:
+            series = await self._resolve_series(ticker)
+            if not series:
                 raise TechnicalDataNotFound(f"Ticker not found: {ticker}")
 
         # 2. Parse indicators
@@ -222,7 +220,7 @@ class TechnicalIndicatorService:
 
         # 3. Load DataFrame once (critical optimization)
         df = await self._load_ohlcv_dataframe(
-            asset_id=asset_id,
+            series=series,
             resolution=resolution,
             from_date=from_date,
             to_date=to_date,
@@ -287,7 +285,7 @@ class TechnicalIndicatorService:
                         col_names.append(actual_name)
 
                 # Format series
-                series = await run_sync(self._df_to_series, calc_df, col_names, ind_name, params)
+                ind_series = await run_sync(self._df_to_series, calc_df, col_names, ind_name, params)
 
                 from schemas.technical import IndicatorCategory
 
@@ -304,7 +302,7 @@ class TechnicalIndicatorService:
                     if not calc_df.empty
                     else None,
                     count=len(calc_df),
-                    series=series,
+                    series=ind_series,
                     cached=False,
                     calculated_at=datetime.now(timezone.utc),
                 )
@@ -315,7 +313,7 @@ class TechnicalIndicatorService:
                 cache_enabled = os.environ.get("TECHNICAL_CACHE_ENABLED", "true").lower() == "true"
                 if cache_enabled:
                     cache_key = self._cache_key(
-                        ticker, ind_name, params, resolution, from_date, to_date
+                        ticker, ind_name, params, resolution, from_date, to_date, limit, series
                     )
                     ttl = CACHE_TTL.get(resolution, 3600)
                     asyncio.create_task(self._set_cache(cache_key, ind_res.model_dump(), ttl))
@@ -369,7 +367,7 @@ class TechnicalIndicatorService:
 
     async def _load_ohlcv_dataframe(
         self,
-        asset_id: int,
+        series: MarketSeries,
         resolution: str,
         from_date: date | None = None,
         to_date: date | None = None,
@@ -378,7 +376,7 @@ class TechnicalIndicatorService:
         if self._market_data is None:
             return pd.DataFrame()
         return await self._market_data.load_ohlcv(
-            asset_id,
+            series,
             resolution,
             from_date,
             to_date,
@@ -395,14 +393,26 @@ class TechnicalIndicatorService:
         resolution: str,
         from_date: date | None = None,
         to_date: date | None = None,
+        limit: int | None = None,
+        series: MarketSeries | None = None,
     ) -> str:
+        """Key of one answer: everything that changes the answer is in it.
+
+        ``limit`` is the number of bars loaded. Left out, a request for 50 bars
+        received the 500 points computed for an earlier one, and the reverse.
+        """
         params_value = "default"
         if params:
             params_value = "_".join(str(value) for _, value in sorted(params.items()))
         date_value = f"_{from_date}" if from_date else ""
         if to_date:
             date_value += f"_{to_date}"
-        return f"technical:{ticker.upper()}:{resolution}:{indicator}:{params_value}{date_value}"
+            
+        series_id = ""
+        if series:
+            series_id = f":{series.asset_id}" if resolution not in ("1D", "1W", "1M") else f":{series.listing_id}"
+        key = f"technical:{ticker.upper()}{series_id}:{resolution}:{indicator}:{params_value}{date_value}"
+        return key if limit is None else f"{key}:{limit}"
 
     async def _get_cache(self, key: str) -> CachePayload | None:
         if self._cache is None:
@@ -433,7 +443,7 @@ class TechnicalIndicatorService:
     ) -> list[TechnicalSeries]:
         return self._engine.to_series(df, col_names, indicator, params)
 
-    async def _resolve_asset_id(self, ticker: str) -> int | None:
+    async def _resolve_series(self, ticker: str) -> MarketSeries | None:
         if self._market_data is None:
             return None
-        return await self._market_data.resolve_asset_id(ticker)
+        return await self._market_data.resolve_series(ticker)

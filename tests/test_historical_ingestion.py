@@ -156,20 +156,39 @@ class TestHistoricalIngestion(unittest.TestCase):
             self.assertEqual(result["source_used"], "yfinance")
             self.assertEqual(len(result["bars"]), 2)
 
-    def test_clear_cache_deletes_redis_keys(self):
-        """Checks that clear_cache deletes the corresponding Redis keys."""
-        # Pre-populate the cache
-        self.redis_client.store["history:AAPL:1D:None:None"] = "data"
-        self.redis_client.store["history:AAPL:1W:2026-01-01:2026-05-20"] = "data"
-        self.redis_client.store["history:TSLA:1D:None:None"] = "data"
+    def test_ingestion_drops_every_cached_answer_computed_from_the_prices(self):
+        """After an ingestion no route may keep serving the prices of before.
 
-        # Call cache invalidation for AAPL
-        asyncio.run(self.ingestion_service._invalidate_cache("AAPL"))
+        Only the ``history`` entries were dropped: ``/eod`` kept answering for
+        24 hours with the series a forced refresh had just replaced.
+        """
+        stale = [
+            "history:AAPL:1D:None:None::",
+            "history:AAPL:1W:2026-01-01:2026-05-20:EUR:",
+            "eod:AAPL:5d:currency-:exchange-:fmt-json:order-a",
+            "technical:AAPL:1D:rsi:14",
+            "dcf:AAPL:fcf:default",
+        ]
+        kept = [
+            "history:TSLA:1D:None:None::",
+            "eod:AAPLX:5d",  # another ticker starting with the same letters
+            "fundamental:AAPL:None:None:eodhd",  # not computed from prices
+        ]
+        for key in stale + kept:
+            self.redis_client.store[key] = "data"
 
-        # Check that only AAPL keys were deleted
-        self.assertNotIn("history:AAPL:1D:None:None", self.redis_client.store)
-        self.assertNotIn("history:AAPL:1W:2026-01-01:2026-05-20", self.redis_client.store)
-        self.assertIn("history:TSLA:1D:None:None", self.redis_client.store)
+        # The ticker is matched in upper case, as the routes write their keys.
+        asyncio.run(self.ingestion_service._invalidate_cache("aapl"))
+
+        self.assertEqual(sorted(self.redis_client.store), sorted(kept))
+
+    def test_ticker_naming_its_exchange_is_matched_as_the_routes_write_it(self):
+        self.redis_client.store["eod:XETR_SPFF:5d"] = "data"  # ":" replaced in key segments
+        self.redis_client.store["history:XETR:SPFF:1D:None:None::"] = "data"
+
+        asyncio.run(self.ingestion_service._invalidate_cache("XETR:SPFF"))
+
+        self.assertEqual(self.redis_client.store, {})
 
 
 if __name__ == "__main__":

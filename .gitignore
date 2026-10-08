@@ -114,6 +114,13 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
+# Core dumps written by a crashed worker (process memory: never commit them)
+/core
+/core.[0-9]*
+
+# Database backups (pg_dump, see README): the data of an instance, never commit them
+*.dump
+
 # Logs
 *.log
 logs/
@@ -128,8 +135,6 @@ static/*
 node_modules/
 
 # Data
-data/scrapy/
-data/scrapoxy_playwright/
 data/isin_data/
 coverage.json
 

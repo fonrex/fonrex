@@ -388,6 +388,32 @@ class TestWebSocketEndpoint:
                 assert resp["ticker"] == "AAPL"
                 assert resp["data"]["close"] == 152.3
 
+    def test_each_client_receives_a_tick_once(self, test_app_client, fake_redis):
+        """Two clients on one ticker: one tick published, one message each.
+
+        Every connection listened to the channel and broadcast to the whole
+        group, so each client received a tick as many times as there were clients.
+        """
+        client, worker = test_app_client
+
+        def tick(close):
+            return json.dumps({"ticker": "AAPL", "close": close})
+
+        with patch.object(worker, "subscribe", new_callable=AsyncMock):
+            with (
+                client.websocket_connect("/ws/realtime/AAPL") as first,
+                client.websocket_connect("/ws/realtime/AAPL") as second,
+            ):
+                asyncio.run(fake_redis.publish("price:AAPL", tick(152.3)))
+                assert first.receive_json()["data"]["close"] == 152.3
+                assert second.receive_json()["data"]["close"] == 152.3
+
+                # The next message of each client is the next tick, not a copy
+                # of the first one.
+                asyncio.run(fake_redis.publish("price:AAPL", tick(152.9)))
+                assert first.receive_json()["data"]["close"] == 152.9
+                assert second.receive_json()["data"]["close"] == 152.9
+
     def test_websocket_ping_pong_and_unsubscribe(self, test_app_client):
         """Vérifie les messages de contrôle du client WS (ping, unsubscribe)."""
         client, worker = test_app_client
@@ -407,6 +433,28 @@ class TestWebSocketEndpoint:
                     pytest.fail("La connexion WS aurait dû être fermée.")
                 except Exception:
                     pass
+
+    def test_websocket_requires_key_by_default(self, test_app_client, monkeypatch):
+        """Sans aucune configuration d'auth, la connexion WS est refusée (secure by default)."""
+        from starlette.websockets import WebSocketDisconnect
+
+        client, _worker = test_app_client
+        for name in ("FONREX_API_KEY", "FONREX_RELAY_KEY", "FONREX_API_KEYS", "FONREX_AUTH_REQUIRED"):
+            monkeypatch.delenv(name, raising=False)
+
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/ws/realtime/AAPL"):
+                pass
+        assert exc.value.code == 1008
+
+        # Une clé bien formée mais non configurée n'est pas un identifiant valide.
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect(
+                "/ws/realtime/AAPL",
+                headers={"X-API-KEY": "frx_live_well_formed_but_unknown"},
+            ):
+                pass
+        assert exc.value.code == 1008
 
     def test_websocket_auth_enforcement_when_configured(self, test_app_client, monkeypatch):
         """Vérifie que la connexion WS requiert une clé API valide quand FONREX_API_KEY est configurée."""

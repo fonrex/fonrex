@@ -32,6 +32,8 @@ class InsiderTransaction(BaseModel):
     insider_title: Optional[str] = None
     transaction_date: Optional[date] = None
     transaction_type: str
+    # Code of the form (P, S, A, M, ...), of which ``transaction_type`` is the reading.
+    transaction_code: Optional[str] = None
     shares: Optional[int] = None
     price_per_share: Optional[float] = None
     total_value: Optional[float] = None
@@ -76,6 +78,7 @@ class SECEdgarProvider(BaseFinancialProvider):
     _semaphore: asyncio.Semaphore = asyncio.Semaphore(8)
 
     BASE_URL = "https://data.sec.gov"
+    ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data"
     TICKER_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
 
     def __init__(self):
@@ -100,12 +103,13 @@ class SECEdgarProvider(BaseFinancialProvider):
             resolved_cik = cik or await self._resolve_cik(ticker)
             if not resolved_cik:
                 return InsiderTransactionsResult(ticker=ticker, transactions=[], total_count=0)
-            transactions = await self._fetch_form4_transactions(resolved_cik, limit)
-            company_name = await self._get_company_name(resolved_cik)
+            # One document gives both the name of the company and its filings.
+            submissions = await self._get_submissions(resolved_cik)
+            transactions = await self._form4_transactions(resolved_cik, submissions, limit)
             return InsiderTransactionsResult(
                 ticker=ticker,
                 cik=resolved_cik,
-                company_name=company_name,
+                company_name=submissions.get("name") if submissions else None,
                 transactions=transactions,
                 total_count=len(transactions),
             )
@@ -157,21 +161,21 @@ class SECEdgarProvider(BaseFinancialProvider):
             logger.warning("[SECEdgar] Erreur _resolve_cik_via_search: %s", exc)
         return None
 
-    async def _get_company_name(self, cik: str) -> Optional[str]:
+    async def _get_submissions(self, cik: str) -> Optional[dict]:
         url = f"{self.BASE_URL}/submissions/CIK{cik.zfill(10)}.json"
-        data = await self._get_json(url, headers=self._sec_headers())
-        return data.get("name") if data else None
+        return await self._get_json(url, headers=self._sec_headers())
 
-    async def _fetch_form4_transactions(self, cik: str, limit: int) -> List[InsiderTransaction]:
-        url = f"{self.BASE_URL}/submissions/CIK{cik.zfill(10)}.json"
-        data = await self._get_json(url, headers=self._sec_headers())
-        if not data:
+    async def _form4_transactions(
+        self, cik: str, submissions: Optional[dict], limit: int
+    ) -> List[InsiderTransaction]:
+        if not submissions:
             return []
         try:
-            recent = data.get("filings", {}).get("recent", {})
+            recent = submissions.get("filings", {}).get("recent", {})
             forms = recent.get("form", [])
             filing_dates = recent.get("filingDate", [])
             accessions = recent.get("accessionNumber", [])
+            documents = recent.get("primaryDocument", [])
             max_filings = min(limit * 2, 15)
             form4_indices = [i for i, f in enumerate(forms) if f == "4"][:max_filings]
             transactions: List[InsiderTransaction] = []
@@ -182,7 +186,7 @@ class SECEdgarProvider(BaseFinancialProvider):
                     break
                 if consecutive_failures >= 3:
                     logger.warning(
-                        "[SECEdgar] Interruption de _fetch_form4_transactions après %d échecs HTTP consécutifs",
+                        "[SECEdgar] Form 4 reading stopped after %d consecutive HTTP failures",
                         consecutive_failures,
                     )
                     break
@@ -192,12 +196,11 @@ class SECEdgarProvider(BaseFinancialProvider):
                     if not filing_date_str or not accession:
                         continue
                     filing_date = datetime.strptime(filing_date_str, "%Y-%m-%d").date()
-                    accession_nd = accession.replace("-", "")
-                    filing_url = (
-                        f"https://www.sec.gov/Archives/edgar/data/{cik_num}/{accession_nd}/"
-                    )
                     txns = await self._parse_form4_filing(
-                        cik_num, accession_nd, filing_date, filing_url
+                        cik_num,
+                        accession,
+                        filing_date,
+                        documents[idx] if idx < len(documents) else None,
                     )
                     if txns is None:
                         consecutive_failures += 1
@@ -209,29 +212,51 @@ class SECEdgarProvider(BaseFinancialProvider):
                     logger.warning("[SECEdgar] idx=%d parsing error: %s", idx, exc)
             return transactions[:limit]
         except Exception as exc:
-            logger.error("[SECEdgar] _fetch_form4_transactions error: %s", exc)
+            logger.error("[SECEdgar] Form 4 reading error: %s", exc)
             return []
 
     async def _parse_form4_filing(
-        self, cik_num: str, accession_nd: str, filing_date: date, filing_url: str
+        self,
+        cik_num: str,
+        accession: str,
+        filing_date: date,
+        primary_document: Optional[str] = None,
     ) -> Optional[List[InsiderTransaction]]:
-        index_url = (
-            f"https://www.sec.gov/Archives/edgar/data/"
-            f"{cik_num}/{accession_nd}/{accession_nd}-index.htm"
-        )
+        """Read the transactions of one Form 4. ``None`` means the request failed.
+
+        The folder of a filing is named by its accession number without dashes;
+        its index page keeps the dashes (``0001140361-26-038307-index.htm``).
+        ``primaryDocument`` names the version rendered for reading
+        (``xslF345X06/form4.xml``, an HTML page): the data is the file of the
+        same name directly in the folder.
+        """
+        folder = f"{self.ARCHIVES_URL}/{cik_num}/{accession.replace('-', '')}"
+        index_url = f"{folder}/{accession}-index.htm"
+
+        document = (primary_document or "").rsplit("/", 1)[-1]
+        if not document:
+            document = await self._form4_document_from_index(index_url)
+            if document is None:
+                return None
+        if not document.lower().endswith(".xml"):
+            # Filed on paper or as plain text (before 2003): nothing structured to read.
+            return []
+
+        xml_text = await self._get(f"{folder}/{document}", headers=self._sec_headers())
+        if xml_text is None:
+            return None
+        return self._parse_form4_xml(xml_text, filing_date, index_url)
+
+    async def _form4_document_from_index(self, index_url: str) -> Optional[str]:
+        """Name of the XML data file listed by the index page of a filing."""
         index_html = await self._get(index_url, headers=self._sec_headers())
         if index_html is None:
             return None
-        xml_match = re.search(
-            r'href="(/Archives/edgar/data/[^"]+\.xml)"', index_html, re.IGNORECASE
-        )
-        if not xml_match:
-            return []
-        xml_url = "https://www.sec.gov" + xml_match.group(1)
-        xml_text = await self._get(xml_url, headers=self._sec_headers())
-        if xml_text is None:
-            return None
-        return self._parse_form4_xml(xml_text, filing_date, filing_url)
+        for href in re.findall(r'href="(/Archives/edgar/data/[^"]+\.xml)"', index_html, re.I):
+            folder_name, name = href.rsplit("/", 2)[-2:]
+            if not folder_name.lower().startswith("xsl"):
+                return name
+        return ""
 
     def _parse_form4_xml(
         self, xml_text: str, filing_date: date, filing_url: str
@@ -261,8 +286,9 @@ class SECEdgarProvider(BaseFinancialProvider):
                 if date_el is not None and date_el.text:
                     txn_date = datetime.strptime(date_el.text.strip(), "%Y-%m-%d").date()
                 code_el = txn.find(".//transactionCode")
-                code = code_el.text.strip() if code_el is not None and code_el.text else "S"
-                txn_type = _TRANSACTION_CODES.get(code, code)
+                # A form without a code is not assumed to be a sale.
+                code = code_el.text.strip() if code_el is not None and code_el.text else None
+                txn_type = _TRANSACTION_CODES.get(code, code) if code else "Unknown"
                 shares_el = txn.find(".//transactionShares/value")
                 shares = (
                     self._safe_int(shares_el.text.strip())
@@ -275,7 +301,7 @@ class SECEdgarProvider(BaseFinancialProvider):
                     if price_el is not None and price_el.text
                     else None
                 )
-                total_val = (shares * price) if shares and price else None
+                total_val = round(shares * price, 2) if shares and price else None
                 after_el = txn.find(".//sharesOwnedFollowingTransaction/value")
                 after = (
                     self._safe_int(after_el.text.strip())
@@ -289,6 +315,7 @@ class SECEdgarProvider(BaseFinancialProvider):
                         insider_title=title,
                         transaction_date=txn_date,
                         transaction_type=txn_type,
+                        transaction_code=code,
                         shares=shares,
                         price_per_share=price,
                         total_value=total_val,

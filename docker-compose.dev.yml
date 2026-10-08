@@ -1,0 +1,10 @@
+# Development override: run the code of this folder instead of the code built
+# into the image, so that an edit only needs a container restart, not a rebuild.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Not for production: the container then reads and writes this folder directly.
+services:
+  fonrex-api:
+    volumes:
+      - .:/app

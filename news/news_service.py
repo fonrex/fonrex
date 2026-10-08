@@ -36,7 +36,9 @@ from schemas.news import NewsArticleSchema, NewsFeedResponse, NewsResponse, RawN
 
 logger = logging.getLogger(__name__)
 
-REDIS_NEWS_KEY = "news:{ticker}:{limit}"
+# ``language`` is ``all`` without a filter. It belongs to the key: the filter is
+# applied before the articles are kept, so two languages are two answers.
+REDIS_NEWS_KEY = "news:{ticker}:{limit}:{language}"
 REDIS_FEED_KEY = "news:feed:{limit}:{language}"
 REDIS_NEWS_TTL = int(__import__("os").environ.get("NEWS_CACHE_TTL", 1800))
 
@@ -97,7 +99,10 @@ class NewsService:
         """
         Retourne les news d'un ticker depuis tous les providers.
         """
-        cache_key = REDIS_NEWS_KEY.format(ticker=ticker, limit=limit)
+        if language and language.lower() == "all":
+            language = None
+            
+        cache_key = REDIS_NEWS_KEY.format(ticker=ticker, limit=limit, language=language or "all")
 
         # 1. Cache Redis
         if not force_refresh:
@@ -174,6 +179,9 @@ class NewsService:
         """
         Retourne un feed global des dernières news depuis news_articles en base.
         """
+        if language and language.lower() == "all":
+            language = None
+
         query = select(NewsArticle).order_by(NewsArticle.published_at.desc())
 
         if language:

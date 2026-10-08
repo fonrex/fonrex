@@ -12,7 +12,7 @@ Validates:
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -593,12 +593,11 @@ def test_usage_logging_middleware_masks_raw_api_key(client, monkeypatch):
     resp = client.get("/macro/rates", headers={"X-API-KEY": raw_secret})
     assert resp.status_code == 200
 
-    # Ensure db_service.log_usage was called
-    db_mock = app.state.db_service
-    assert db_mock.log_usage.called
-
-    call_kwargs = db_mock.log_usage.call_args.kwargs
-    logged_key_id = call_kwargs.get("api_key_id")
+    # The request is recorded in the usage log (written to the database later,
+    # by the background recorder).
+    entry = app.state.usage_recorder.pending[-1]
+    assert entry["endpoint"] == "/macro/rates"
+    logged_key_id = entry.get("api_key_id")
 
     assert logged_key_id is not None
     assert raw_secret not in logged_key_id
@@ -612,10 +611,9 @@ def test_usage_logging_middleware_does_not_log_unauthenticated_public_keys(clien
     resp = client.get("/widgets.json", headers={"X-API-KEY": arbitrary_key})
     assert resp.status_code == 200
 
-    db_mock = app.state.db_service
-    assert db_mock.log_usage.called
-    call_kwargs = db_mock.log_usage.call_args.kwargs
-    logged_key_id = call_kwargs.get("api_key_id")
+    entry = app.state.usage_recorder.pending[-1]
+    assert entry["endpoint"] == "/widgets.json"
+    logged_key_id = entry.get("api_key_id")
 
     assert logged_key_id is None
 
@@ -628,10 +626,10 @@ def test_usage_logging_middleware_does_not_log_failed_credentials(client, monkey
     resp = client.get("/health/alerts", headers={"X-API-KEY": failed_secret})
     assert resp.status_code == 403
 
-    db_mock = app.state.db_service
-    assert db_mock.log_usage.called
-    call_kwargs = db_mock.log_usage.call_args.kwargs
-    logged_key_id = call_kwargs.get("api_key_id")
+    entry = app.state.usage_recorder.pending[-1]
+    assert entry["endpoint"] == "/health/alerts"
+    assert entry["status_code"] == 403
+    logged_key_id = entry.get("api_key_id")
 
     assert logged_key_id is None
 
@@ -669,6 +667,103 @@ def test_openbb_eod_chart_contract(client):
         assert fig["data"][0]["name"] == "AAPL"
     finally:
         app.state.query_service = orig_query
+
+
+def _history_rows():
+    return [
+        {
+            "time": "2026-09-22",
+            "open": 150.0,
+            "high": 155.0,
+            "low": 149.0,
+            "close": 154.0,
+            "volume": 1000000,
+        }
+    ]
+
+
+def test_openbb_price_charts_work_with_the_cache_enabled_and_pass_the_listing(client):
+    """The chart routes call the price routes as plain functions.
+
+    A parameter they do not pass keeps its ``Query(...)`` declaration as a value.
+    With a reachable Redis the cache key was built from it and both routes
+    answered 500; without Redis (the usual test setup) nothing showed.
+    """
+    import fakeredis
+
+    from cache.service import CacheService
+    from routers.dependencies import get_cache_service
+
+    redis_server = fakeredis.FakeRedis()
+    with patch("cache.service.redis.from_url", return_value=redis_server):
+        cache = CacheService(redis_url="redis://in-memory/0")
+    assert cache.enabled
+
+    mock_query = MagicMock()
+    mock_query.get_history = AsyncMock(return_value=_history_rows())
+
+    orig_query = getattr(app.state, "query_service", None)
+    app.state.query_service = mock_query
+    app.dependency_overrides[get_cache_service] = lambda: cache
+    try:
+        eod = client.get("/openbb/eod/GOVY")
+        eod_chf = client.get("/openbb/eod/GOVY?currency=CHF")
+        history = client.get("/openbb/ticker/GOVY/history?currency=CHF&exchange=SIX")
+        history_key = app.state.redis_client.setex.await_args.args[0]
+    finally:
+        app.dependency_overrides.pop(get_cache_service, None)
+        app.state.query_service = orig_query
+
+    assert (eod.status_code, eod_chf.status_code, history.status_code) == (200, 200, 200)
+    assert eod_chf.json()["data"][0]["type"] == "candlestick"
+    assert history.json()["data"][0]["type"] == "candlestick"
+
+    # The listing named in the request reaches the reader...
+    choices = [
+        (call.kwargs.get("currency"), call.kwargs.get("exchange"))
+        for call in mock_query.get_history.await_args_list
+    ]
+    assert choices == [(None, None), ("CHF", None), ("CHF", "SIX")]
+    # ... and the cache keys: two listings of a ticker never share an entry.
+    eod_keys = sorted(key.decode() for key in redis_server.keys("eod:GOVY*"))
+    assert len(eod_keys) == 2
+    assert sum("currency-CHF" in key for key in eod_keys) == 1
+    assert history_key.endswith(":CHF:SIX")
+
+
+def test_route_functions_called_directly_receive_every_declared_parameter():
+    """A route function called as a plain function gets no parameter from FastAPI.
+
+    Every parameter declared with ``Query``/``Path``/``Depends`` must be passed
+    by the caller: left out, the function receives the declaration object itself
+    (``'Query' object has no attribute 'upper'``).
+    """
+    import ast
+    import importlib
+    import inspect
+
+    from fastapi import params
+
+    forgotten = []
+    for path in sorted((Path(__file__).parent.parent / "routers").glob("*.py")):
+        module = importlib.import_module(f"routers.{path.stem}")
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                continue
+            target = getattr(module, node.func.id, None)
+            if not inspect.isfunction(target) or not target.__module__.startswith("routers."):
+                continue
+            parameters = inspect.signature(target).parameters
+            passed = {keyword.arg for keyword in node.keywords}
+            passed |= set(list(parameters)[: len(node.args)])
+            forgotten += [
+                f"{path.name}:{node.lineno} {node.func.id}({name}=...)"
+                for name, parameter in parameters.items()
+                if isinstance(parameter.default, (params.Param, params.Depends))
+                and name not in passed
+            ]
+
+    assert not forgotten, f"parameters left to their FastAPI declaration: {forgotten}"
 
 
 def test_openbb_news_endpoints_contract(client):

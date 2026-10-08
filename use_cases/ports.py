@@ -103,6 +103,8 @@ class ProviderRunnerPort(Protocol):
         asset_mappings: Mapping[str, object],
         provider_default_tickers: Mapping[str, str] | None = None,
         asset_profile: Mapping[str, object] | None = None,
+        verified_symbols: Mapping[str, str] | None = None,
+        refused_providers: Mapping[str, str] | None = None,
     ) -> tuple[FundamentalPayload, FundamentalPayload]: ...
 
 
@@ -111,7 +113,22 @@ class FundamentalsFormatterPort(Protocol):
 
 
 class AssetProfileEnricherPort(Protocol):
-    async def enrich(self, asset_profile: AssetProfile, ticker: str) -> None: ...
+    async def enrich(
+        self, asset_profile: AssetProfile, ticker: str, symbol: str | None = None
+    ) -> None: ...
+
+
+class SourceSymbol(Protocol):
+    """Symbol of a listing at a source, or the reason there is none."""
+
+    symbol: str | None
+    reason: str | None
+
+
+class SourceSymbolResolverPort(Protocol):
+    """Gives the symbol verified for a listing (``historical/yahoo_symbols.py``)."""
+
+    def resolve(self, listing_id: int, *, refresh: bool = False) -> Awaitable[SourceSymbol]: ...
 
 
 class DeepFundamentalsEnricherPort(Protocol):

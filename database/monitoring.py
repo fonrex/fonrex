@@ -10,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from models import Asset, PriceEOD, ProviderAlert, ProviderHealthDaily, ProviderHealthLog
+from database.price_series import resolve_price_series_async
+from models import PriceEOD, ProviderAlert, ProviderHealthDaily, ProviderHealthLog
 from monitoring.models import CanaryCheckResult
 from monitoring.ports import (
     AlertCandidate,
@@ -29,14 +30,12 @@ class SqlAlchemyMonitoringRepository:
     async def get_recent_closing_prices(self, ticker: str, since: datetime) -> list[float] | None:
         try:
             async with self._session_factory() as session:
-                asset_id = (
-                    await session.execute(select(Asset.id).where(Asset.ticker == ticker))
-                ).scalar()
-                if not asset_id:
+                series = await resolve_price_series_async(session, ticker)
+                if series is None:
                     return None
                 statement = (
                     select(PriceEOD.close)
-                    .where(PriceEOD.asset_id == asset_id)
+                    .where(PriceEOD.asset_listing_id == series.listing_id)
                     .where(PriceEOD.timestamp >= since)
                     .where(PriceEOD.resolution == "1D")
                 )

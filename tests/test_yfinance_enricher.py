@@ -84,7 +84,8 @@ def _make_mock_ticker():
         "forwardEps": 5.2,
         "bookValue": 25.3,
         "revenuePerShare": 83.4,
-        "dividendYield": 0.018,
+        # In percent, as yfinance publishes it: 1.8 dividend for a price of 100.
+        "dividendYield": 1.8,
         "dividendRate": 1.80,
         "payoutRatio": 0.37,
         "beta": 1.12,
@@ -263,6 +264,8 @@ class TestFetchHighlights(_DatabaseTestCase):
         self.assertIsNotNone(highlight)
         self.assertEqual(float(highlight.market_cap), 107400000000.0)
         self.assertEqual(float(highlight.pe_ratio), 28.4)
+        # Stored as a ratio: the valuation multiplies it by the price.
+        self.assertAlmostEqual(float(highlight.dividend_yield), 0.018)
         self.assertEqual(float(highlight.roe), 0.421)
         self.assertEqual(highlight.shares_outstanding, 777000000)
         session.close()

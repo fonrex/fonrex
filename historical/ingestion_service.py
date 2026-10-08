@@ -6,18 +6,24 @@ import time
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from concurrency import run_sync
+from database.price_series import resolve_price_series
 from database.query import QueryService
 from database.service import DatabaseService
 from historical.normalization import normalize_bars
+from historical.price_writer import write_price_bars
 from historical.providers import HistoricalMarketDataFetcher
-from models import Asset, AssetListing, IngestLog, PriceEOD
+from historical.yahoo_symbols import YahooSymbolResolver
+from models import Asset, AssetListing, IngestLog
 from schemas.historical import IngestResult
 
 logger = logging.getLogger(__name__)
+
+# First segment of the cache keys holding answers computed from stored prices:
+# /ticker/{symbol}/history, /eod/{ticker}, /technical/{ticker}, /dcf/{ticker}.
+PRICE_CACHE_PREFIXES = ("history", "eod", "technical", "dcf")
 
 
 class HistoricalIngestionService:
@@ -32,11 +38,15 @@ class HistoricalIngestionService:
         query_service: QueryService,
         redis_client: Optional[Any] = None,
         market_data_fetcher: HistoricalMarketDataFetcher | None = None,
+        symbol_resolver: YahooSymbolResolver | None = None,
     ):
         self.db_service = db_service
         self.query_service = query_service
         self.redis_client = redis_client
         self._market_data_fetcher = market_data_fetcher or HistoricalMarketDataFetcher()
+        # A ticker of the catalogue is not a Yahoo symbol: the symbol of a listing
+        # is found from its ISIN, checked against its currency, and remembered.
+        self._symbols = symbol_resolver or YahooSymbolResolver(db_service)
 
         # Configuration depuis variables d'environnement
         self.concurrency = int(os.environ.get("INGEST_CONCURRENCY", 5))
@@ -52,9 +62,15 @@ class HistoricalIngestionService:
         force_refresh: bool = False,
         from_date: Optional[date] = None,
         to_date: Optional[date] = None,
+        currency: Optional[str] = None,
+        exchange: Optional[str] = None,
     ) -> IngestResult:
         """
         Ingère l'historique d'un ticker individuel.
+
+        ``currency`` and ``exchange`` name one listing among those sharing the
+        ticker (``GOVY`` in EUR or in CHF); without them the primary listing is
+        ingested.
         """
         start_time = time.time()
         resolution = resolution.upper()
@@ -67,18 +83,20 @@ class HistoricalIngestionService:
             )
 
         # 1. Résoudre l'Asset et la cotation
-        asset_id, listing_id, isin = await run_sync(self._resolve_asset_context, ticker)
-        if not asset_id:
+        asset_id, listing_id, isin, listing_currency = await run_sync(
+            self._resolve_asset_context, ticker, currency, exchange
+        )
+        if not asset_id or not listing_id:
             return IngestResult(
                 ticker=ticker,
                 resolution=resolution,
                 status="failed",
-                error=f"Actif introuvable pour le ticker {ticker}",
+                error=f"No listing found for ticker {ticker}: prices are stored per listing",
             )
 
         # 2. Détecter les plages de dates à charger (Gap Detection)
         fetch_start, fetch_end, is_up_to_date = await self._detect_gaps(
-            ticker, resolution, force_refresh, from_date, to_date
+            ticker, resolution, force_refresh, from_date, to_date, currency, exchange
         )
 
         if is_up_to_date:
@@ -104,12 +122,28 @@ class HistoricalIngestionService:
                 duration_ms=duration_ms,
             )
 
-        # 3. Récupérer les données avec fallback
+        # 3. Symbole de la source. The prices of a listing are fetched with the
+        # symbol verified for it (ISIN + currency), never with the ticker as typed:
+        # a ticker shared with another instrument would bring that instrument's prices.
+        yahoo_symbol, symbol_note = None, None
+        if source in ("auto", "yfinance"):
+            resolved = await self._symbols.resolve(listing_id, refresh=force_refresh)
+            yahoo_symbol, symbol_note = resolved.symbol, resolved.reason
+
+        # 4. Récupérer les données avec fallback
         logger.info(
             f"🔄 Ingestion {ticker} ({resolution}): {fetch_start} -> {fetch_end} via {source}"
+            f" [{yahoo_symbol or 'no verified Yahoo symbol'}]"
         )
         fetch_result = await self._fetch_with_fallback(
-            ticker, resolution, source, fetch_start, fetch_end
+            ticker,
+            resolution,
+            source,
+            fetch_start,
+            fetch_end,
+            yahoo_symbol=yahoo_symbol,
+            currency=listing_currency,
+            symbol_note=symbol_note,
         )
 
         if not fetch_result or not fetch_result.get("bars"):
@@ -141,8 +175,10 @@ class HistoricalIngestionService:
         # 4. Nettoyer et normaliser
         normalized_bars = self._normalize_bars(bars, asset_id, listing_id, resolution)
 
-        # 5. Insérer en base (Upsert)
-        records_added = await self._upsert_prices_eod(normalized_bars)
+        # 5. Insérer en base (Upsert). A forced refresh replaces the fetched
+        # range instead of merging into it, so that no bar of an earlier fetch
+        # (other adjustment basis, wrongly dated row) survives next to the new ones.
+        records_added = await self._upsert_prices_eod(normalized_bars, replace=force_refresh)
 
         # 6. Invalider le cache Redis
         await self._invalidate_cache(ticker)
@@ -171,6 +207,8 @@ class HistoricalIngestionService:
             resolution=resolution,
             status=status,
             source_used=source_used,
+            provider_symbol=fetch_result.get("symbol"),
+            note=fetch_result.get("note"),
             records_added=records_added,
             from_date=actual_from,
             to_date=actual_to,
@@ -223,6 +261,8 @@ class HistoricalIngestionService:
         force_refresh: bool,
         from_date: Optional[date],
         to_date: Optional[date],
+        currency: Optional[str] = None,
+        exchange: Optional[str] = None,
     ) -> Tuple[date, date, bool]:
         """
         Détermine la plage de dates manquante.
@@ -235,7 +275,9 @@ class HistoricalIngestionService:
             return start_date, end_date, False
 
         # Vérifier en base les données existantes
-        db_range = await self.query_service.get_history_range(ticker, resolution)
+        db_range = await self.query_service.get_history_range(
+            ticker, resolution, currency=currency, exchange=exchange
+        )
 
         if db_range["count"] == 0:
             start_date = from_date or (today - timedelta(days=365 * 10))
@@ -258,117 +300,67 @@ class HistoricalIngestionService:
         return start_date, end_date, False
 
     async def _fetch_with_fallback(
-        self, ticker: str, resolution: str, source: str, start: date, end: date
+        self,
+        ticker: str,
+        resolution: str,
+        source: str,
+        start: date,
+        end: date,
+        yahoo_symbol: Optional[str] = None,
+        currency: Optional[str] = None,
+        symbol_note: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """
-        Tente de fetch les données depuis la source choisie, avec fallback si auto.
-        """
-        if source == "yfinance":
-            return await self._fetch_yfinance(ticker, resolution, start, end)
-        elif source == "tradingview":
-            return await self._fetch_tradingview(ticker, resolution, start, end)
-
-        # Mode auto: yfinance d'abord, puis TradingView en fallback
-        yf_res = await self._fetch_yfinance(ticker, resolution, start, end)
-        if yf_res and yf_res.get("bars"):
-            return yf_res
-
-        logger.warning(f"⚠️ Échec yfinance pour {ticker}, passage au fallback TradingView...")
-        await asyncio.sleep(self.yf_delay)
-        return await self._fetch_tradingview(ticker, resolution, start, end)
+        """Fetch from the chosen source, with fallback in auto mode (``historical/providers.py``)."""
+        return await self._market_data_fetcher.fetch(
+            ticker,
+            resolution,
+            source,
+            start,
+            end,
+            yahoo_symbol=yahoo_symbol,
+            currency=currency,
+            symbol_note=symbol_note,
+            pause=self.yf_delay,
+        )
 
     async def _fetch_yfinance(
         self, ticker: str, resolution: str, start: date, end: date
     ) -> Optional[Dict[str, Any]]:
         return await self._market_data_fetcher.fetch_yfinance(ticker, resolution, start, end)
 
-    def _fetch_yfinance_sync(
-        self, ticker: str, resolution: str, start: date, end: date
-    ) -> Dict[str, Any]:
-        return self._market_data_fetcher._fetch_yfinance_sync(ticker, resolution, start, end)
-
-    async def _fetch_tradingview(
-        self, ticker: str, resolution: str, start: date, end: date
-    ) -> Optional[Dict[str, Any]]:
-        return await self._market_data_fetcher.fetch_tradingview(ticker, resolution, start, end)
-
-    def _fetch_tradingview_sync(
-        self, ticker: str, resolution: str, start: date, end: date
-    ) -> Dict[str, Any]:
-        return self._market_data_fetcher._fetch_tradingview_sync(ticker, resolution, start, end)
-
-    def _resolve_tv_symbol_sync(self, ticker: str) -> Optional[str]:
-        return self._market_data_fetcher._resolve_tradingview_symbol(ticker)
-
-    def _resolve_asset(self, ticker: str, session: Session) -> Tuple[Optional[int], Optional[int]]:
+    def _resolve_asset(
+        self,
+        ticker: str,
+        session: Session,
+        currency: Optional[str] = None,
+        exchange: Optional[str] = None,
+    ) -> Tuple[Optional[int], Optional[int]]:
         """
-        Résout un ticker en (asset_id, listing_id).
+        Résout un ticker en (asset_id, listing_id), with the rule shared by every
+        reader of ``prices_eod`` (``database/price_series.py``).
         """
-        normalized = ticker.strip().upper()
-        tickers_to_try = [normalized]
-        if "." in normalized:
-            base_symbol = normalized.split(".")[0]
-            if base_symbol and base_symbol not in tickers_to_try:
-                tickers_to_try.append(base_symbol)
-
-        for sym in tickers_to_try:
-            listing = (
-                session.query(AssetListing)
-                .filter(AssetListing.ticker == sym)
-                .order_by(
-                    AssetListing.is_primary.desc(),
-                    AssetListing.currency.asc(),
-                    AssetListing.exchange.asc(),
-                )
-                .first()
-            )
-            if listing:
-                return listing.asset_id, listing.id
-
-            asset = session.query(Asset).filter(Asset.ticker == sym).first()
-            if asset:
-                return asset.id, None
-
-        return None, None
+        series = resolve_price_series(session, ticker, currency=currency, exchange=exchange)
+        if series is None:
+            return None, None
+        return series.asset_id, series.listing_id
 
     def _normalize_bars(
-        self, bars: List[Dict[str, Any]], asset_id: int, listing_id: Optional[int], resolution: str
+        self, bars: List[Dict[str, Any]], asset_id: int, listing_id: int, resolution: str
     ) -> List[Dict[str, Any]]:
         return normalize_bars(bars, asset_id, listing_id, resolution)
 
-    async def _upsert_prices_eod(self, bars: List[Dict[str, Any]]) -> int:
-        """
-        Effectue un batch upsert ultra-rapide des prix EOD.
-        """
+    async def _upsert_prices_eod(self, bars: List[Dict[str, Any]], replace: bool = False) -> int:
+        """Write the bars (``historical/price_writer.py``); ``replace`` swaps the range."""
         if not bars:
             return 0
+        return await run_sync(self._upsert_prices_eod_sync, bars, replace)
 
-        return await run_sync(self._upsert_prices_eod_sync, bars)
-
-    def _upsert_prices_eod_sync(self, bars: List[Dict[str, Any]]) -> int:
+    def _upsert_prices_eod_sync(self, bars: List[Dict[str, Any]], replace: bool = False) -> int:
         session = self.db_service.get_session()
-        total_inserted = 0
         try:
-            # Upsert par morceaux pour éviter de saturer la mémoire et dépasser la limite de paramètres Postgres
-            for i in range(0, len(bars), self.batch_size):
-                chunk = bars[i : i + self.batch_size]
-
-                stmt = pg_insert(PriceEOD.__table__)
-                update_cols = {
-                    c.name: stmt.excluded[c.name]
-                    for c in PriceEOD.__table__.columns
-                    if c.name not in ["time", "asset_id"]
-                }
-
-                upsert_stmt = stmt.on_conflict_do_update(
-                    index_elements=["time", "asset_id"], set_=update_cols
-                )
-
-                session.execute(upsert_stmt, chunk)
-                total_inserted += len(chunk)
-
+            written = write_price_bars(session, bars, self.batch_size, replace)
             session.commit()
-            return total_inserted
+            return written
         except Exception as e:
             session.rollback()
             logger.error(f"❌ Erreur lors de l'upsert des prix EOD: {e}")
@@ -377,20 +369,29 @@ class HistoricalIngestionService:
             session.close()
 
     async def _invalidate_cache(self, ticker: str):
-        """
-        Invalide les clés de cache Redis pour ce ticker.
+        """Drop every cached answer computed from the prices of this ticker.
+
+        The price routes, the indicators and the valuation each keep their own
+        entries. Leaving one out served the prices of before the ingestion for as
+        long as its lifetime (24 hours for ``/eod``), even after a forced refresh
+        that replaced a wrong series.
         """
         if not self.redis_client:
             return
+        symbol = ticker.strip().upper()
+        # A key segment holds no ":" nor space ("XETR:SPFF" is written "XETR_SPFF").
+        symbols = {symbol, symbol.replace(":", "_").replace(" ", "_")}
         try:
-            pattern = f"history:{ticker}:*"
-            cursor = 0
             keys_to_delete = []
-            while True:
-                cursor, keys = await self.redis_client.scan(cursor=cursor, match=pattern, count=100)
-                keys_to_delete.extend(keys)
-                if cursor == 0:
-                    break
+            for pattern in (f"{p}:{s}:*" for p in PRICE_CACHE_PREFIXES for s in sorted(symbols)):
+                cursor = 0
+                while True:
+                    cursor, keys = await self.redis_client.scan(
+                        cursor=cursor, match=pattern, count=100
+                    )
+                    keys_to_delete.extend(keys)
+                    if cursor == 0:
+                        break
             if keys_to_delete:
                 await self.redis_client.delete(*keys_to_delete)
                 logger.info(
@@ -429,12 +430,19 @@ class HistoricalIngestionService:
             duration_ms,
         )
 
-    def _resolve_asset_context(self, ticker):
+    def _resolve_asset_context(self, ticker, currency=None, exchange=None):
+        """Return (asset_id, listing_id, isin, currency of the listing)."""
         session = self.db_service.get_session()
         try:
-            asset_id, listing_id = self._resolve_asset(ticker, session)
+            asset_id, listing_id = self._resolve_asset(ticker, session, currency, exchange)
             asset = session.get(Asset, asset_id) if asset_id else None
-            return asset_id, listing_id, asset.isin if asset else None
+            listing = session.get(AssetListing, listing_id) if listing_id else None
+            return (
+                asset_id,
+                listing_id,
+                asset.isin if asset else None,
+                (listing.currency or None) if listing else None,
+            )
         finally:
             session.close()
 

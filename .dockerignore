@@ -1,21 +1,32 @@
 # Environnement Python local
 venv/
 .venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
 .Python
 
-# Assets statiques lourds (logos, images) — montés via volume en prod
-static/logos/
+# Secrets et réglages locaux : transmis au conteneur par Compose (env_file),
+# jamais copiés dans l'image
+.env
+.env.*
+!.env.example
 
-# Logs et cache locaux
+# Logos téléchargés (lourds) : conservés hors de l'image et montés en volume.
+# Le logo par défaut reste dans l'image.
+static/logos/*
+!static/logos/default.svg
+
+# Core dumps d'un worker planté
+core
+core.[0-9]*
+
+# Logs locaux
 logs/
 *.log
-cache/
 
-# Données temporaires et exports
+# Données temporaires et exports à la racine (data/*.csv reste dans l'image)
 *.csv
 dump.csv
 temp_assets.csv
@@ -25,8 +36,12 @@ enriched_assets.csv
 tests/
 scratch/
 .pytest_cache/
+.ruff_cache/
 .coverage
+coverage.json
+coverage.xml
 htmlcov/
+node_modules/
 
 # Git
 .git/
@@ -36,13 +51,11 @@ htmlcov/
 .vscode/
 .idea/
 *.swp
+**/.DS_Store
 
 # Docker
 .dockerignore
 docker-compose*.yml
-
-# Alembic (migrations gérées séparément)
-alembic/versions/
 
 # Données isin
 data/isin_data/

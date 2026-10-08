@@ -49,7 +49,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 54
+fail_under = 70
 show_missing = true
 skip_covered = true
 exclude_also = [
@@ -60,3 +60,8 @@ exclude_also = [
 
 [tool.coverage.xml]
 output = "coverage.xml"
+
+[tool.uv]
+# The lock files (`make lock`) are resolved for the Python versions the project
+# runs on: 3.12 (Docker image, CI) and 3.13, on every platform.
+environments = ["python_version >= '3.12' and python_version < '3.14'"]

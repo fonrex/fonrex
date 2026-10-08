@@ -3,11 +3,11 @@ import os
 import random
 from typing import Optional
 
-import httpx
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.providers.base import BaseProvider
+from financials.numbers import find_number
+from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class BarronsProvider(BaseProvider):
         self.timeout = timeout
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._session() as client:
             try:
                 search_result = await self._search_result(client, ticker)
                 if not search_result:
@@ -51,7 +51,7 @@ class BarronsProvider(BaseProvider):
                 logger.error(f"Barrons error {ticker}: {e}")
                 return None
 
-    async def _search_result(self, client: httpx.AsyncClient, ticker: str) -> Optional[dict]:
+    async def _search_result(self, client: ProviderSession, ticker: str) -> Optional[dict]:
         params = {"q": ticker, "it": "stock,etf,fund", "c": 10, "entitlementToken": self.TOKEN}
         try:
             response = await client.get(self.SEARCH_API, params=params)
@@ -66,7 +66,7 @@ class BarronsProvider(BaseProvider):
             logger.warning(f"Barrons search API error: {e}")
         return None
 
-    async def _search_symbol(self, client: httpx.AsyncClient, ticker: str):
+    async def _search_symbol(self, client: ProviderSession, ticker: str):
         search_result = await self._search_result(client, ticker)
         if search_result:
             return search_result.get("url_ticker") or search_result.get(
@@ -124,16 +124,15 @@ class BarronsProvider(BaseProvider):
             provider_url=search_result.get("provider_url"),
         )
 
-    async def _fetch_page(self, client: httpx.AsyncClient, url: str) -> Optional[HTMLParser]:
-        for attempt in range(self.max_retries):
-            try:
-                headers = {"User-Agent": random.choice(USER_AGENTS)}
-                resp = await client.get(url, headers=headers)
-                if resp.status_code == 200:
-                    return HTMLParser(resp.text)
-                logger.warning(f"Barrons page fetch status {resp.status_code} for {url}")
-            except Exception:
-                pass
+    async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:
+        try:
+            # A new User-Agent is drawn at each attempt of the shared retry policy.
+            resp = await client.get(url, headers=lambda: {"User-Agent": random.choice(USER_AGENTS)})
+            if resp.status_code == 200:
+                return HTMLParser(resp.text)
+            logger.warning(f"Barrons page fetch status {resp.status_code} for {url}")
+        except Exception as e:
+            logger.warning(f"Barrons page fetch error: {e}")
         return None
 
     def _parse_page(self, parser: HTMLParser, ticker_input: str) -> FinancialMetrics:
@@ -159,36 +158,29 @@ class BarronsProvider(BaseProvider):
         return metrics
 
     def _find_value_by_label(self, parser: HTMLParser, labels: list) -> Optional[float]:
-        import re
-
         # 1. New DOM structure from browser subagent: div > p (label), p (value)
         for div in parser.css("div"):
             ps = div.css("p")
             if len(ps) >= 2:
                 label_text = ps[0].text(strip=True).lower()
                 if any(label.lower() in label_text for label in labels):
-                    val_text = ps[1].text(strip=True)
-                    nums = re.findall(r"(\d+\.?\d*)", val_text)
-                    if nums:
-                        return float(nums[0])
+                    value = find_number(ps[1].text(strip=True))
+                    if value is not None:
+                        return value
 
         # 2. Generic finder fallback
         for node in parser.css("div, span, td, li"):
             txt = node.text(strip=True)
             for label in labels:
                 if label.lower() in txt.lower() and len(txt) < 50:
-                    # Look for value in siblings
-                    # OR if text is "P/E Ratio: 12.5"
-                    # Check text contains number
-                    nums = re.findall(r"(\d+\.?\d*)", txt)
-                    if nums and ":" in txt:
-                        return float(nums[-1])
-
-                    # Look at next sibling
+                    # The text is "P/E Ratio: 12.5", or the value is in the next node.
+                    if ":" in txt:
+                        value = find_number(txt, last=True)
+                        if value is not None:
+                            return value
                     sibling = node.next
                     if sibling:
-                        sib_txt = sibling.text(strip=True)
-                        sib_nums = re.findall(r"(\d+\.?\d*)", sib_txt)
-                        if sib_nums:
-                            return float(sib_nums[0])
+                        value = find_number(sibling.text(strip=True))
+                        if value is not None:
+                            return value
         return None

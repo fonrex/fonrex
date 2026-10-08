@@ -5,7 +5,16 @@ from typing import TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from settings import env_int
+
 IndicatorParams: TypeAlias = dict[str, int | float]
+
+# Number of bars loaded when a request gives no limit (TECHNICAL_DEFAULT_LIMIT).
+TECHNICAL_MIN_LIMIT = 10
+TECHNICAL_MAX_LIMIT = 5000
+TECHNICAL_DEFAULT_LIMIT = env_int(
+    "TECHNICAL_DEFAULT_LIMIT", 500, minimum=TECHNICAL_MIN_LIMIT, maximum=TECHNICAL_MAX_LIMIT
+)
 
 
 class IndicatorCategory(str, Enum):
@@ -99,7 +108,9 @@ class TechnicalRequest(BaseModel):
     resolution: str = "1D"
     from_date: str | None = None
     to_date: str | None = None
-    limit: int = Field(default=500, ge=10, le=5000)
+    limit: int = Field(
+        default=TECHNICAL_DEFAULT_LIMIT, ge=TECHNICAL_MIN_LIMIT, le=TECHNICAL_MAX_LIMIT
+    )
     include_ohlcv: bool = False
 
 

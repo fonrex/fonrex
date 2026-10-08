@@ -6,7 +6,6 @@ Service de gestion du cache Redis pour FonRex API.
 
 import json
 import logging
-import pickle
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -144,11 +143,11 @@ class CacheService:
             cached_data = self.client.get(cache_key)
             if cached_data:
                 logger.info(f"🎯 Cache HIT pour la clé: {cache_key}")
+                # An entry is JSON, written by ``set``. Anything else is ignored:
+                # it is never rebuilt with ``pickle``, which runs the code an
+                # entry carries — whoever can write to Redis would run it here.
                 if isinstance(cached_data, bytes):
-                    try:
-                        return json.loads(cached_data.decode("utf-8"))
-                    except (UnicodeDecodeError, json.JSONDecodeError):
-                        return pickle.loads(cached_data)
+                    cached_data = cached_data.decode("utf-8")
                 return json.loads(cached_data)
             else:
                 logger.info(f"❌ Cache MISS pour la clé: {cache_key}")
@@ -157,12 +156,10 @@ class CacheService:
             logger.warning("Connexion Redis perdue. Tentative de reconnexion...")
             self._connect()
             return None
-        except (
-            redis.exceptions.RedisError,
-            json.JSONDecodeError,
-            pickle.PickleError,
-            EOFError,
-        ) as e:
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            logger.warning(f"Entrée de cache illisible ignorée ({cache_key}): {e}")
+            return None
+        except redis.exceptions.RedisError as e:
             logger.error(f"Erreur lors de la lecture du cache: {e}")
             return None
 
@@ -186,7 +183,8 @@ class CacheService:
         try:
             expires_in = ttl or self.get_ttl(cache_type)
             serialized_data = json.dumps(data, default=self._json_default).encode("utf-8")
-            self.client.setex(cache_key, expires_in, serialized_data)
+            # ``SET ... EX``: the Redis client flags ``setex`` as deprecated.
+            self.client.set(cache_key, serialized_data, ex=expires_in)
             logger.info(f"💾 Données mises en cache pour {expires_in}s avec la clé: {cache_key}")
             return True
         except redis.exceptions.ConnectionError:

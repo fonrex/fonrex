@@ -642,6 +642,7 @@ def test_usage_logging_middleware_does_not_log_failed_credentials(client, monkey
 def test_openbb_eod_chart_contract(client):
     """GET /openbb/eod/{ticker} returns Plotly candlestick figure."""
     mock_query = MagicMock()
+    mock_query.get_listing = AsyncMock(return_value=None)
     mock_query.get_history = AsyncMock(
         return_value=[
             {
@@ -700,6 +701,7 @@ def test_openbb_price_charts_work_with_the_cache_enabled_and_pass_the_listing(cl
     assert cache.enabled
 
     mock_query = MagicMock()
+    mock_query.get_listing = AsyncMock(return_value=None)
     mock_query.get_history = AsyncMock(return_value=_history_rows())
 
     orig_query = getattr(app.state, "query_service", None)

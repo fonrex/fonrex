@@ -67,15 +67,23 @@ class ListingChoice:
     """What a request may add to a ticker to name one listing among several.
 
     ``GOVY`` quoted in EUR and in CHF is two listings with the same ticker: the
-    currency (or the exchange) tells them apart. Without a choice, the primary
-    listing is taken.
+    currency (or the exchange) tells them apart. A bare ticker may also belong to
+    several instruments (``NEM`` is Newmont and Nemetschek): the ISIN keeps the
+    listings of one instrument only. Without a choice, the primary listing is taken.
     """
 
     currency: str | None = None
     exchange: str | None = None
+    isin: str | None = None
     active_only: bool = False
 
     def narrow(self, statement: Select) -> Select:
+        if self.isin:
+            statement = statement.where(
+                AssetListing.asset_id.in_(
+                    select(Asset.id).where(func.upper(Asset.isin) == self.isin.strip().upper())
+                )
+            )
         if self.currency:
             statement = statement.where(
                 func.upper(AssetListing.currency) == self.currency.strip().upper()
@@ -166,15 +174,16 @@ def resolve_price_series(
     *,
     currency: str | None = None,
     exchange: str | None = None,
+    isin: str | None = None,
     active_only: bool = False,
 ) -> PriceSeries | None:
     """Return the price series designated by ``ticker``, or ``None``.
 
-    ``currency`` and ``exchange`` name one listing among those sharing the
-    ticker. An instrument without any listing has no price series: its prices
+    ``currency``, ``exchange`` and ``isin`` name one listing among those sharing
+    the ticker. An instrument without any listing has no price series: its prices
     would have neither a currency nor an exchange.
     """
-    choice = ListingChoice(currency=currency, exchange=exchange, active_only=active_only)
+    choice = ListingChoice(currency=currency, exchange=exchange, isin=isin, active_only=active_only)
     for statement in _statements(ticker, choice):
         row = session.execute(statement).first()
         if row:
@@ -188,12 +197,31 @@ async def resolve_price_series_async(
     *,
     currency: str | None = None,
     exchange: str | None = None,
+    isin: str | None = None,
     active_only: bool = False,
 ) -> PriceSeries | None:
     """Asynchronous twin of :func:`resolve_price_series` (same statements)."""
-    choice = ListingChoice(currency=currency, exchange=exchange, active_only=active_only)
+    choice = ListingChoice(currency=currency, exchange=exchange, isin=isin, active_only=active_only)
     for statement in _statements(ticker, choice):
         row = (await session.execute(statement)).first()
         if row:
             return PriceSeries(asset_id=row[0], listing_id=row[1])
     return None
+
+
+def listing_identity(listing_id: int) -> Select:
+    """Statement returning what identifies a listing: ticker, ISIN, currency, exchange.
+
+    A price answer carries it, so that a client can check which instrument and
+    which listing a bare ticker designated.
+    """
+    return (
+        select(
+            AssetListing.ticker,
+            Asset.isin,
+            AssetListing.currency,
+            AssetListing.exchange,
+        )
+        .join(Asset, Asset.id == AssetListing.asset_id)
+        .where(AssetListing.id == listing_id)
+    )

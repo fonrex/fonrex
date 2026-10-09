@@ -576,6 +576,11 @@ A listing for which nothing matches is **not** ingested, and the answer says why
 - Several listings share a ticker (`GOVY` in EUR and in CHF): name the one you want with
   `currency` or `exchange` — `GET /eod/GOVY?period=1mo&currency=CHF`. Without it the primary
   listing is used.
+- Several instruments share a bare ticker (`NEM` is Newmont in USD, its Australian line in AUD
+  and Nemetschek in EUR, three ISINs): name the instrument with its ISIN, and the listing with the currency —
+  `GET /eod/NEM?period=1y&isin=US6516391066&currency=USD`. `GET /eod` and
+  `GET /ticker/{symbol}/history` answer with the `listing` they read
+  (`ticker`, `isin`, `currency`, `exchange`), so that a client can check it.
 - To see which symbol was used: `POST /historical/ingest?ticker=EUCO` returns `provider_symbol`.
   When the prices come from TradingView, `note` says why Yahoo was not the source
   (no symbol quoted in the currency of the listing, or no bar for the verified symbol).

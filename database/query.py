@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from database.price_series import (
     PriceSeries,
+    listing_identity,
     resolve_price_series_async,
     session_date,
     session_timestamp,
@@ -46,17 +47,46 @@ class QueryService:
         ticker: str,
         currency: Optional[str] = None,
         exchange: Optional[str] = None,
+        isin: Optional[str] = None,
     ) -> Optional[PriceSeries]:
         """Return the price series (instrument and listing) a ticker designates.
 
         The rule is the one used when the prices are written
         (``database/price_series.py``): what is read is what was ingested.
-        ``currency`` and ``exchange`` name one listing among those sharing the ticker.
+        ``currency``, ``exchange`` and ``isin`` name one listing among those
+        sharing the ticker.
         """
         async with self.async_session() as session:
             return await resolve_price_series_async(
-                session, ticker, currency=currency, exchange=exchange
+                session, ticker, currency=currency, exchange=exchange, isin=isin
             )
+
+    async def get_listing(
+        self,
+        ticker: str,
+        currency: Optional[str] = None,
+        exchange: Optional[str] = None,
+        isin: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return the identity of the listing a ticker designates, or ``None``.
+
+        ``{"ticker", "isin", "currency", "exchange"}``: what a price answer shows
+        so that a client can check which instrument it received.
+        """
+        series = await self.get_series(ticker, currency, exchange, isin)
+        if not series:
+            return None
+        async with self.async_session() as session:
+            row = (await session.execute(listing_identity(series.listing_id))).first()
+        if not row:
+            return None
+        return {
+            "ticker": row.ticker,
+            "isin": row.isin,
+            "currency": row.currency or None,
+            # A listing whose exchange is unknown stores an empty string.
+            "exchange": row.exchange or None,
+        }
 
     async def get_asset_id(self, ticker: str) -> Optional[int]:
         """Récupère l'ID d'un actif à partir d'une cotation ou du ticker legacy."""
@@ -71,6 +101,7 @@ class QueryService:
         interval: str = "1D",
         currency: Optional[str] = None,
         exchange: Optional[str] = None,
+        isin: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Récupère l'historique des prix pour un ticker donné.
@@ -81,7 +112,7 @@ class QueryService:
             end_date: Date de fin (optionnel).
             interval: Résolution ('1D', '1W', '1M' ou legacy 'daily', 'weekly', 'monthly').
         """
-        series = await self.get_series(ticker, currency, exchange)
+        series = await self.get_series(ticker, currency, exchange, isin)
         if not series:
             return []
 
@@ -163,11 +194,12 @@ class QueryService:
         resolution: str = "1D",
         currency: Optional[str] = None,
         exchange: Optional[str] = None,
+        isin: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Récupère les dates minimales et maximales ainsi que le compte de données en base pour une cotation.
         """
-        series = await self.get_series(ticker, currency, exchange)
+        series = await self.get_series(ticker, currency, exchange, isin)
         if not series:
             return {"min_date": None, "max_date": None, "count": 0}
 

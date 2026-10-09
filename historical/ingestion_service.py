@@ -64,13 +64,14 @@ class HistoricalIngestionService:
         to_date: Optional[date] = None,
         currency: Optional[str] = None,
         exchange: Optional[str] = None,
+        isin: Optional[str] = None,
     ) -> IngestResult:
         """
         Ingère l'historique d'un ticker individuel.
 
-        ``currency`` and ``exchange`` name one listing among those sharing the
-        ticker (``GOVY`` in EUR or in CHF); without them the primary listing is
-        ingested.
+        ``currency``, ``exchange`` and ``isin`` name one listing among those
+        sharing the ticker (``GOVY`` in EUR or in CHF, ``NEM`` of Newmont or of
+        Nemetschek); without them the primary listing is ingested.
         """
         start_time = time.time()
         resolution = resolution.upper()
@@ -83,20 +84,28 @@ class HistoricalIngestionService:
             )
 
         # 1. Résoudre l'Asset et la cotation
-        asset_id, listing_id, isin, listing_currency = await run_sync(
-            self._resolve_asset_context, ticker, currency, exchange
+        asset_id, listing_id, _listing_isin, listing_currency = await run_sync(
+            self._resolve_asset_context, ticker, currency, exchange, isin
         )
         if not asset_id or not listing_id:
+            choice = ", ".join(
+                f"{name} {value}"
+                for name, value in (("ISIN", isin), ("currency", currency), ("exchange", exchange))
+                if value
+            )
+            wanted = f" ({choice})" if choice else ""
             return IngestResult(
                 ticker=ticker,
                 resolution=resolution,
                 status="failed",
-                error=f"No listing found for ticker {ticker}: prices are stored per listing",
+                error=(
+                    f"No listing found for ticker {ticker}{wanted}: prices are stored per listing"
+                ),
             )
 
         # 2. Détecter les plages de dates à charger (Gap Detection)
         fetch_start, fetch_end, is_up_to_date = await self._detect_gaps(
-            ticker, resolution, force_refresh, from_date, to_date, currency, exchange
+            ticker, resolution, force_refresh, from_date, to_date, currency, exchange, isin
         )
 
         if is_up_to_date:
@@ -263,6 +272,7 @@ class HistoricalIngestionService:
         to_date: Optional[date],
         currency: Optional[str] = None,
         exchange: Optional[str] = None,
+        isin: Optional[str] = None,
     ) -> Tuple[date, date, bool]:
         """
         Détermine la plage de dates manquante.
@@ -276,7 +286,7 @@ class HistoricalIngestionService:
 
         # Vérifier en base les données existantes
         db_range = await self.query_service.get_history_range(
-            ticker, resolution, currency=currency, exchange=exchange
+            ticker, resolution, currency=currency, exchange=exchange, isin=isin
         )
 
         if db_range["count"] == 0:
@@ -334,12 +344,15 @@ class HistoricalIngestionService:
         session: Session,
         currency: Optional[str] = None,
         exchange: Optional[str] = None,
+        isin: Optional[str] = None,
     ) -> Tuple[Optional[int], Optional[int]]:
         """
         Résout un ticker en (asset_id, listing_id), with the rule shared by every
         reader of ``prices_eod`` (``database/price_series.py``).
         """
-        series = resolve_price_series(session, ticker, currency=currency, exchange=exchange)
+        series = resolve_price_series(
+            session, ticker, currency=currency, exchange=exchange, isin=isin
+        )
         if series is None:
             return None, None
         return series.asset_id, series.listing_id
@@ -430,11 +443,11 @@ class HistoricalIngestionService:
             duration_ms,
         )
 
-    def _resolve_asset_context(self, ticker, currency=None, exchange=None):
+    def _resolve_asset_context(self, ticker, currency=None, exchange=None, isin=None):
         """Return (asset_id, listing_id, isin, currency of the listing)."""
         session = self.db_service.get_session()
         try:
-            asset_id, listing_id = self._resolve_asset(ticker, session, currency, exchange)
+            asset_id, listing_id = self._resolve_asset(ticker, session, currency, exchange, isin)
             asset = session.get(Asset, asset_id) if asset_id else None
             listing = session.get(AssetListing, listing_id) if listing_id else None
             return (

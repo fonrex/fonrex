@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
-from database.price_series import session_timestamp
+from database.price_series import session_date, session_timestamp
 from database.query import QueryService
 from database.technical import SqlAlchemyTechnicalRepository
 from historical.ingestion_service import HistoricalIngestionService
@@ -453,6 +453,56 @@ class TestStoredDividendYieldsAreRatios:
         _alembic(database_url, "upgrade", "head")
 
         assert self._yields(engine) == {1: 0.018, 2: 0.0032, 3: 0.0145}
+
+
+class TestAdjustmentSchemeOnPostgres:
+    """Revision 016: the adjustment scheme of each stored series (``historical/adjustment.py``)."""
+
+    def _schemes(self, engine) -> list[tuple]:
+        with engine.connect() as connection:
+            return connection.execute(
+                text("SELECT asset_listing_id, resolution, scheme FROM price_series_adjustments")
+            ).all()
+
+    def test_series_stored_before_have_no_scheme_and_recording_it_is_an_upsert(self, engine):
+        from historical.adjustment import ADJUSTMENT_SCHEME, record_series_scheme
+
+        assert self._schemes(engine) == []  # fetched again in full at their next ingestion
+
+        session = sessionmaker(bind=engine)()
+        try:
+            record_series_scheme(session, 20, "1D")
+            record_series_scheme(session, 20, "1D")
+            session.commit()
+        finally:
+            session.close()
+        assert self._schemes(engine) == [(20, "1D", ADJUSTMENT_SCHEME)]
+
+    def test_stored_range_and_edge_bars_are_read_in_session_dates(self, engine):
+        from historical.adjustment import edge_bars, stored_series
+
+        session = sessionmaker(bind=engine)()
+        try:
+            stored = stored_series(session, 11, "1D")
+            newest = edge_bars(session, 11, "1D", True, 1)
+            oldest = edge_bars(session, 11, "1D", False, 2)
+        finally:
+            session.close()
+        # Listing 11 holds the two migrated sessions, and a bar written by an earlier test.
+        assert stored.first == date(2024, 1, 8)
+        assert [session_date(bar["time"]) for bar in newest] == [stored.last]
+        assert [(session_date(bar["time"]), bar["close"]) for bar in oldest] == [
+            (date(2024, 1, 8), 100.5),
+            (date(2024, 1, 9), 101.5),
+        ]
+
+    def test_downgrade_drops_the_table_and_upgrade_creates_it_again(self, database_url, engine):
+        _alembic(database_url, "downgrade", "015")
+        with engine.connect() as connection:
+            table = connection.execute(text("SELECT to_regclass('price_series_adjustments')"))
+            assert table.scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        assert self._schemes(engine) == []
 
 
 # Price relations a migration must not hold while it waits: the tables, the

@@ -12,6 +12,7 @@ from concurrency import run_sync
 from database.price_series import resolve_price_series
 from database.query import QueryService
 from database.service import DatabaseService
+from historical.adjustment import fetch_on_one_basis, record_scheme
 from historical.normalization import normalize_bars
 from historical.price_writer import write_price_bars
 from historical.providers import HistoricalMarketDataFetcher
@@ -130,25 +131,24 @@ class HistoricalIngestionService:
             resolved = await self._symbols.resolve(listing_id, refresh=force_refresh)
             yahoo_symbol, symbol_note = resolved.symbol, resolved.reason
 
-        # 4. Récupérer les données avec fallback
-        logger.info(
-            f"🔄 Ingestion {ticker} ({resolution}): {fetch_start} -> {fetch_end} via {source}"
-            f" [{yahoo_symbol or 'no verified Yahoo symbol'}]"
-        )
-        fetch_result = await self._fetch_with_fallback(
-            ticker,
-            resolution,
-            source,
-            fetch_start,
-            fetch_end,
-            yahoo_symbol=yahoo_symbol,
-            currency=listing_currency,
-            symbol_note=symbol_note,
-        )
+        async def fetch(first: date, last: date) -> Optional[Dict[str, Any]]:
+            logger.info(
+                f"🔄 Ingestion {ticker} ({resolution}): {first} -> {last} via {source}"
+                f" [{yahoo_symbol or 'no verified Yahoo symbol'}]"
+            )
+            return await self._fetch_with_fallback(
+                ticker,
+                resolution,
+                source,
+                first,
+                last,
+                yahoo_symbol=yahoo_symbol,
+                currency=listing_currency,
+                symbol_note=symbol_note,
+            )
 
-        if not fetch_result or not fetch_result.get("bars"):
+        async def failed(error_msg: str) -> IngestResult:
             duration_ms = int((time.time() - start_time) * 1000)
-            error_msg = fetch_result.get("error") if fetch_result else "Aucune donnée récupérée"
             await self._log_ingest(
                 asset_id=asset_id,
                 ticker=ticker,
@@ -169,21 +169,38 @@ class HistoricalIngestionService:
                 error=error_msg,
             )
 
-        bars = fetch_result["bars"]
+        # 4-5. Fetch and normalize, on one adjustment basis for the whole series
+        # (``historical/adjustment.py``): new bars are added only when the last
+        # stored bars still match the source; otherwise the series is fetched again.
+        outcome = await fetch_on_one_basis(
+            fetch,
+            lambda bars: self._normalize_bars(bars, asset_id, listing_id, resolution),
+            self.db_service.get_session,
+            listing_id,
+            resolution,
+            fetch_start,
+            fetch_end,
+            force_refresh,
+        )
+        if outcome.error:
+            return await failed(outcome.error)
+        fetch_result, normalized_bars = outcome.result, outcome.bars
         source_used = fetch_result["source_used"]
 
-        # 4. Nettoyer et normaliser
-        normalized_bars = self._normalize_bars(bars, asset_id, listing_id, resolution)
+        # 6. Insérer en base (Upsert). A series fetched in one piece replaces the
+        # fetched range instead of merging into it, so that no bar of an earlier
+        # fetch (other adjustment basis, wrongly dated row) survives next to the
+        # new ones.
+        records_added = await self._upsert_prices_eod(
+            normalized_bars, replace=force_refresh or outcome.rebase_reason is not None
+        )
+        if outcome.whole_series and normalized_bars:
+            await record_scheme(self.db_service.get_session, listing_id, resolution)
 
-        # 5. Insérer en base (Upsert). A forced refresh replaces the fetched
-        # range instead of merging into it, so that no bar of an earlier fetch
-        # (other adjustment basis, wrongly dated row) survives next to the new ones.
-        records_added = await self._upsert_prices_eod(normalized_bars, replace=force_refresh)
-
-        # 6. Invalider le cache Redis
+        # 7. Invalider le cache Redis
         await self._invalidate_cache(ticker)
 
-        # 7. Logger l'opération
+        # 8. Logger l'opération
         duration_ms = int((time.time() - start_time) * 1000)
         status = "success" if records_added > 0 else "up_to_date"
 
@@ -208,7 +225,7 @@ class HistoricalIngestionService:
             status=status,
             source_used=source_used,
             provider_symbol=fetch_result.get("symbol"),
-            note=fetch_result.get("note"),
+            note=outcome.note,
             records_added=records_added,
             from_date=actual_from,
             to_date=actual_to,

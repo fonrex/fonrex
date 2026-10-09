@@ -133,7 +133,7 @@ Rows whose date falls outside the calendar's trading sessions are dropped by the
 
 FonRex does not track corporate actions as first-class rows yet. The bundle takes a pragmatic approach:
 
-- The `close` column of the daily bars is populated from `adj_close` when available, so backtests already run on adjusted prices (matching the historical behaviour of Yahoo Finance ingestion).
+- `prices_eod` stores the traded prices (adjusted for splits) and `adj_close` (adjusted for splits and dividends). The `close` column of the daily bars is populated from `adj_close` when available, and `open`, `high` and `low` are scaled by the same factor, so backtests run on prices adjusted for splits and dividends. A bar without `adj_close` (TradingView) keeps its prices.
 - Empty splits and dividends DataFrames are handed to Zipline's `SQLiteAdjustmentWriter` to keep the schema initialised.
 
 If you later add corporate action tables to FonRex, extend `zipline_bundle/bundle.py` to populate the `splits` and `dividends` DataFrames — the writer plumbing is already in place.

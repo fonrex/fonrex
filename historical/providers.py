@@ -30,6 +30,18 @@ def _price(value: Any) -> float:
     return number if pd.isna(number) else float(f"{number:.8g}")
 
 
+def _adjusted_close(row: pd.Series) -> float:
+    """The close adjusted for splits and dividends, or the close when Yahoo gives none.
+
+    A Yahoo bar always has its adjusted close; the close stands in for a missing
+    one, so that a stored yfinance bar never lacks it.
+    """
+    adjusted = row.get("Adj Close")
+    if adjusted is None or pd.isna(adjusted):
+        return _price(row["Close"])
+    return _price(adjusted)
+
+
 class HistoricalMarketDataFetcher:
     """Fetch historical bars from yfinance or TradingView."""
 
@@ -104,11 +116,16 @@ class HistoricalMarketDataFetcher:
         self, ticker: str, resolution: str, start: date, end: date
     ) -> dict[str, Any]:
         interval = {"1D": "1d", "1W": "1wk", "1M": "1mo"}.get(resolution, "1d")
+        # Without auto_adjust, Open/High/Low/Close are the traded prices (adjusted
+        # for splits only, as Yahoo publishes them) and "Adj Close" also accounts
+        # for dividends. With it (the yfinance default), every price would be
+        # adjusted for dividends and the traded price would be lost.
         dataframe = yf.Ticker(ticker).history(
             start=start.isoformat(),
             end=(end + timedelta(days=1)).isoformat(),
             interval=interval,
             keepna=False,
+            auto_adjust=False,
         )
         if dataframe.empty:
             return {"bars": [], "source_used": "yfinance", "symbol": ticker}
@@ -126,6 +143,7 @@ class HistoricalMarketDataFetcher:
                 "high": _price(row["High"]),
                 "low": _price(row["Low"]),
                 "close": _price(row["Close"]),
+                "adj_close": _adjusted_close(row),
                 "volume": (
                     int(row["Volume"]) if "Volume" in row and not pd.isna(row["Volume"]) else 0
                 ),
@@ -240,6 +258,9 @@ class HistoricalMarketDataFetcher:
                             "high": float(values[2]),
                             "low": float(values[3]),
                             "close": float(values[4]),
+                            # Asked with the "splits" adjustment: no price adjusted
+                            # for dividends is known for this bar.
+                            "adj_close": None,
                             "volume": int(values[5]) if len(values) > 5 else 0,
                             "adjusted": True,
                             "source": "tradingview",

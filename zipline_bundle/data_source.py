@@ -264,7 +264,9 @@ class FonRexBundleDataSource:
         """Return a session-indexed DataFrame with the standard OHLCV columns.
 
         - ``adj_close`` overrides ``close`` when available (Zipline expects
-          split/dividend-adjusted prices in the daily bundle).
+          split/dividend-adjusted prices in the daily bundle), and ``open``,
+          ``high`` and ``low`` are scaled by the same factor: they are stored
+          adjusted for splits only, like ``close``.
         - Volumes are cast to ``float64`` because ``BcolzDailyBarWriter``
           re-casts them to ``uint32`` internally and complains on ``object``
           dtypes.
@@ -308,11 +310,14 @@ class FonRexBundleDataSource:
         close = frame["close"].astype(float)
         adj = frame["adj_close"].astype(float)
         # Prefer the adjusted price when the ingestion produced one, but never
-        # crash the ingest if a provider omitted it on some rows.
-        frame["close"] = adj.where(adj.notna(), close)
+        # crash the ingest if a provider omitted it on some rows (TradingView).
+        # The dividend factor of a bar applies to its whole range, so that the
+        # adjusted close stays between the adjusted low and high.
+        factor = (adj / close).where(adj.notna() & (close != 0), 1.0)
+        frame["close"] = close * factor
 
         for col in ("open", "high", "low"):
-            frame[col] = frame[col].astype(float)
+            frame[col] = frame[col].astype(float) * factor
 
         frame["volume"] = pd.to_numeric(frame["volume"], errors="coerce").fillna(0.0)
         frame["volume"] = frame["volume"].clip(lower=0).astype(float)

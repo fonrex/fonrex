@@ -235,8 +235,13 @@ class DataSourceTests(unittest.TestCase):
         # the bar of the EUR listing quoted on the same day.
         self.assertEqual(len(aapl.frame), 3)
         self.assertEqual(aapl.frame.loc[pd.Timestamp("2024-01-02"), "close"], 101.0)
-        # adj_close wins over close when available.
-        self.assertEqual(aapl.frame.loc[pd.Timestamp("2024-01-03"), "close"], 102.5)
+        # adj_close wins over close when available, and the whole bar is scaled
+        # by its dividend factor (close 103 -> 102.5).
+        jan_3 = aapl.frame.loc[pd.Timestamp("2024-01-03")]
+        self.assertAlmostEqual(jan_3["close"], 102.5)
+        self.assertAlmostEqual(jan_3["open"], 101.0 * 102.5 / 103.0)
+        self.assertAlmostEqual(jan_3["high"], 104.0 * 102.5 / 103.0)
+        self.assertAlmostEqual(jan_3["low"], 100.5 * 102.5 / 103.0)
         # NaN volume is coerced to 0 float.
         self.assertEqual(aapl.frame.loc[pd.Timestamp("2024-01-05"), "volume"], 0.0)
 

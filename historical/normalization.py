@@ -43,7 +43,9 @@ def normalize_bars(
                 "high": high,
                 "low": low,
                 "close": close,
-                "adj_close": close,
+                # The close adjusted for splits and dividends, when the source gives
+                # one (Yahoo); readers fall back on the close otherwise.
+                "adj_close": _adjusted_close(bar),
                 "volume": volume,
                 "resolution": resolution,
                 "adjusted": bar.get("adjusted", True),
@@ -51,3 +53,10 @@ def normalize_bars(
             }
         )
     return normalized
+
+
+def _adjusted_close(bar: dict[str, Any]) -> float | None:
+    value = bar.get("adj_close")
+    if value is None or pd.isna(value):
+        return None
+    return value

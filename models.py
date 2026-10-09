@@ -258,6 +258,29 @@ class PriceEOD(Base):
     )
 
 
+class PriceSeriesAdjustment(Base):
+    """How the stored bars of one price series (listing and resolution) are adjusted.
+
+    Yahoo adjusts a whole history again after each split (``close``) and each
+    dividend (``adj_close``). A series is written in one piece, then completed bar
+    by bar: this row says that the stored bars follow ``scheme`` and when the
+    whole series was last fetched in one piece. A series without a row was
+    written before the scheme was recorded and is fetched again in full.
+    """
+
+    __tablename__ = "price_series_adjustments"
+
+    asset_listing_id = Column(
+        Integer,
+        ForeignKey("asset_listings.id", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    )
+    resolution = Column(String(3), primary_key=True)
+    scheme = Column(String(40), nullable=False)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class Fundamental(Base):
     """
     Fundamentals table (fundamentals) - TimescaleDB Hypertable.

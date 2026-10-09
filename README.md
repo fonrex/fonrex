@@ -156,7 +156,7 @@ ws.onmessage = (e) => {
 | **Intraday 1min** | Live streaming via TradingView WebSocket |
 | **Real-time Prices** | WebSocket push + Redis cache (60s TTL) |
 | **Batch Quotes** | `GET /quotes?tickers=AIR.PA,BNP.PA,AAPL` |
-| **OHLCV + adj_close** | Splits & dividends adjusted |
+| **OHLCV + adj_close** | OHLC as traded (adjusted for splits); `adj_close` also adjusted for dividends. A split or a dividend after the last ingestion is detected and the series is fetched again in one piece |
 | **Multi-resolution** | 1D, 1W, 1M |
 | **Auto-ingest** | Missing data fetched automatically on first request |
 
@@ -293,6 +293,9 @@ docker compose exec fonrex-api python import_assets.py --file data/stocks.csv --
 
 # Trigger historical ingestion for all assets
 docker compose exec fonrex-api python scripts/ingest_all.py
+
+# Fetch every series again in one piece (once, after upgrading to migration 016)
+docker compose exec fonrex-api python scripts/ingest_all.py --force
 
 # Clean ISIN duplicates (safe, idempotent)
 docker compose exec fonrex-api python scripts/clean_isin_duplicates.py --dry-run

@@ -469,7 +469,7 @@ class TestIngestionUsesTheVerifiedSymbol:
         assert service.fetcher.fetch_yfinance.await_args.args[0] == "SYBB.DE"
 
         gap_arguments = service._detect_gaps.await_args.args
-        assert gap_arguments[-2:] == ("eur", None)
+        assert gap_arguments[-3:] == ("eur", None, None)  # currency, exchange, ISIN
 
     def test_listing_without_symbol_is_not_fetched_from_yahoo(self, service):
         result = asyncio.run(service.ingest("GOVY", currency="CHF", source="yfinance"))
@@ -602,6 +602,7 @@ class TestListingChosenInTheRequest:
         application.include_router(historical_router.router)
         query = MagicMock()
         query.get_history = AsyncMock(return_value=[])
+        query.get_listing = AsyncMock(return_value=None)
         ingestion = MagicMock()
         ingestion.ingest = AsyncMock(
             return_value=SimpleNamespace(
@@ -628,7 +629,11 @@ class TestListingChosenInTheRequest:
         response = client.get("/ticker/GOVY/history?currency=CHF&exchange=SIX")
 
         assert response.status_code == 200
-        assert client.query.get_history.await_args.kwargs == {"currency": "CHF", "exchange": "SIX"}
+        assert client.query.get_history.await_args.kwargs == {
+            "currency": "CHF",
+            "exchange": "SIX",
+            "isin": None,
+        }
 
     def test_manual_ingestion_passes_the_choice(self, client):
         client.ingestion.ingest.return_value = {

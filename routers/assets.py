@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -22,6 +23,7 @@ from routers.dependencies import (
 )
 
 router = APIRouter(tags=["Assets"])
+ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{10}$")
 VALID_PERIODS = {
     "1d",
     "5d",
@@ -86,7 +88,7 @@ def _invalid(message: str) -> JSONResponse:
     )
 
 
-def _validate_eod_request(ticker, period, fmt, order, from_date, to_date):
+def _validate_eod_request(ticker, period, fmt, order, from_date, to_date, isin=None):
     if not ticker or len(ticker.strip()) == 0 or len(ticker) > 10:
         return _invalid(f"Le symbole '{ticker}' n'est pas valide")
     if not ticker.replace("-", "").replace(".", "").isalnum():
@@ -101,6 +103,8 @@ def _validate_eod_request(ticker, period, fmt, order, from_date, to_date):
         return _invalid("Le paramètre 'order' doit être 'a' ou 'd'")
     if bool(from_date) != bool(to_date):
         return _invalid("Les paramètres 'from' et 'to' doivent être fournis ensemble")
+    if isin is not None and not ISIN_PATTERN.match(isin.strip().upper()):
+        return _invalid(f"L'ISIN '{isin}' n'est pas valide (12 caractères, ex. US6516391066)")
     try:
         start = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
         end = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
@@ -197,15 +201,20 @@ async def get_eod(
         max_length=50,
         description="Exchange of the listing, when several listings share the ticker",
     ),
+    isin: Optional[str] = Query(
+        None,
+        description="ISIN of the instrument, when several instruments share the ticker",
+    ),
     query_service: QueryService = Depends(get_query_service),
     ingestion_service: HistoricalIngestionService = Depends(get_ingestion_service),
     cache: Optional[CacheService] = Depends(get_cache_service),
 ):
-    validation_error = _validate_eod_request(ticker, period, fmt, order, from_date, to_date)
+    validation_error = _validate_eod_request(ticker, period, fmt, order, from_date, to_date, isin)
     if validation_error:
         return validation_error
 
     ticker = ticker.strip().upper()
+    isin = isin.strip().upper() if isin else None
     cache_key = None
     if cache and cache.enabled:
         cache_key = cache.generate_key(
@@ -218,6 +227,7 @@ async def get_eod(
             to_date=to_date,
             currency=(currency or "").upper(),
             exchange=(exchange or "").upper(),
+            isin=isin,
         )
         cached = await run_sync(cache.get, cache_key)
         if cached:
@@ -239,6 +249,7 @@ async def get_eod(
         interval=resolution,
         currency=currency,
         exchange=exchange,
+        isin=isin,
     )
     source = "database"
     ingest_error = None
@@ -251,6 +262,7 @@ async def get_eod(
             to_date=end_date,
             currency=currency,
             exchange=exchange,
+            isin=isin,
         )
         ingest_error = result.error
         if result.status in {"success", "up_to_date"}:
@@ -261,6 +273,7 @@ async def get_eod(
                 interval=resolution,
                 currency=currency,
                 exchange=exchange,
+                isin=isin,
             )
             source = result.source_used or "yfinance"
 
@@ -286,8 +299,11 @@ async def get_eod(
             )
         return Response(content=content, media_type="text/csv")
 
+    # Which instrument and listing the ticker designated, so that the client can check it.
+    listing = await query_service.get_listing(ticker, currency, exchange, isin)
     payload = {
         "ticker": ticker,
+        "listing": listing,
         "period": period,
         "format": "json",
         "count": len(records),

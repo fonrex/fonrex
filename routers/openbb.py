@@ -49,7 +49,7 @@ from routers.fundamentals import (
     get_sec_edgar_provider,
     get_validation_layer,
 )
-from routers.historical import get_ticker_history
+from routers.historical import ISIN_QUERY_PATTERN, get_ticker_history
 from routers.macro import get_fred_service, get_macro_rates
 from routers.news import (
     NEWS_DEFAULT_LIMIT,
@@ -134,6 +134,7 @@ async def get_openbb_eod(
     to_date: Optional[str] = Query(None, alias="to"),
     currency: Optional[str] = Query(None, max_length=10),
     exchange: Optional[str] = Query(None, max_length=50),
+    isin: Optional[str] = Query(None, description="ISIN of the instrument"),
     query_service: QueryService = Depends(get_query_service),
     ingestion_service: HistoricalIngestionService = Depends(get_ingestion_service),
     cache=Depends(get_cache_service),
@@ -151,6 +152,7 @@ async def get_openbb_eod(
         to_date=to_date,
         currency=currency,
         exchange=exchange,
+        isin=isin,
         query_service=query_service,
         ingestion_service=ingestion_service,
         cache=cache,
@@ -175,6 +177,9 @@ async def get_openbb_history(
     interval: str = Query("1D", pattern="^(daily|weekly|monthly|1D|1W|1M)$"),
     currency: Optional[str] = Query(None, max_length=10),
     exchange: Optional[str] = Query(None, max_length=50),
+    isin: Optional[str] = Query(
+        None, pattern=ISIN_QUERY_PATTERN, description="ISIN of the instrument"
+    ),
     query_service: QueryService = Depends(get_query_service),
     redis_client=Depends(get_redis_client),
     cache_service=Depends(get_cache_service),
@@ -187,6 +192,7 @@ async def get_openbb_history(
         interval=interval,
         currency=currency,
         exchange=exchange,
+        isin=isin,
         query_service=query_service,
         redis_client=redis_client,
         cache_service=cache_service,

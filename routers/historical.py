@@ -26,6 +26,9 @@ from schemas import historical as historical_schemas
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Historical Data"])
 
+# An ISIN: two letters of country, nine alphanumerics and a check character.
+ISIN_QUERY_PATTERN = "^[A-Za-z]{2}[A-Za-z0-9]{10}$"
+
 
 class PricePoint(BaseModel):
     time: datetime
@@ -37,8 +40,18 @@ class PricePoint(BaseModel):
     volume: Optional[int]
 
 
+class ListingIdentity(BaseModel):
+    """The listing a ticker designated: a client checks it is the instrument it wanted."""
+
+    ticker: str
+    isin: Optional[str] = None
+    currency: Optional[str] = None
+    exchange: Optional[str] = None
+
+
 class HistoryResponse(BaseModel):
     ticker: str
+    listing: Optional[ListingIdentity] = None
     interval: str
     count: int
     data: List[PricePoint]
@@ -59,6 +72,9 @@ async def post_historical_ingest(
     to_date: Optional[date] = None,
     currency: Optional[str] = Query(None, max_length=10, description="Currency of the listing"),
     exchange: Optional[str] = Query(None, max_length=50, description="Exchange of the listing"),
+    isin: Optional[str] = Query(
+        None, pattern=ISIN_QUERY_PATTERN, description="ISIN of the instrument"
+    ),
     service: HistoricalIngestionService = Depends(get_ingestion_service),
 ):
     return await service.ingest(
@@ -70,6 +86,7 @@ async def post_historical_ingest(
         to_date=to_date,
         currency=currency,
         exchange=exchange,
+        isin=isin.upper() if isin else None,
     )
 
 
@@ -104,6 +121,9 @@ async def get_ticker_history(
     interval: str = Query("1D", pattern="^(daily|weekly|monthly|1D|1W|1M)$"),
     currency: Optional[str] = Query(None, max_length=10, description="Currency of the listing"),
     exchange: Optional[str] = Query(None, max_length=50, description="Exchange of the listing"),
+    isin: Optional[str] = Query(
+        None, pattern=ISIN_QUERY_PATTERN, description="ISIN of the instrument"
+    ),
     query_service: QueryService = Depends(get_query_service),
     redis_client=Depends(get_redis_client),
     cache_service: Optional[CacheService] = Depends(get_cache_service),
@@ -120,7 +140,10 @@ async def get_ticker_history(
         "1M": "1M",
     }
     normalized = aliases.get(interval.strip(), "1D")
+    isin = isin.upper() if isin else None
     listing_choice = f"{(currency or '').upper()}:{(exchange or '').upper()}"
+    if isin:
+        listing_choice += f":{isin}"
     # Upper case, as the ingestion looks the entries up to drop them.
     cache_key = f"history:{symbol.upper()}:{normalized}:{start_date}:{end_date}:{listing_choice}"
 
@@ -133,11 +156,14 @@ async def get_ticker_history(
             logger.warning("History cache read failed for %s: %s", cache_key, exc)
 
     data = await query_service.get_history(
-        symbol, start_date, end_date, interval, currency=currency, exchange=exchange
+        symbol, start_date, end_date, interval, currency=currency, exchange=exchange, isin=isin
     )
+    # Which instrument and listing the ticker designated, so that the client can check it.
+    listing = await query_service.get_listing(symbol, currency, exchange, isin)
 
     response = {
         "ticker": symbol,
+        "listing": listing,
         "interval": interval,
         "count": len(data),
         "data": data,

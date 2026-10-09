@@ -58,6 +58,19 @@ def get_api_documentation():
                 "required": False,
                 "format": "YYYY-MM-DD",
             },
+            "currency": {
+                "description": "Currency of the listing, when several listings share the ticker",
+                "required": False,
+            },
+            "exchange": {
+                "description": "Exchange of the listing, when several listings share the ticker",
+                "required": False,
+            },
+            "isin": {
+                "description": "ISIN of the instrument, when several instruments share the ticker",
+                "required": False,
+                "format": "12 characters, e.g. US6516391066",
+            },
         },
         "examples": [
             "/eod/TSLA?period=5d",

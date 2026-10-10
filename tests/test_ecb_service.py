@@ -12,7 +12,6 @@ import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from macro.ecb_service import (
     DEPOSIT_FACILITY_RATE,
@@ -93,10 +92,17 @@ class TestParsing:
 
 
 @pytest.fixture
-def stored():
-    """A real table of stored rates, and an ECB service reading it without Redis."""
+def stored(tmp_path):
+    """A real table of stored rates, and an ECB service reading it without Redis.
+
+    ``get_rates`` reads its three series at the same time, each in a thread of
+    ``run_sync``. The database is a file so that each thread gets a connection
+    of its own from the pool, as with PostgreSQL: a single in-memory connection
+    shared by every thread (``StaticPool``) was used by two threads at once,
+    and SQLite answered "bad parameter or other API misuse" now and then.
+    """
     engine = create_engine(
-        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        f"sqlite:///{tmp_path / 'macro.db'}", connect_args={"check_same_thread": False}
     )
     Base.metadata.create_all(engine)
     Session = scoped_session(sessionmaker(bind=engine))

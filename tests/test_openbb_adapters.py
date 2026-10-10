@@ -64,7 +64,7 @@ def test_format_macro_rates_metric():
     assert isinstance(metrics, list)
     assert len(metrics) == 1
     item = metrics[0]
-    assert "DGS10" in item["label"] or "10-Year" in item["label"]
+    assert item["label"] == "US 10Y Treasury (2026-09-25)"
     assert item["value"] == "4.25%"
     assert item["delta"] is None
 

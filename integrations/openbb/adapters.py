@@ -114,26 +114,42 @@ def _percent(ratio: Any) -> str:
     return f"{Decimal(str(ratio)) * 100:.2f}%"
 
 
+# Short names of the tiles, by series.
+MACRO_TILE_NAMES = {
+    "DGS10": "US 10Y Treasury",
+    "YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y": "Euro AAA 10Y",
+    "FM.D.U2.EUR.4F.KR.DFR.LEV": "ECB deposit rate",
+    "CISS.D.U2.Z0Z.4F.EC.SS_CIN.IDX": "Euro stress index (CISS)",
+}
+
+
+def _macro_tile(rate: Dict[str, Any]) -> Dict[str, Any]:
+    value = rate.get("value")
+    if value is None:
+        shown = "N/A"
+    elif rate.get("unit") == "index":
+        shown = f"{Decimal(str(value)):.4f}"
+    else:
+        # A rate is a ratio (0.0412): it is shown as a percentage (4.12%).
+        shown = _percent(value)
+    label = MACRO_TILE_NAMES.get(rate.get("series_id") or "") or rate.get("label") or "Rate"
+    details = [str(rate["observation_date"])] if rate.get("observation_date") else []
+    if rate.get("freshness") == "stale":
+        details.append("stale")
+    if details:
+        label = f"{label} ({', '.join(details)})"
+    return {"label": label, "value": shown, "delta": None}
+
+
 def format_macro_rates_metric(macro_obj: Any) -> List[Dict[str, Any]]:
-    """Format FRED macro rates into OpenBB metric cards."""
+    """Format macro rates (FRED, ECB) into OpenBB metric cards, one per series."""
     data = _to_dict(macro_obj)
-    rf_data = data.get("risk_free_rate") or {}
-    val = rf_data.get("value")
-    obs_date = rf_data.get("observation_date")
-
-    # The rate is a ratio (0.0412): it is shown as a percentage (4.12%).
-    display_val = _percent(val) if val is not None else "N/A"
-    label = rf_data.get("label") or "US 10Y Risk-Free Rate (DGS10)"
-    if obs_date:
-        label = f"{label} ({obs_date})"
-
-    return [
-        {
-            "label": label,
-            "value": display_val,
-            "delta": None,
-        }
-    ]
+    rates = [_to_dict(rate) for rate in data.get("rates") or []]
+    if not rates and data.get("risk_free_rate"):
+        rates = [_to_dict(data["risk_free_rate"])]
+    if not rates:
+        return [{"label": "US 10Y Treasury", "value": "N/A", "delta": None}]
+    return [_macro_tile(rate) for rate in rates]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -297,3 +297,32 @@ async def test_rate_from_redis_is_cached(fred_service, mock_redis):
     rate = await fred_service.get_risk_free_rate()
 
     assert (rate.value, rate.source) == (Decimal("0.045"), "fred_cached")
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_rates_of_fred_are_the_us_rates(mock_get, stored_rates):
+    mock_get.return_value = _fred_answers("2026-10-08", "4.12")
+
+    answer = await stored_rates.service.get_rates()
+
+    assert answer.currency == "USD"
+    (rate,) = answer.rates
+    assert rate == answer.risk_free_rate
+    assert (rate.series_id, rate.value, rate.source, rate.currency) == (
+        "DGS10",
+        Decimal("0.0412"),
+        "fred",
+        "USD",
+    )
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_no_us_rate_gives_an_empty_list(mock_get, stored_rates):
+    stored_rates.service.api_key = None
+
+    answer = await stored_rates.service.get_rates()
+
+    assert (answer.risk_free_rate, answer.rates) == (None, [])
+    mock_get.assert_not_called()

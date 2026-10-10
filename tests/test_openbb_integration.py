@@ -34,21 +34,26 @@ def client():
     orig_db = getattr(app.state, "db_service", None)
     orig_db_available = getattr(app.state, "db_available", None)
     orig_fred = getattr(app.state, "fred_service", None)
+    orig_ecb = getattr(app.state, "ecb_service", None)
 
     mock_fred = MagicMock()
-    mock_fred.get_current_rates = AsyncMock(return_value={"risk_free_rate": None})
+    mock_fred.get_rates = AsyncMock(return_value={"risk_free_rate": None})
+    mock_ecb = MagicMock()
+    mock_ecb.get_rates = AsyncMock(return_value={"risk_free_rate": None})
 
     with TestClient(app) as test_client:
         app.state.redis_client = mock_redis
         app.state.db_service = MagicMock()
         app.state.db_available = True
         app.state.fred_service = mock_fred
+        app.state.ecb_service = mock_ecb
         yield test_client
 
     app.state.redis_client = orig_redis
     app.state.db_service = orig_db
     app.state.db_available = orig_db_available
     app.state.fred_service = orig_fred
+    app.state.ecb_service = orig_ecb
 
 
 @pytest.fixture

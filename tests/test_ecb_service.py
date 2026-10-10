@@ -207,3 +207,28 @@ class TestService:
 
         key = redis.setex.await_args.args[0]
         assert key == "macro:ecb:YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y"
+
+
+class TestRatesOfTheEuroArea:
+    async def test_every_series_known_is_given_with_its_source_and_currency(self, stored):
+        stored.store("0.0350", date(2026, 10, 8), timedelta(hours=1))
+        # The two other series are asked and the ECB does not answer.
+        with patch("httpx.AsyncClient.get", AsyncMock(side_effect=httpx.ConnectError("down"))):
+            answer = await stored.service.get_rates()
+
+        assert answer.currency == "EUR"
+        assert answer.risk_free_rate.value == Decimal("0.0350")
+        assert [rate.series_id for rate in answer.rates] == [EURO_RISK_FREE_10Y.series_id]
+        assert (answer.rates[0].source, answer.rates[0].currency) == ("ecb", "EUR")
+
+    async def test_a_rate_read_from_redis_says_where_it_comes_from(self, stored):
+        redis = AsyncMock()
+        redis.get.return_value = (
+            '{"series_id": "FM.D.U2.EUR.4F.KR.DFR.LEV", "label": "DFR", "value": "0.02",'
+            ' "unit": "ratio", "observation_date": "2026-10-08"}'
+        )
+        service = ECBService(stored.service.db_service, redis_client=redis)
+
+        rate = await service.get_series(DEPOSIT_FACILITY_RATE)
+
+        assert (rate.freshness, rate.source, rate.currency) == ("cached", "ecb", "EUR")

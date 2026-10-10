@@ -20,6 +20,7 @@ class FREDService(CachedRateService):
     """Service to fetch and cache macro-economic rates from FRED (St. Louis Fed)."""
 
     source = "fred"
+    currency = "USD"
 
     def __init__(self, db_service, redis_client=None):
         super().__init__(db_service, redis_client)
@@ -28,7 +29,13 @@ class FREDService(CachedRateService):
     async def get_current_rates(self) -> MacroRatesResponse:
         """Returns the current macro rates (mainly risk-free rate) from cache or FRED."""
         risk_free = await self._get_series("DGS10", "10-Year Treasury Constant Maturity Rate")
-        return MacroRatesResponse(risk_free_rate=risk_free)
+        return MacroRatesResponse(
+            currency=self.currency, risk_free_rate=risk_free, rates=[risk_free] if risk_free else []
+        )
+
+    async def get_rates(self) -> MacroRatesResponse:
+        """Every FRED series Fonrex reads (the 10-year Treasury rate), for GET /macro/rates."""
+        return await self.get_current_rates()
 
     async def get_risk_free_rate(self) -> RiskFreeRate:
         """The risk-free rate for DCFService, and where it comes from.

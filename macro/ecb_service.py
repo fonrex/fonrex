@@ -13,6 +13,7 @@ then ``macro_rates_cache``, then the API.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
@@ -24,7 +25,7 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from macro.rate_cache import CachedRateService
-from schemas.macro import RATE_UNIT, MacroRate, RiskFreeRate
+from schemas.macro import RATE_UNIT, MacroRate, MacroRatesResponse, RiskFreeRate
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ class ECBService(CachedRateService):
     """Euro area rates from the ECB Data Portal, through the shared macro cache."""
 
     source = "ecb"
+    currency = "EUR"
 
     def __init__(self, db_service, redis_client=None):
         super().__init__(db_service, redis_client)
@@ -117,6 +119,20 @@ class ECBService(CachedRateService):
     async def get_series(self, series: EcbSeries) -> MacroRate | None:
         """The latest observation of a series: cached, read now, or stored before."""
         return await self._get_series(series.series_id, series.label)
+
+    async def get_rates(self) -> MacroRatesResponse:
+        """The euro risk-free rate, the deposit facility rate and the CISS, for GET /macro/rates."""
+        rates = await asyncio.gather(
+            *(
+                self.get_series(series)
+                for series in (EURO_RISK_FREE_10Y, DEPOSIT_FACILITY_RATE, SYSTEMIC_STRESS)
+            )
+        )
+        return MacroRatesResponse(
+            currency=self.currency,
+            risk_free_rate=rates[0],
+            rates=[rate for rate in rates if rate is not None],
+        )
 
     async def get_euro_risk_free_rate(self) -> RiskFreeRate | None:
         """The euro risk-free rate (AAA 10-year), or ``None`` when none is known.

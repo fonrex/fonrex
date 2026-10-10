@@ -153,7 +153,7 @@ How far each feature follows this split today:
 | History and EOD | `routers/historical.py`, `routers/assets.py` | `historical/ingestion_service.py`, `database/query.py` | No — the routers call the services and build the cache keys |
 | Valuation | `routers/valuation.py` | `valuation/dcf_service.py` | No — the service reads the ORM models directly |
 | News | `routers/news.py` | `news/news_service.py` | No — the service holds SQL, cache and provider calls |
-| Macro | `routers/macro.py` | `macro/fred_service.py` | No — the service has its own HTTP client |
+| Macro | `routers/macro.py` | `macro/fred_service.py`, `macro/ecb_service.py` | No — each service has its own HTTP client |
 | Operations | `routers/admin.py` | `database/maintenance.py`, `cache/service.py` | No |
 | OpenBB | `routers/openbb.py` | calls the route functions of the other routers | — |
 
@@ -265,7 +265,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `monitoring/canary_monitor.py` | Daily orchestration of canary controls, aggregates, and alerts via ports. |
 | `database/monitoring.py` | SQLAlchemy monitoring adapter: price history, logs, aggregates, and alerts. |
 | `routers/monitoring.py` | REST monitoring endpoints (`/health/*`) whose dependencies are resolved from `app.state`. |
-| `routers/macro.py` | HTTP routes for macro-economic data (FRED rates). |
+| `routers/macro.py` | HTTP routes for macro-economic data: the rates of FRED (USD) and of the ECB (EUR), by currency. |
 | `historical/providers.py` | yfinance and TradingView connectors for retrieving historical bars, and the choice between them (`fetch`): yfinance with the verified symbol, TradingView only for a line quoted in the currency of the listing. |
 | `historical/normalization.py` | Pure OHLCV validation, deduplication, and normalization rules. |
 | `schemas/monitoring.py` | Pydantic v2 schemas for monitoring: `ProviderStatus`, `ProviderHealthSummary`, `ValidationResult`, `AlertSchema`, `DailyStatSchema`, `ProviderDetailResponse`, `HealthStatsResponse`, `AlertSeverity` / `AlertType` enums; re-exports `CanaryCheckResult` and `HealthStatus` from `monitoring/models.py`. |
@@ -729,7 +729,7 @@ Every route of the application is listed here, and `tests/test_docs_consistency.
 | POST | `/health/canary/run` | Manual canary check trigger (background, by provider or global) |
 | GET | `/health/canary/history` | Canary results history (filterable by provider, ticker, period) |
 | GET | `/health/stats` | Global data quality statistics (7 days, validity rate, reliable providers) |
-| GET | `/macro/rates` | Retrieve current macro-economic rates (like the risk-free rate) |
+| GET | `/macro/rates` | Current macro-economic rates of FRED (USD) and of the ECB (EUR); `currency=USD` or `EUR` keeps one source |
 
 OpenBB Workspace routes (`routers/openbb.py`). Each one calls the route function of the Fonrex route it adapts, with the same parameters, and reshapes the answer (see [Integrations](#integrations)):
 
@@ -827,7 +827,7 @@ Boursorama and ZoneBourse publish estimates for the current fiscal year, GoogleF
 
 ### `/fundamental/deep` Endpoint
 
-`GET /fundamental/deep` (`ticker` or `isin`, `refresh`, `sections`) returns structured data read by `DatabaseService.get_deep_sections()`: the last highlights (`FundamentalsHighlights`), quarterly/annual financial statements (`FinancialStatement`), actual vs estimated EPS history (`EarningsHistory`), and consensus analyst ratings (`AnalystRatings`). `sections` is `all` or a list among `highlights`, `statements`, `earnings`, `ratings`. The answer is kept 24 hours in Redis under `deep:{ticker}`, always with every section: a request receives the sections it asked for, whatever the request that filled the entry. `refresh=true` ignores the cached answer and fetches again. The figures are fetched from Yahoo with the symbol verified for the listing (`meta.symbol`); without one nothing is fetched and `meta.note` gives the reason — the answer is then what the database already held (`meta.source` is `database`) and is not cached. `dividend_yield` is stored as a ratio.
+`GET /fundamental/deep` (`ticker` or `isin`, `refresh`, `sections`) returns structured data read by `DatabaseService.get_deep_sections()`: the last highlights (`FundamentalsHighlights`), quarterly/annual financial statements (`FinancialStatement`), actual vs estimated EPS history (`EarningsHistory`), and consensus analyst ratings (`AnalystRatings`). `sections` is `all` or a list among `highlights`, `statements`, `earnings`, `ratings`. The answer is kept 24 hours in Redis under `deep:{asset_id}` (an instrument, not a ticker: `AIR` is AAR Corp and the catalogue ticker of Airbus), always with every section: a request receives the sections it asked for, whatever the request that filled the entry. `refresh=true` ignores the cached answer and fetches again. The figures are fetched from Yahoo with the symbol verified for the listing (`meta.symbol`); without one nothing is fetched and `meta.note` gives the reason — the answer is then what the database already held (`meta.source` is `database`) and is not cached. `dividend_yield` is stored as a ratio.
 
 ### Specialized Endpoints
 
@@ -1310,6 +1310,8 @@ The `FREDService` provides the 10-Year Treasury Constant Maturity Rate (`DGS10`)
 
 The `ECBService` reads the series of the European Central Bank Data Portal (`https://data-api.ecb.europa.eu/service/data/{flow}/{key}?lastNObservations=5&format=csvdata`, free and without key; `ECB_API_URL` replaces the address) through the same cache as FRED (Redis key `macro:ecb:{flow.key}`, `macro_rates_cache` with `source = 'ecb'`). It keeps the latest observation with a value: the 10-year spot rate of the AAA euro area government yield curve (`YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y`, the euro risk-free rate), the deposit facility rate (`FM.D.U2.EUR.4F.KR.DFR.LEV`) and the Composite Indicator of Systemic Stress (`CISS.D.U2.Z0Z.4F.EC.SS_CIN.IDX`, an index stored as published). `get_euro_risk_free_rate()` reports `ecb_live`, `ecb_cached` or `ecb_stale`, or nothing when no value is known: the caller chooses the fallback.
 
+`GET /macro/rates` gives the rates of both sources, each tagged with its `source` (`fred`, `ecb`) and its `currency` (`USD`, `EUR`): `rates` lists the US 10-year Treasury rate, then the euro AAA 10-year rate, the deposit facility rate and the CISS (an index, not a ratio). `currency=USD` or `currency=EUR` keeps the series of one source; another currency answers `422`, as no source publishes its rates. `risk_free_rate` is the 10-year rate of the currency asked, the US one when none is asked (the answer before the ECB was a source). A source that did not start is left out (`503` when it is the only one asked, or when none started). `GET /openbb/macro/rates` takes the same `currency` (empty: both) and shows one card per series: rates as percentages, the CISS with four decimals, the date of the observation and `stale` when the value is an older stored one.
+
 ### Weighting and Consensus
 
 The final intrinsic value (consensus) is calculated by combining active models according to default or custom weights in the request:
@@ -1552,6 +1554,8 @@ Test coverage, by theme:
 - `tests/test_fiscal_years.py`: statements stored by the enrichment as they really are (three rows per fiscal year), then read by the valuation, the sensitivity matrix and the solvency ratios — five fiscal years, cost of debt and tax rate from the statements, free-cash-flow base over three years, net debt, dividends.
 - `tests/test_dcf_wacc_dynamic_sources.py`, `tests/test_fred_service.py`: source of the risk-free rate and of the cost of debt (FRED, stored value, request override, fallback); FRED series read from Redis, from the API, and on a day without observation; a stored rate that is old is refreshed, a recent one is not asked again, and it remains the fallback when FRED fails.
 - `tests/test_dcf_currency.py`: currency of the valuation (statements, then listing, then instrument), pence turned into pounds, no upside across currencies, the risk-free rate chosen by currency (ECB for EUR, FRED for USD, the configured rate otherwise), on statements stored by the enricher.
+- `tests/test_ecb_service.py`: ECB answers read in CSV (percent stored as ratios, the CISS as published, the latest observation with a value), through the shared cache (live, cached, stale), and the euro area rates listed with their source and currency.
+- `tests/test_macro_rates_route.py`: `GET /macro/rates` with and without `currency` (both sources, one source, a currency without source, a source not started) and the OpenBB cards, one per series.
 - `tests/test_realtime.py`: complete behavior of realtime streaming (subscribe, unsubscribe, restore, process_tick), WebSocket connection manager, a tick delivered once to each client of a ticker, REST quote endpoints, and fallback policies.
 - `tests/test_monitoring.py`: unit tests covering the `ValidationLayer` (range checks on exact bounds, outlier consensus, filtered median, `validate_results` integration with outlier/out-of-range rejection, never-raises, dict/Pydantic field extraction), the `CanaryMonitor` (EU-only compatibility, canary checks ok/out-of-range/null/boundary, daily stats aggregation, Redis update via `fakeredis`), Pydantic schemas (`ProviderStatus`, `ProviderHealthSummary`, `DailyStatSchema`, `HealthStatsResponse`), and router endpoints (`TestClient`: 503 without config, canary trigger, Redis read via `httpx.AsyncClient`).
 - `tests/test_cache_service.py`: readable keys and duration per category, purge of a ticker, a pickled or unreadable entry is a miss and runs nothing, no application module imports `pickle`.

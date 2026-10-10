@@ -50,7 +50,7 @@ from routers.fundamentals import (
     get_validation_layer,
 )
 from routers.historical import ISIN_QUERY_PATTERN, get_ticker_history
-from routers.macro import get_fred_service, get_macro_rates
+from routers.macro import get_macro_rates
 from routers.news import (
     NEWS_DEFAULT_LIMIT,
     NEWS_MAX_LIMIT,
@@ -112,10 +112,11 @@ async def get_openbb_quote(
 
 @router.get("/macro/rates")
 async def get_openbb_macro_rates(
-    service=Depends(get_fred_service),
+    request: Request,
+    currency: Optional[str] = Query(None, pattern="^([A-Za-z]{3})?$"),
 ) -> List[Dict[str, Any]]:
-    """Return current macro rates formatted as OpenBB metric tiles."""
-    rates_res = await get_macro_rates(service=service)
+    """Return current macro rates (USD and EUR by default) formatted as OpenBB metric tiles."""
+    rates_res = await get_macro_rates(request=request, currency=currency)
     return format_macro_rates_metric(rates_res)
 
 

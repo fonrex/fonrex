@@ -37,6 +37,8 @@ class CachedRateService:
 
     #: Short name of the source: first segment of the Redis keys, ``source`` column.
     source = "macro"
+    #: Currency (or currency area) the series of the source belong to.
+    currency: str | None = None
 
     def __init__(self, db_service, redis_client=None):
         self.db_service = db_service
@@ -69,8 +71,10 @@ class CachedRateService:
                 cached_data = await self.redis_client.get(redis_key)
                 if cached_data:
                     data = json.loads(cached_data)
-                    return MacroRate(
-                        **{**data, "unit": _unit(data.get("unit")), "freshness": "cached"}
+                    return self._tagged(
+                        MacroRate(
+                            **{**data, "unit": _unit(data.get("unit")), "freshness": "cached"}
+                        )
                     )
             except Exception as e:
                 logger.warning("Erreur lecture cache Redis %s: %s", redis_key, e)
@@ -102,7 +106,13 @@ class CachedRateService:
             except Exception as e:
                 logger.warning("Erreur écriture cache Redis %s: %s", redis_key, e)
 
-        return rate
+        return self._tagged(rate)
+
+    def _tagged(self, rate: MacroRate | None) -> MacroRate | None:
+        """The rate with its source and currency, whichever layer of the cache gave it."""
+        if rate is None:
+            return None
+        return rate.model_copy(update={"source": self.source, "currency": self.currency})
 
     def _is_recent(self, fetched_at: datetime | None) -> bool:
         """Whether a stored value was read from the source less than one cache lifetime ago."""

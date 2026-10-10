@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,6 +34,10 @@ class MacroRate(BaseModel):
             "be read (no API key, or no answer)"
         ),
     )
+    source: Optional[str] = Field(None, description="Where the series is read: 'fred' or 'ecb'.")
+    currency: Optional[str] = Field(
+        None, description="Currency (or currency area) of the series: 'USD' for FRED, 'EUR' for the ECB."
+    )
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,9 +52,26 @@ class RiskFreeRate:
 
 
 class MacroRatesResponse(BaseModel):
-    """Réponse de l'endpoint GET /macro/rates."""
-    risk_free_rate: Optional[MacroRate] = Field(None, description="Taux sans risque à 10 ans (DGS10).")
-    # On pourrait en rajouter d'autres plus tard, ex: inflation, corporate spread...
+    """Answer of GET /macro/rates."""
+
+    currency: Optional[str] = Field(
+        None, description="Currency asked (USD or EUR); empty when every source is given."
+    )
+    risk_free_rate: Optional[MacroRate] = Field(
+        None,
+        description=(
+            "10-year risk-free rate of the currency asked: US Treasury (FRED DGS10) for USD "
+            "and when no currency is asked, AAA euro area government spot rate (ECB) for EUR."
+        ),
+    )
+    rates: List[MacroRate] = Field(
+        default_factory=list,
+        description=(
+            "Every series of the currency asked (all currencies when none is asked): "
+            "DGS10 for USD; the AAA 10-year spot rate, the deposit facility rate and the "
+            "CISS stress index for EUR."
+        ),
+    )
 
 
 class SolvencyRatios(BaseModel):

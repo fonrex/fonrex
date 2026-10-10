@@ -48,6 +48,8 @@ directly inside OpenBB.
 | `fonrex_etf_details` | Fonrex ETF Details | Fundamentals | table | UCITS ETF details from JustETF |
 | `fonrex_index_constituents` | Fonrex Index Constituents | Market Data | table | Index constituents (S&P 500, CAC 40, NASDAQ 100, DAX) |
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates, one card per series: US 10Y Treasury (FRED); euro AAA 10Y, ECB deposit rate, CISS (ECB). Parameter `currency`: USD, EUR or both |
+| `fonrex_factor_exposure` | Fonrex Factor Exposure | Factors | table | Fama/French exposure of a listing (model ff3, ff5 or carhart; monthly or daily): annualised alpha, betas with standard errors and t-stats, R², residual volatility, periods and warnings. Returns are in US dollars (other currencies converted with the ECB reference rates) |
+| `fonrex_factor_returns` | Fonrex Factor Returns | Factors | chart | Cumulative returns of the factors of a dataset (US, Europe or developed markets; 3 factors, 5 factors or momentum), in US dollars, last 10 years by default (parameter `start`). Source: Kenneth R. French Data Library |
 
 ## Pre-assembled Apps
 
@@ -57,6 +59,8 @@ A comprehensive dashboard for analyzing a single ticker:
 - **Valuation** tab: DCF valuation + sensitivity matrix
 - **Technical** tab: Full technical chart with indicators
 - **News** tab: Latest news from 7 providers
+- **Watchlist** tab: Batch quotes
+- **Factors** tab: Fama/French 5-factor exposure of the ticker + European factor returns
 
 ### Fonrex — Screener & Macro
 An idea-generation dashboard:

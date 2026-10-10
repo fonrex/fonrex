@@ -758,7 +758,7 @@ technical indicators and news directly inside OpenBB's dashboard environment.
 ![OpenBB Workspace Example](img/openBB-Workspace-example.png)
 
 👉 See [integrations/openbb/README.md](integrations/openbb/README.md) for
-setup instructions and the full list of 19 available widgets.
+setup instructions and the full list of 21 available widgets.
 
 ---
 

@@ -395,3 +395,32 @@ class TestRoute:
         app.state.factor_exposure = None
 
         assert client.get("/factors/exposure/AIR").status_code == 503
+
+
+class TestOpenbbWidget:
+    def test_the_exposure_as_table_rows(self, client):
+        rows = client.get("/openbb/factors/exposure/AIR?model=carhart&window=72").json()
+
+        labels = [row["Coefficient"] for row in rows]
+        assert labels[:5] == [
+            "Alpha (annualised)",
+            "Market (MKT-RF)",
+            "Size (SMB)",
+            "Value (HML)",
+            "Momentum (MOM)",
+        ]
+        assert rows[1]["Value"] == pytest.approx(1.2, abs=0.02)
+        assert labels[8].startswith("Periods (monthly, ")
+        assert rows[8]["Value"] == 72
+        assert rows[9] == {
+            "Coefficient": "Prices converted to USD from",
+            "Value": "EUR",
+            "Std error": None,
+            "t-stat": None,
+        }
+
+    def test_what_cannot_be_measured_answers_its_status(self, client):
+        assert client.get("/openbb/factors/exposure/AIR?model=ff4").status_code == 422
+        app.state.factor_exposure = None
+
+        assert client.get("/openbb/factors/exposure/AIR").status_code == 503

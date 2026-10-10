@@ -197,3 +197,29 @@ def test_without_database_the_routes_are_unavailable(client):
 
     assert client.get("/factors").status_code == 503
     assert client.post("/factors/refresh").status_code == 503
+
+
+class TestOpenbbChart:
+    def test_cumulative_returns_of_the_last_ten_years_by_default(self, client):
+        figure = client.get("/openbb/factors/us_3/chart").json()
+
+        dataset, frequency, start, end = client.library.series_asked[-1]
+        assert (dataset, frequency, end) == ("us_3", "monthly", None)
+        assert start.day == 1 and date.today().year - start.year == 10
+        assert [trace["name"] for trace in figure["data"]] == [
+            "Market (MKT-RF)",
+            "Size (SMB)",
+            "Value (HML)",
+        ]
+        market = figure["data"][0]
+        assert market["x"] == ["2026-07-31", "2026-08-31"]
+        # (1 − 0.0061) × (1 + 0.0256) − 1
+        assert market["y"] == pytest.approx([-0.0061, 0.019344], abs=1e-6)
+
+    def test_a_chosen_start(self, client):
+        client.get("/openbb/factors/us_3/chart?start=2000-01-01&frequency=monthly")
+
+        assert client.library.series_asked[-1][2] == date(2000, 1, 1)
+
+    def test_an_unknown_dataset(self, client):
+        assert client.get("/openbb/factors/asia_3/chart").status_code == 404

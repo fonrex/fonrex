@@ -344,3 +344,8 @@ def test_format_etf_details_table():
     metrics = {r["metric"]: r["value"] for r in rows}
     assert metrics["ISIN"] == "IE00B4L5Y983"
     assert metrics["Domicile"] == "Ireland"
+
+
+def test_a_series_without_value_shows_not_available():
+    (card,) = format_macro_rates_metric({"rates": [{"series_id": "DGS10", "value": None}]})
+    assert card == {"label": "US 10Y Treasury", "value": "N/A", "delta": None}

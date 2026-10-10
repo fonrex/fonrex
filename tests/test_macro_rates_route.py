@@ -154,3 +154,21 @@ class TestOpenBBTile:
             {"rates": [{"series_id": "X", "label": "Other", "value": "0.01"}]}
         )
         assert card == {"label": "Other", "value": "1.00%", "delta": None}
+
+
+def test_the_api_starts_without_the_ecb(monkeypatch):
+    """A failing ECB service leaves its slot empty: FRED and the valuation still start."""
+    import main
+
+    monkeypatch.setattr(main, "ECBService", MagicMock(side_effect=RuntimeError("no ECB")))
+    names = ("fred_service", "ecb_service", "dcf_service")
+    originals = {name: getattr(app.state, name, None) for name in names}
+    try:
+        with TestClient(app):
+            assert app.state.ecb_service is None
+            assert app.state.fred_service is not None
+            assert app.state.dcf_service.ecb is None
+            assert app.state.dcf_service.fred is app.state.fred_service
+    finally:
+        for name, value in originals.items():
+            setattr(app.state, name, value)

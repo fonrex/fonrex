@@ -198,7 +198,7 @@ def ingestion(factory, market):
     database = MagicMock()
     database.get_session.side_effect = factory
 
-    async def history_range(ticker, resolution, currency=None, exchange=None):
+    async def history_range(ticker, resolution, currency=None, exchange=None, isin=None):
         session = factory()
         days = [session_date(row[0]) for row in session.execute(select(PriceEOD.timestamp))]
         session.close()

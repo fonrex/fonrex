@@ -109,28 +109,34 @@ class HistoricalIngestionService:
             ticker, resolution, force_refresh, from_date, to_date, currency, exchange, isin
         )
 
-        if is_up_to_date:
+        async def stop(status: str, error_msg: Optional[str] = None) -> IngestResult:
+            """End the ingestion without writing anything: up to date, or failed."""
             duration_ms = int((time.time() - start_time) * 1000)
+            dates = {"from_date": from_date, "to_date": to_date} if not error_msg else {}
             await self._log_ingest(
                 asset_id=asset_id,
                 ticker=ticker,
                 resolution=resolution,
                 source=source,
-                status="up_to_date",
+                status=status,
                 records_added=0,
-                from_date=from_date,
-                to_date=to_date,
+                error_msg=error_msg,
                 duration_ms=duration_ms,
+                **dates,
             )
             return IngestResult(
                 ticker=ticker,
                 resolution=resolution,
-                status="up_to_date",
+                status=status,
+                source_used=source if error_msg else None,
                 records_added=0,
-                from_date=from_date,
-                to_date=to_date,
                 duration_ms=duration_ms,
+                error=error_msg,
+                **dates,
             )
+
+        if is_up_to_date:
+            return await stop("up_to_date")
 
         # 3. Symbole de la source. The prices of a listing are fetched with the
         # symbol verified for it (ISIN + currency), never with the ticker as typed:
@@ -156,28 +162,6 @@ class HistoricalIngestionService:
                 symbol_note=symbol_note,
             )
 
-        async def failed(error_msg: str) -> IngestResult:
-            duration_ms = int((time.time() - start_time) * 1000)
-            await self._log_ingest(
-                asset_id=asset_id,
-                ticker=ticker,
-                resolution=resolution,
-                source=source,
-                status="failed",
-                records_added=0,
-                error_msg=error_msg,
-                duration_ms=duration_ms,
-            )
-            return IngestResult(
-                ticker=ticker,
-                resolution=resolution,
-                status="failed",
-                source_used=source,
-                records_added=0,
-                duration_ms=duration_ms,
-                error=error_msg,
-            )
-
         # 4-5. Fetch and normalize, on one adjustment basis for the whole series
         # (``historical/adjustment.py``): new bars are added only when the last
         # stored bars still match the source; otherwise the series is fetched again.
@@ -192,7 +176,7 @@ class HistoricalIngestionService:
             force_refresh,
         )
         if outcome.error:
-            return await failed(outcome.error)
+            return await stop("failed", outcome.error)
         fetch_result, normalized_bars = outcome.result, outcome.bars
         source_used = fetch_result["source_used"]
 

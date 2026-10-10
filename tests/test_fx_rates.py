@@ -23,12 +23,14 @@ from macro.fx_rates import (
 )
 from scripts import load_fx_rates
 
-# The ECB answer with detail=dataonly: the dimensions of the key, the day, the value.
+# The real answer of the ECB (10 October 2026) to
+# EXR/D.USD.EUR.SP00.A?lastNObservations=3&format=csvdata&detail=dataonly
 DATA_ONLY = (
-    "KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE\r\n"
-    "EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-07,1.0861\r\n"
-    "EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-08,1.0850\r\n"
-    "EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-09,\r\n"
+    "KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE\n"
+    "EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-07,1.1177\n"
+    "EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-08,1.1186\n"
+    "EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-09,1.1206\n"
+    "\n"
 )
 
 
@@ -37,11 +39,17 @@ class TestAnswers:
         rates = parse_fx_csv(DATA_ONLY)
 
         assert rates == {
-            "USD": {date(2026, 10, 7): Decimal("1.0861"), date(2026, 10, 8): Decimal("1.0850")}
+            "USD": {
+                date(2026, 10, 7): Decimal("1.1177"),
+                date(2026, 10, 8): Decimal("1.1186"),
+                date(2026, 10, 9): Decimal("1.1206"),
+            }
         }
 
     def test_a_day_without_value_is_left_out(self):
-        assert date(2026, 10, 9) not in parse_fx_csv(DATA_ONLY)["USD"]
+        text = DATA_ONLY + "EXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-12,\n"
+
+        assert date(2026, 10, 12) not in parse_fx_csv(text)["USD"]
 
     def test_the_currency_is_read_from_the_key_when_its_column_is_missing(self):
         text = "KEY,TIME_PERIOD,OBS_VALUE\nEXR.D.JPY.EUR.SP00.A,2026-10-08,161.27\n"
@@ -49,7 +57,7 @@ class TestAnswers:
         assert parse_fx_csv(text) == {"JPY": {date(2026, 10, 8): Decimal("161.27")}}
 
     def test_several_currencies_in_one_answer(self):
-        text = DATA_ONLY + "EXR.D.GBP.EUR.SP00.A,D,GBP,EUR,SP00,A,2026-10-08,0.8412\r\n"
+        text = DATA_ONLY + "EXR.D.GBP.EUR.SP00.A,D,GBP,EUR,SP00,A,2026-10-08,0.8412\n"
 
         assert set(parse_fx_csv(text)) == {"USD", "GBP"}
 
@@ -102,7 +110,7 @@ class TestDownload:
         with patch("httpx.AsyncClient.get", get):
             rates = await download_rates("USD", date(2026, 10, 1))
 
-        assert rates[date(2026, 10, 8)] == Decimal("1.0850")
+        assert rates[date(2026, 10, 8)] == Decimal("1.1186")
         params = get.await_args.kwargs["params"]
         assert params == {"startPeriod": "2026-10-01", "format": "csvdata", "detail": "dataonly"}
 
@@ -166,13 +174,13 @@ class TestScript:
 
     def test_a_line_per_currency(self):
         fetched = FxLoad(
-            "USD", "fetched", first_day=date(1999, 1, 4), last_day=date(2026, 10, 9), added=7140
+            "USD", "fetched", first_day=date(1999, 1, 4), last_day=date(2026, 10, 9), added=7111
         )
         failed = FxLoad("XXX", "failed", reason="HTTPStatusError: 404")
 
         assert (
             load_fx_rates.describe(fetched)
-            == "USD  fetched  1999-01-04 → 2026-10-09  (7140 days read)"
+            == "USD  fetched  1999-01-04 → 2026-10-09  (7111 days read)"
         )
         assert (
             load_fx_rates.describe(failed) == "XXX  failed   nothing stored  (HTTPStatusError: 404)"

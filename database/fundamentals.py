@@ -30,17 +30,17 @@ def _decimal_to_float(value):
 class FundamentalsRepository(DatabaseComponent):
     def get_fundamental_data(self, asset_id: int) -> dict | None:
         """
-        Retourne les données fondamentales d'un actif.
+        The fundamental data of an asset.
 
-        Priorité : fundamentals_highlights (nouvelle table) > fundamentals (legacy).
-        Format de retour compatible avec les endpoints existants (/fundamental).
+        Priority: fundamentals_highlights (new table) > fundamentals (legacy).
+        The answer keeps the format of the existing routes (/fundamental).
 
         Args:
-            asset_id: ID de l'actif dans la table assets
+            asset_id: id of the asset in the assets table
 
         Returns:
-            dict avec les clés market_cap, pe_ratio, dividend_yield, extra_metrics
-            ou None si aucune donnée trouvée.
+            dict with the keys market_cap, pe_ratio, dividend_yield, extra_metrics,
+            or None when nothing is found.
         """
         session = self.get_session()
         try:
@@ -91,7 +91,7 @@ class FundamentalsRepository(DatabaseComponent):
                     "source": "highlights",
                 }
 
-            # 2. Fallback sur la table fundamentals legacy
+            # 2. Fall back on the legacy fundamentals table
             fundamental = (
                 session.query(Fundamental)
                 .filter_by(asset_id=asset_id)
@@ -113,31 +113,31 @@ class FundamentalsRepository(DatabaseComponent):
             return None
 
         except SQLAlchemyError as e:
-            logger.error(f"Erreur get_fundamental_data asset_id={asset_id}: {e}")
+            logger.error(f"get_fundamental_data error asset_id={asset_id}: {e}")
             return None
         finally:
             session.close()
 
     def get_deep_fundamentals(self, asset_id: int) -> dict | None:
         """
-        Retourne l'intégralité des données fondamentales structurées d'un actif.
+        Every structured fundamental data point of an asset.
 
-        Sections retournées :
-            - highlights          : métriques clés (FundamentalsHighlights)
-            - etf_holdings        : top holdings ETF (si quote_type == 'ETF')
-            - esg_scores          : scores ESG et controverses
-            - earnings_trend      : estimations futures
-            - outstanding_shares  : historique du nombre d'actions
+        Sections:
+            - highlights          : key metrics (FundamentalsHighlights)
+            - etf_holdings        : top ETF holdings (when quote_type == 'ETF')
+            - esg_scores          : ESG scores and controversies
+            - earnings_trend      : future estimates
+            - outstanding_shares  : history of the share count
 
         Args:
-            asset_id: ID de l'actif dans la table assets
+            asset_id: id of the asset in the assets table
 
         Returns:
-            dict structuré ou None si l'actif est introuvable.
+            structured dict, or None when the asset is not found.
         """
         session = self.get_session()
         try:
-            # Vérifier que l'actif existe
+            # Check that the asset exists
             asset = session.query(Asset).filter_by(id=asset_id).first()
             if not asset:
                 return None
@@ -176,7 +176,7 @@ class FundamentalsRepository(DatabaseComponent):
                 .order_by(FinancialStatement.period_end.desc())
                 .all()
             )
-            # Note: on aplatit en liste plate pour le formateur flexible
+            # Note: flattened into a list for the flexible formatter
             statements_list = []
             for stmt in all_stmts:
                 row = {
@@ -333,7 +333,7 @@ class FundamentalsRepository(DatabaseComponent):
             return result
 
         except SQLAlchemyError as e:
-            logger.error(f"Erreur get_deep_fundamentals asset_id={asset_id}: {e}")
+            logger.error(f"get_deep_fundamentals error asset_id={asset_id}: {e}")
             return None
         finally:
             session.close()

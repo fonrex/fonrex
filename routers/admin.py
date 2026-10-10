@@ -27,14 +27,14 @@ class CleanupRequest(BaseModel):
 def get_cache_service(request: Request) -> CacheService:
     service = getattr(request.app.state, "cache_service", None)
     if service is None:
-        raise HTTPException(status_code=503, detail="Cache non initialisé")
+        raise HTTPException(status_code=503, detail="Cache not initialised")
     return service
 
 
 def get_database_service(request: Request) -> DatabaseService:
     service = getattr(request.app.state, "db_service", None)
     if service is None or getattr(request.app.state, "db_available", True) is False:
-        raise HTTPException(status_code=503, detail="Base de données indisponible")
+        raise HTTPException(status_code=503, detail="Database unavailable")
     return service
 
 
@@ -64,13 +64,13 @@ async def health_check(request: Request, cache: CacheService = Depends(get_cache
 @router.post("/cache/clear")
 async def clear_cache(cache: CacheService = Depends(get_cache_service)):
     if not cache.enabled:
-        raise HTTPException(status_code=400, detail="Le cache Redis n'est pas activé")
+        raise HTTPException(status_code=400, detail="The Redis cache is not enabled")
     success, deleted_count, error = await run_sync(cache.clear, "eod:*")
     if not success:
         raise HTTPException(status_code=500, detail=error)
     return {
         "status": "success",
-        "message": "Cache vidé avec succès" if deleted_count else "Cache déjà vide",
+        "message": "Cache cleared" if deleted_count else "Cache already empty",
         "deleted_keys": deleted_count,
     }
 
@@ -82,7 +82,7 @@ async def clear_ticker_cache(
     cache: CacheService = Depends(get_cache_service),
 ):
     if not cache.enabled:
-        raise HTTPException(status_code=400, detail="Le cache Redis n'est pas activé")
+        raise HTTPException(status_code=400, detail="The Redis cache is not enabled")
     success, deleted_count, error = await run_sync(cache.clear_ticker_cache, ticker, period)
     if not success:
         raise HTTPException(status_code=500, detail=error)
@@ -90,7 +90,7 @@ async def clear_ticker_cache(
         "status": "success",
         "ticker": ticker,
         "period": period or "all",
-        "message": "Cache vidé avec succès" if deleted_count else "Cache déjà vide",
+        "message": "Cache cleared" if deleted_count else "Cache already empty",
         "deleted_keys": deleted_count,
     }
 
@@ -98,7 +98,7 @@ async def clear_ticker_cache(
 @router.get("/cache/stats")
 async def cache_stats(cache: CacheService = Depends(get_cache_service)):
     if not cache.enabled:
-        raise HTTPException(status_code=400, detail="Le cache Redis n'est pas activé")
+        raise HTTPException(status_code=400, detail="The Redis cache is not enabled")
     success, stats, error = await run_sync(cache.get_stats)
     if not success:
         raise HTTPException(status_code=500, detail=error)

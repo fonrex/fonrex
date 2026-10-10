@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-ZoneBourseNewsProvider — News financières EU/FR depuis ZoneBourse.
+ZoneBourseNewsProvider — EU/FR financial news from ZoneBourse.
 
-ZoneBourse est la meilleure source pour les actifs français et européens.
-HTML propre, pas de JavaScript requis.
+ZoneBourse is the best source for French and European assets.
+Clean HTML, no JavaScript needed.
 """
 
 import logging
@@ -61,11 +61,11 @@ class ZoneBourseNewsProvider(BaseFinancialProvider):
         **kwargs,
     ) -> List[RawNewsItem]:
         """
-        Récupère les news depuis ZoneBourse.
+        News from ZoneBourse.
         """
         url = self._build_url(ticker, provider_url, provider_ticker)
         if not url:
-            logger.debug("[zonebourse] Impossible de construire l'URL pour %s", ticker)
+            logger.debug("[zonebourse] Cannot build the URL of %s", ticker)
             return []
 
         headers = self._get_headers(
@@ -97,7 +97,7 @@ class ZoneBourseNewsProvider(BaseFinancialProvider):
         if provider_ticker:
             return f"{self.BASE_URL}/cours/action/{provider_ticker}/actualites/"
         if ticker:
-            # Retirer le suffix Yahoo pour la recherche
+            # Remove the Yahoo suffix for the search
             symbol = re.sub(r"\.[A-Z]+$", "", ticker.upper())
             return f"{self.BASE_URL}/recherche/?q={symbol}"
         return None
@@ -108,7 +108,7 @@ class ZoneBourseNewsProvider(BaseFinancialProvider):
         soup = BeautifulSoup(html, "html.parser")
         items: List[RawNewsItem] = []
 
-        # Sélecteurs possibles ZoneBourse
+        # Possible ZoneBourse selectors
         article_containers = (
             soup.select("ul.liste-actus li")
             or soup.select("div.actu-item")
@@ -126,7 +126,7 @@ class ZoneBourseNewsProvider(BaseFinancialProvider):
             if url.startswith("/"):
                 url = self.BASE_URL + url
 
-            # Titre
+            # Title
             title_tag = container.find(["h3", "h4", "h2"])
             title = title_tag.get_text(strip=True) if title_tag else link_tag.get_text(strip=True)
             if not title or len(title) < 5:
@@ -162,12 +162,12 @@ class ZoneBourseNewsProvider(BaseFinancialProvider):
 
     def _parse_zonebourse_date(self, date_str: str) -> Optional[datetime]:
         """
-        Parse les formats de date ZoneBourse :
+        Parse the ZoneBourse date formats:
         "16/05/2026"     → 2026-05-16
         "il y a 2h"      → now - 2h
         "hier"           → yesterday
         "15 mai 2026"    → 2026-05-15
-        ISO 8601         → parsé directement
+        ISO 8601         → parsed directly
         """
         if not date_str:
             return None
@@ -208,7 +208,7 @@ class ZoneBourseNewsProvider(BaseFinancialProvider):
         if "hier" in s:
             return (now - timedelta(days=1)).replace(hour=12, minute=0, second=0)
 
-        # "15 mai 2026" or "15 mai" (année courante)
+        # "15 mai 2026" or "15 mai" (current year)
         for month_name, month_num in _MONTHS_FR.items():
             pattern = rf"(\d{{1,2}})\s+{re.escape(month_name)}\s*(\d{{4}})?"
             m = re.search(pattern, s)

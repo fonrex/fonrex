@@ -7,32 +7,32 @@ venv/
 **/*.pyd
 .Python
 
-# Secrets et réglages locaux : transmis au conteneur par Compose (env_file),
-# jamais copiés dans l'image
+# Secrets and local settings: passed to the container by Compose (env_file),
+# never copied into the image
 .env
 .env.*
 !.env.example
 
-# Logos téléchargés (lourds) : conservés hors de l'image et montés en volume.
-# Le logo par défaut reste dans l'image.
+# Downloaded logos (heavy): kept out of the image and mounted as a volume.
+# The default logo stays in the image.
 static/logos/*
 !static/logos/default.svg
 
-# Core dumps d'un worker planté
+# Core dumps of a crashed worker
 core
 core.[0-9]*
 
-# Logs locaux
+# Local logs
 logs/
 *.log
 
-# Données temporaires et exports à la racine (data/*.csv reste dans l'image)
+# Temporary data and exports at the root (data/*.csv stays in the image)
 *.csv
 dump.csv
 temp_assets.csv
 enriched_assets.csv
 
-# Tests et outils de dev
+# Tests and dev tools
 tests/
 scratch/
 .pytest_cache/
@@ -57,5 +57,5 @@ node_modules/
 .dockerignore
 docker-compose*.yml
 
-# Données isin
+# ISIN data
 data/isin_data/

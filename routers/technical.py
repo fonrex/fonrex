@@ -59,24 +59,24 @@ def _raise_technical_http_error(error: TechnicalAnalysisError):
 
 
 INDICATOR_DESCRIPTIONS = {
-    "sma": "Simple Moving Average — moyenne arithmétique des prix.",
-    "ema": "Exponential Moving Average — moyenne favorisant les prix récents.",
-    "wma": "Weighted Moving Average — moyenne mobile pondérée.",
-    "dema": "Double Exponential Moving Average — moyenne à retard réduit.",
+    "sma": "Simple Moving Average — arithmetic mean of the prices.",
+    "ema": "Exponential Moving Average — mean weighting recent prices more.",
+    "wma": "Weighted Moving Average — weighted moving mean.",
+    "dema": "Double Exponential Moving Average — mean with a reduced lag.",
     "tema": "Triple Exponential Moving Average.",
-    "vwap": "Volume Weighted Average Price — prix moyen pondéré par le volume.",
-    "rsi": "Relative Strength Index — oscillateur de momentum.",
-    "macd": "Moving Average Convergence Divergence — tendance et momentum.",
-    "stoch": "Stochastic Oscillator — position de la clôture dans sa fourchette.",
-    "cci": "Commodity Channel Index — écart du prix à sa moyenne.",
-    "roc": "Rate of Change — pourcentage de variation du prix.",
-    "mom": "Momentum — vitesse de variation des prix.",
-    "bbands": "Bollinger Bands — bandes de volatilité.",
-    "atr": "Average True Range — volatilité historique.",
-    "kc": "Keltner Channel — enveloppes basées sur l’ATR.",
-    "obv": "On-Balance Volume — momentum des volumes.",
-    "ad": "Accumulation/Distribution Line — flux cumulatif.",
-    "mfi": "Money Flow Index — momentum basé sur prix et volume.",
+    "vwap": "Volume Weighted Average Price — mean price weighted by volume.",
+    "rsi": "Relative Strength Index — momentum oscillator.",
+    "macd": "Moving Average Convergence Divergence — trend and momentum.",
+    "stoch": "Stochastic Oscillator — position of the close within its range.",
+    "cci": "Commodity Channel Index — distance of the price from its mean.",
+    "roc": "Rate of Change — percentage change of the price.",
+    "mom": "Momentum — speed of the price change.",
+    "bbands": "Bollinger Bands — volatility bands.",
+    "atr": "Average True Range — historical volatility.",
+    "kc": "Keltner Channel — envelopes based on the ATR.",
+    "obv": "On-Balance Volume — volume momentum.",
+    "ad": "Accumulation/Distribution Line — cumulative flow.",
+    "mfi": "Money Flow Index — momentum based on price and volume.",
 }
 
 
@@ -183,7 +183,7 @@ async def run_indicator_screen(
     limit: int = 50,
 ):
     if operator not in {"lt", "gt", "lte", "gte"}:
-        raise HTTPException(400, "Opérateur non valide : lt, gt, lte ou gte attendu")
+        raise HTTPException(400, "Invalid operator: lt, gt, lte or gte expected")
 
     cache_key = f"technical:screen:{indicator}:{operator}:{value}:{resolution}:{period}:{limit}"
     cached = await _cache_get(redis_client, cache_key)
@@ -308,11 +308,11 @@ async def get_technical_batch(
 ):
     if len(payload.tickers) > TECHNICAL_MAX_BATCH_TICKERS:
         raise HTTPException(
-            400, f"Maximum {TECHNICAL_MAX_BATCH_TICKERS} tickers par requête batch"
+            400, f"Maximum {TECHNICAL_MAX_BATCH_TICKERS} tickers per batch request"
         )
     if len(payload.indicators) > TECHNICAL_MAX_BATCH_INDICATORS:
         raise HTTPException(
-            400, f"Maximum {TECHNICAL_MAX_BATCH_INDICATORS} indicateurs par requête batch"
+            400, f"Maximum {TECHNICAL_MAX_BATCH_INDICATORS} indicators per batch request"
         )
     semaphore = asyncio.Semaphore(5)
 

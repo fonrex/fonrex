@@ -33,10 +33,10 @@ class GurufocusProvider(BaseProvider):
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
         """
-        Récupère les métriques financières en résolvant d'abord le ticker via l'API de recherche.
+        Financial metrics, after resolving the ticker with the search API.
         """
         async with self._session(headers=self.headers) as client:
-            # 1. Résolution du ticker GuruFocus (ex: TFI.PA -> XPAR:TFI)
+            # 1. Resolve the GuruFocus ticker (e.g. TFI.PA -> XPAR:TFI)
             gf_ticker = await self._resolve_gf_ticker(client, ticker)
             if not gf_ticker:
                 logger.warning(f"Could not resolve GuruFocus ticker for {ticker}")
@@ -46,7 +46,7 @@ class GurufocusProvider(BaseProvider):
             metrics = FinancialMetrics(ticker=gf_ticker)
             metrics.provider_url = f"{self.BASE_URL}/stock/{gf_ticker}/"
 
-            # 2. Récupération des scores en parallèle
+            # 2. Read the scores in parallel
             tasks = [
                 self._fetch_score(client, gf_ticker, "fscore", "Piotroski-F-Score"),
                 self._fetch_score(client, gf_ticker, "mscore", "Beneish-M-Score"),
@@ -72,15 +72,15 @@ class GurufocusProvider(BaseProvider):
 
     async def _resolve_gf_ticker(self, client: ProviderSession, ticker: str) -> Optional[str]:
         """
-        Résout le ticker GuruFocus en utilisant l'API de recherche et le mapping d'exchange.
-        Ex: TFI.PA -> XPAR:TFI
+        Resolve the GuruFocus ticker with the search API and the exchange mapping.
+        E.g. TFI.PA -> XPAR:TFI
         """
-        # On sépare le symbole et l'éventuel suffixe d'exchange
+        # Split the symbol and the exchange suffix, if any
         parts = ticker.split(".")
         symbol = parts[0]
         target_suffix = f".{parts[1].upper()}" if len(parts) > 1 else ""
 
-        # Si le ticker contient déjà un exchange GuruFocus (ex: NAS:AAPL)
+        # The ticker already holds a GuruFocus exchange (e.g. NAS:AAPL)
         if ":" in ticker:
             return ticker
 
@@ -88,11 +88,11 @@ class GurufocusProvider(BaseProvider):
         if resolved:
             return resolved
 
-        # Fallback: si la recherche échoue, on tente une reconstruction via le mapping d'exchange
+        # Fallback: when the search fails, rebuild the ticker from the exchange mapping
         if target_suffix is not None:
             for gf_exch, suffix in GURUFOCUS_TO_YAHOO.items():
                 if suffix.upper() == target_suffix.upper():
-                    # Si pas de suffixe (marché US), on privilégie NAS ou NYSE
+                    # No suffix (US market): prefer NAS or NYSE
                     if target_suffix == "" and gf_exch not in ["NAS", "NYSE"]:
                         continue
                     return f"{gf_exch}:{symbol}"
@@ -103,7 +103,7 @@ class GurufocusProvider(BaseProvider):
         self, client: ProviderSession, query: str, target_suffix: Optional[str]
     ) -> Optional[str]:
         """
-        Interroge l'API de recherche GuruFocus et sélectionne le meilleur résultat.
+        Query the GuruFocus search API and pick the best result.
         """
         search_url = f"{self.BASE_URL}/reader/_api/_search?v=1.8.50&text={query}&type="
         try:
@@ -111,25 +111,25 @@ class GurufocusProvider(BaseProvider):
             if resp.status_code == 200:
                 results = resp.json()
 
-                # On cherche d'abord une correspondance exacte via le suffixe d'exchange
+                # First look for an exact match through the exchange suffix
                 for item in results:
                     if item.get("type") == "stock":
                         data = item.get("data", {})
                         gf_symbol = data.get("symbol", "").upper()
                         gf_exchange = data.get("exchange", "").upper()
 
-                        # Si on a un suffixe cible (ex: .PA)
+                        # A target suffix (e.g. .PA)
                         if target_suffix:
-                            # On convertit l'exchange GF en suffixe Yahoo pour comparer
+                            # Turn the GF exchange into a Yahoo suffix to compare
                             mapped_suffix = GURUFOCUS_TO_YAHOO.get(gf_exchange)
                             if mapped_suffix and mapped_suffix.upper() == target_suffix.upper():
                                 return f"{gf_exchange}:{gf_symbol}"
                         else:
-                            # Si pas de suffixe, on prend la première correspondance exacte de symbole (souvent US)
+                            # No suffix: take the first exact symbol match (often US)
                             if gf_symbol == query.upper():
                                 return f"{gf_exchange}:{gf_symbol}" if gf_exchange else gf_symbol
 
-                # Fallback : premier résultat de type stock si le symbole correspond
+                # Fallback: first stock result whose symbol matches
                 for item in results:
                     if item.get("type") == "stock":
                         data = item.get("data", {})
@@ -146,18 +146,18 @@ class GurufocusProvider(BaseProvider):
         self, client: ProviderSession, ticker: str, term_code: str, term_name: str
     ) -> Optional[float]:
         """
-        Extrait une valeur numérique depuis une page de définition de terme GuruFocus.
+        Read a number from a GuruFocus term definition page.
         """
         url = f"{self.BASE_URL}/term/{term_code}/{ticker}/{term_name}/{ticker}"
         try:
             resp = await client.get(url)
             if resp.status_code == 200:
                 html = HTMLParser(resp.text)
-                # Heuristique : on cherche le premier nombre flottant dans le contenu principal
-                # GuruFocus affiche généralement la valeur en évidence.
+                # Heuristic: the first decimal number of the main content.
+                # GuruFocus usually shows the value prominently.
                 content = html.text()
-                # On cherche un pattern comme "8" ou "0.45" après avoir éliminé les bruits potentiels
-                # Dans le code legacy, c'était le premier <font> dans un bloc spécifique.
+                # Look for a pattern such as "8" or "0.45" once the noise is removed.
+                # The legacy code took the first <font> of a given block.
                 match = re.search(r"([-+]?\d*\.\d+|\d+)", content)
                 if match:
                     return float(match.group(1))

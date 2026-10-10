@@ -45,17 +45,16 @@ def get_async_database_url() -> Optional[str]:
     if _SYNC_PG_SCHEME_RE.match(sync_url):
         async_url = _SYNC_PG_SCHEME_RE.sub("postgresql+asyncpg://", sync_url)
         logger.info(
-            "ASYNC_DATABASE_URL non définie — déduite de DATABASE_URL "
-            "(%s… → postgresql+asyncpg://…)",
+            "ASYNC_DATABASE_URL not set — derived from DATABASE_URL (%s… → postgresql+asyncpg://…)",
             sync_url.split("://")[0],
         )
         return async_url
 
     # Unrecognised scheme — refuse to guess.
     logger.error(
-        "❌ Impossible de déduire ASYNC_DATABASE_URL : le schéma de "
-        "DATABASE_URL (%s) n'est pas un driver PostgreSQL synchrone reconnu. "
-        "Définissez ASYNC_DATABASE_URL explicitement.",
+        "❌ Cannot derive ASYNC_DATABASE_URL: the scheme of "
+        "DATABASE_URL (%s) is not a known synchronous PostgreSQL driver. "
+        "Set ASYNC_DATABASE_URL explicitly.",
         sync_url.split("://")[0],
     )
     return None

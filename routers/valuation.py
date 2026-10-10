@@ -45,7 +45,7 @@ async def _read_cache(redis_client, key: str):
         payload = await redis_client.get(key)
         return json.loads(payload) if payload else None
     except (RedisError, json.JSONDecodeError, TypeError, UnicodeError) as exc:
-        logger.warning("Erreur lecture cache DCF (%s): %s", key, exc)
+        logger.warning("DCF cache read error (%s): %s", key, exc)
         return None
 
 
@@ -55,7 +55,7 @@ async def _write_cache(redis_client, key: str, result) -> None:
     try:
         await redis_client.setex(key, DCF_CACHE_TTL, result.model_dump_json())
     except (RedisError, TypeError, ValueError) as exc:
-        logger.warning("Erreur écriture cache DCF (%s): %s", key, exc)
+        logger.warning("DCF cache write error (%s): %s", key, exc)
 
 
 def _decimal_range(start: float, stop: float, step: float) -> list[Decimal]:
@@ -123,7 +123,7 @@ async def compare_dcf_models(
         try:
             result = await service.compute_dcf(ticker, DCFRequest(models=["fcf", "eps", "ddm"]))
         except ValueError as exc:
-            if "dividende" not in str(exc).lower() and "ddm" not in str(exc).lower():
+            if "dividend" not in str(exc).lower() and "ddm" not in str(exc).lower():
                 raise
             result = await service.compute_dcf(ticker, DCFRequest(models=["fcf", "eps"]))
             result.models["ddm"] = DCFModelResult(
@@ -134,7 +134,7 @@ async def compare_dcf_models(
                 terminal_value=Decimal("0"),
                 present_values=[],
                 pv_terminal=Decimal("0"),
-                warnings=["Modèle DDM impossible : aucun dividende distribué."],
+                warnings=["DDM not applicable: no dividend paid."],
             )
 
         await _write_cache(redis_client, cache_key, result)
@@ -159,11 +159,9 @@ async def get_dcf_sensitivity(
 ):
     """Compute the intrinsic-value sensitivity matrix."""
     if wacc_step <= 0 or growth_step <= 0:
-        raise HTTPException(status_code=400, detail="Les pas doivent être strictement positifs.")
+        raise HTTPException(status_code=400, detail="The steps must be strictly positive.")
     if wacc_min >= wacc_max or growth_min >= growth_max:
-        raise HTTPException(
-            status_code=400, detail="Les minima doivent être inférieurs aux maxima."
-        )
+        raise HTTPException(status_code=400, detail="The minima must be below the maxima.")
 
     cache_key = (
         f"dcf:{ticker.upper()}:sensitivity:{model}:"

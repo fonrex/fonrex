@@ -1,14 +1,14 @@
 """
-IndexConstituentsProvider — Composants des grands indices boursiers.
+IndexConstituentsProvider — constituents of the main stock indices.
 
-Sources :
+Sources:
 - S&P 500   : https://en.wikipedia.org/wiki/List_of_S%26P_500_companies
 - CAC 40    : https://fr.wikipedia.org/wiki/CAC_40
 - NASDAQ 100: https://en.wikipedia.org/wiki/Nasdaq-100
 - DAX       : https://en.wikipedia.org/wiki/DAX
 
-Wikipedia est stable, publique, et permissive pour le scraping.
-Mise à jour recommandée : hebdomadaire.
+Wikipedia is stable, public and allows scraping.
+Recommended refresh: weekly.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from financials.providers.base import BaseFinancialProvider
 logger = logging.getLogger(__name__)
 
 
-# ── Enums & Modèles ───────────────────────────────────────────────────────────
+# ── Enums & models ───────────────────────────────────────────────────────────
 
 
 class IndexName(str, Enum):
@@ -44,7 +44,7 @@ class IndexConstituent(BaseModel):
     sub_sector: Optional[str] = None
     weight: Optional[float] = None
     country: Optional[str] = None
-    cik: Optional[str] = None  # US uniquement
+    cik: Optional[str] = None  # US only
 
 
 class IndexConstituentsResult(BaseModel):
@@ -67,7 +67,7 @@ WIKIPEDIA_URLS = {
 
 
 class IndexConstituentsProvider(BaseFinancialProvider):
-    """Provider pour les composants des grands indices boursiers (Wikipedia)."""
+    """Provider of the constituents of the main stock indices (Wikipedia)."""
 
     name = "IndexConstituents"
     timeout = 20.0
@@ -90,7 +90,7 @@ class IndexConstituentsProvider(BaseFinancialProvider):
         **kwargs,
     ) -> Optional[IndexConstituentsResult]:
         if not index_name:
-            logger.warning("[IndexConstituents] index_name requis")
+            logger.warning("[IndexConstituents] index_name is required")
             return None
         try:
             if index_name == IndexName.SP500:
@@ -102,18 +102,18 @@ class IndexConstituentsProvider(BaseFinancialProvider):
             elif index_name == IndexName.DAX:
                 return await self.fetch_dax()
             else:
-                logger.warning("[IndexConstituents] Index non supporté: %s", index_name)
+                logger.warning("[IndexConstituents] Unsupported index: %s", index_name)
                 return None
         except Exception as exc:
-            logger.error("[IndexConstituents] Erreur fetch(%s): %s", index_name, exc)
+            logger.error("[IndexConstituents] fetch(%s) error: %s", index_name, exc)
             return None
 
     # ── S&P 500 ───────────────────────────────────────────────────────────────
 
     async def fetch_sp500(self) -> IndexConstituentsResult:
         """
-        Parse la table Wikipedia du S&P 500.
-        Colonnes : Symbol | Security | GICS Sector | GICS Sub-Industry |
+        Parse the Wikipedia table of the S&P 500.
+        Columns: Symbol | Security | GICS Sector | GICS Sub-Industry |
                    Headquarters | Date Added | CIK | Founded
         """
         url = WIKIPEDIA_URLS[IndexName.SP500]
@@ -150,8 +150,8 @@ class IndexConstituentsProvider(BaseFinancialProvider):
 
     async def fetch_cac40(self) -> IndexConstituentsResult:
         """
-        Parse la table Wikipedia du CAC 40 (version française).
-        Colonnes variables selon la version de la page.
+        Parse the Wikipedia table of the CAC 40 (French page).
+        The columns change with the version of the page.
         """
         url = WIKIPEDIA_URLS[IndexName.CAC40]
         html = await self._get(url, headers=self._wiki_headers("fr"))
@@ -215,8 +215,8 @@ class IndexConstituentsProvider(BaseFinancialProvider):
 
     async def fetch_nasdaq100(self) -> IndexConstituentsResult:
         """
-        Parse la table Wikipedia du NASDAQ 100.
-        Colonnes : Ticker | Company | ICBIndustry | ICBSubsector
+        Parse the Wikipedia table of the NASDAQ 100.
+        Columns: Ticker | Company | ICBIndustry | ICBSubsector
         """
         url = WIKIPEDIA_URLS[IndexName.NASDAQ100]
         html = await self._get(url, headers=self._wiki_headers("en"))
@@ -251,8 +251,8 @@ class IndexConstituentsProvider(BaseFinancialProvider):
 
     async def fetch_dax(self) -> IndexConstituentsResult:
         """
-        Parse la table Wikipedia du DAX.
-        Colonnes : Company | Ticker | ISIN | Sector | Employees
+        Parse the Wikipedia table of the DAX.
+        Columns: Company | Ticker | ISIN | Sector | Employees
         """
         url = WIKIPEDIA_URLS[IndexName.DAX]
         html = await self._get(url, headers=self._wiki_headers("en"))
@@ -293,16 +293,16 @@ class IndexConstituentsProvider(BaseFinancialProvider):
         table_id: Optional[str] = None,
     ) -> List[dict]:
         """
-        Parse une table HTML Wikipedia en liste de dicts.
+        Parse a Wikipedia HTML table into a list of dicts.
 
-        Stratégie :
-        1. Cherche la table par id (si fourni)
-        2. Sinon prend la table à l'index donné parmi les wikitables
-        3. Gère les <th> en en-têtes et <td> en valeurs
+        Strategy:
+        1. Look for the table by id (when given)
+        2. Otherwise take the table at the given index among the wikitables
+        3. <th> cells are headers, <td> cells are values
         """
         soup = BeautifulSoup(html, "html.parser")
 
-        # Trouver la table cible
+        # Find the target table
         if table_id:
             table = soup.find("table", {"id": table_id})
             if not table:
@@ -314,27 +314,27 @@ class IndexConstituentsProvider(BaseFinancialProvider):
             elif tables:
                 table = tables[0]
             else:
-                logger.warning("[IndexConstituents] Aucune wikitable trouvée")
+                logger.warning("[IndexConstituents] No wikitable found")
                 return []
 
         if not table:
-            logger.warning("[IndexConstituents] Table introuvable")
+            logger.warning("[IndexConstituents] Table not found")
             return []
 
-        # Extraire les en-têtes
+        # Headers
         headers = []
         header_row = table.find("tr")
         if header_row:
             for th in header_row.find_all(["th", "td"]):
                 text = th.get_text(separator=" ", strip=True)
-                # Nettoyer les annotations Wikipedia [1], [note], etc.
+                # Remove the Wikipedia annotations [1], [note], etc.
                 text = re.sub(r"\[.*?\]", "", text).strip()
                 headers.append(text)
 
         if not headers:
             return []
 
-        # Extraire les lignes de données
+        # Data rows
         rows = []
         data_rows = table.find_all("tr")[1:]  # Skip header row
 
@@ -347,10 +347,10 @@ class IndexConstituentsProvider(BaseFinancialProvider):
             for i, cell in enumerate(cells):
                 if i >= len(headers):
                     break
-                # Extraire le texte en ignorant les balises internes superflues
+                # Text without the superfluous inner tags
                 text = cell.get_text(separator=" ", strip=True)
                 text = re.sub(r"\[.*?\]", "", text).strip()
-                # Pour les liens, préférer le title ou le text du premier <a>
+                # For links, prefer the title or the text of the first <a>
                 link = cell.find("a")
                 if link and not text:
                     text = link.get("title") or link.get_text(strip=True)

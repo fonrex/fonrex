@@ -35,10 +35,10 @@ class GetInsiderTransactions:
         try:
             result = await self.provider.fetch(ticker=ticker, limit=limit)
         except Exception as exc:
-            logger.error("Erreur récupération transactions insiders %s: %s", ticker, exc)
+            logger.error("Insider transactions error %s: %s", ticker, exc)
             raise UpstreamFailure(str(exc)) from exc
         if result is None:
-            raise DependencyUnavailable("Impossible de récupérer les transactions SEC")
+            raise DependencyUnavailable("Cannot read the SEC transactions")
 
         data = result.model_dump(mode="json")
         if cache_key and self.cache:
@@ -59,14 +59,14 @@ class GetEtfDetails:
 
     async def execute(self, isin: str, refresh: bool = False):
         if not self.provider:
-            raise DependencyUnavailable("Provider JustETF non disponible")
+            raise DependencyUnavailable("JustETF provider unavailable")
 
         if self.database:
             context = await run_sync(self.database.get_asset_context, isin=isin)
             if context:
                 quote_type = context["details"].get("quote_type", "")
                 if quote_type and quote_type.upper() != "ETF":
-                    raise ResourceNotFound(f"{isin} n'est pas un ETF (quote_type={quote_type})")
+                    raise ResourceNotFound(f"{isin} is not an ETF (quote_type={quote_type})")
 
         cache_key = self.cache.generate_key(isin, cache_type="etf_details") if self.cache else None
         if cache_key and self.cache.enabled and not refresh:
@@ -77,10 +77,10 @@ class GetEtfDetails:
         try:
             result = await self.provider.fetch(isin=isin)
         except Exception as exc:
-            logger.error("Erreur récupération ETF %s: %s", isin, exc)
+            logger.error("ETF read error %s: %s", isin, exc)
             raise UpstreamFailure(str(exc)) from exc
         if result is None:
-            raise DependencyUnavailable(f"Données ETF introuvables pour {isin}")
+            raise DependencyUnavailable(f"No ETF data found for {isin}")
 
         data = result.model_dump(mode="json")
         if cache_key and self.cache:
@@ -98,15 +98,15 @@ class GetIndexConstituents:
 
     async def execute(self, index_name: str, refresh: bool = False):
         if not self.provider:
-            raise DependencyUnavailable("Provider IndexConstituents non disponible")
+            raise DependencyUnavailable("IndexConstituents provider unavailable")
 
         index_upper = index_name.upper()
         if index_upper not in self.VALID_INDICES:
             raise InvalidInput(
-                f"Indice non supporté: {index_name}. Valeurs: {sorted(self.VALID_INDICES)}"
+                f"Unsupported index: {index_name}. Values: {sorted(self.VALID_INDICES)}"
             )
         if not self.index_name_enum:
-            raise DependencyUnavailable("IndexName enum non disponible")
+            raise DependencyUnavailable("IndexName enum unavailable")
 
         cache_key = (
             self.cache.generate_key(index_upper, cache_type="index_constituents")
@@ -121,10 +121,10 @@ class GetIndexConstituents:
         try:
             result = await self.provider.fetch(index_name=self.index_name_enum(index_upper))
         except Exception as exc:
-            logger.error("Erreur récupération indice %s: %s", index_upper, exc)
+            logger.error("Index read error %s: %s", index_upper, exc)
             raise UpstreamFailure(str(exc)) from exc
         if result is None:
-            raise DependencyUnavailable(f"Données indice introuvables pour {index_upper}")
+            raise DependencyUnavailable(f"No index data found for {index_upper}")
 
         data = result.model_dump(mode="json")
         if cache_key and self.cache:

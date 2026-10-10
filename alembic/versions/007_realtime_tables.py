@@ -1,12 +1,12 @@
-"""Migration 007 — Tables pour prix temps réel
+"""Migration 007 — Realtime price tables
 
 Revision ID: 007
 Revises: 006
 Create Date: 2026-05-22
 
-Modifications :
-    1. Table prices_intraday — stockage des ticks temps réel (1min) — hypertable TimescaleDB
-    2. Table realtime_subscriptions — tickers actuellement streamés par RealtimePriceWorker
+Changes:
+    1. Table prices_intraday — realtime ticks (1min) — TimescaleDB hypertable
+    2. Table realtime_subscriptions — tickers streamed by RealtimePriceWorker
 """
 
 import sqlalchemy as sa
@@ -20,7 +20,7 @@ down_revision = "006"
 def upgrade() -> None:
 
     # ── 1. Table prices_intraday (hypertable TimescaleDB) ────────────────────
-    # Stocke les bougies 1 minute reçues via TradingView WebSocket
+    # Stores the 1-minute candles received from the TradingView WebSocket
     op.create_table(
         "prices_intraday",
         sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
@@ -40,7 +40,7 @@ def upgrade() -> None:
         ["asset_id", "timestamp"],
     )
 
-    # Convertir en hypertable TimescaleDB
+    # Turn it into a TimescaleDB hypertable
     op.execute("""
         SELECT create_hypertable(
             'prices_intraday', 'timestamp',
@@ -49,7 +49,7 @@ def upgrade() -> None:
         )
     """)
 
-    # Politique de rétention : garder seulement 30 jours d'intraday
+    # Retention policy: keep 30 days of intraday data only
     op.execute("""
         SELECT add_retention_policy(
             'prices_intraday',
@@ -59,7 +59,7 @@ def upgrade() -> None:
     """)
 
     # ── 2. Table realtime_subscriptions ─────────────────────────────────────
-    # Tickers actuellement streamés par le RealtimePriceWorker
+    # Tickers streamed by the RealtimePriceWorker
     op.create_table(
         "realtime_subscriptions",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),

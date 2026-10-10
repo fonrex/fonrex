@@ -53,7 +53,7 @@ class UsageRepository(DatabaseComponent):
         user_agent=None,
     ):
         """
-        Enregistre un appel API dans le journal d'usage local de l'instance.
+        Record an API call in the local usage log of the instance.
         """
         session = self.get_session()
         try:
@@ -74,7 +74,7 @@ class UsageRepository(DatabaseComponent):
             return True
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Erreur lors du logging usage: {e}")
+            logger.error(f"Usage log error: {e}")
             return False
         finally:
             session.close()
@@ -90,7 +90,7 @@ class UsageRepository(DatabaseComponent):
             return len(entries)
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Erreur lors du logging usage (lot de {len(entries)}): {e}")
+            logger.error(f"Usage log error (batch of {len(entries)}): {e}")
             return 0
         finally:
             session.close()
@@ -111,7 +111,7 @@ class UsageRepository(DatabaseComponent):
             return deleted
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Erreur lors de la purge du journal d'usage: {e}")
+            logger.error(f"Usage log purge error: {e}")
             return 0
         finally:
             session.close()

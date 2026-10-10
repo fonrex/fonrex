@@ -1,9 +1,9 @@
 """
-monitoring — Système de monitoring des providers financiers.
+monitoring — monitoring of the financial providers.
 
-Contient :
-  - ValidationLayer  : validation temps réel des valeurs retournées
-  - CanaryMonitor    : vérification quotidienne des actifs canary
+Contains:
+  - ValidationLayer  : checks the returned values as they arrive
+  - CanaryMonitor    : daily check of the canary assets
 """
 
 from monitoring.canary_monitor import CanaryMonitor

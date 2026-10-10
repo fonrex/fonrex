@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Schémas Pydantic pour les news financières agrégées.
+Pydantic schemas of the gathered financial news.
 """
 
 from datetime import datetime
@@ -25,7 +25,7 @@ class NewsSentiment(str, Enum):
 
 
 class NewsArticleSchema(BaseModel):
-    """Article de news normalisé — format de sortie API."""
+    """Normalised news article — API output format."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,9 +47,9 @@ class NewsArticleSchema(BaseModel):
 
 class RawNewsItem(BaseModel):
     """
-    Article brut retourné par un provider avant normalisation.
-    Tous les champs sont optionnels — les providers ne fournissent pas tous
-    les mêmes informations.
+    Raw article returned by a provider, before normalisation.
+    Every field is optional: the providers do not all give the same
+    information.
     """
 
     title: str
@@ -65,7 +65,7 @@ class RawNewsItem(BaseModel):
 
 
 class NewsResponse(BaseModel):
-    """Réponse de GET /news/{ticker}."""
+    """Answer of GET /news/{ticker}."""
 
     ticker: str
     isin: Optional[str] = None
@@ -76,7 +76,7 @@ class NewsResponse(BaseModel):
 
 
 class NewsFeedResponse(BaseModel):
-    """Réponse de GET /news/feed — feed global multi-actifs."""
+    """Answer of GET /news/feed — global multi-asset feed."""
 
     count: int
     from_date: Optional[datetime] = None

@@ -528,7 +528,7 @@ async def shutdown_event(application: FastAPI):
 
 @app.get("/")
 async def index():
-    """Page d'accueil avec documentation de l'API."""
+    """Home page with the API documentation."""
     documentation = get_api_documentation()
     return documentation
 

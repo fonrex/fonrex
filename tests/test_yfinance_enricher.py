@@ -1,6 +1,6 @@
 """
-Tests unitaires pour YFinanceEnricher.
-Utilise des mocks yfinance et SQLite in-memory.
+Unit tests of YFinanceEnricher.
+Uses yfinance mocks and in-memory SQLite.
 """
 
 import asyncio
@@ -36,7 +36,7 @@ from models import (
 
 
 def _make_engine():
-    """SQLite in-memory partagé entre threads pour les tests async."""
+    """In-memory SQLite shared between threads for the async tests."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -47,7 +47,7 @@ def _make_engine():
 
 
 def _make_db_service(engine):
-    """Crée un mock de DatabaseService qui retourne des sessions SQLite."""
+    """A DatabaseService mock returning SQLite sessions."""
     Session = scoped_session(sessionmaker(bind=engine))
     db_service = MagicMock()
     db_service.get_session.side_effect = lambda: Session()
@@ -62,7 +62,7 @@ def _make_test_asset(session):
 
 
 def _make_mock_ticker():
-    """Crée un mock complet de yf.Ticker avec toutes les propriétés."""
+    """A complete yf.Ticker mock with every property."""
     ticker = MagicMock()
 
     # .info
@@ -100,7 +100,7 @@ def _make_mock_ticker():
         "heldPercentInstitutions": 0.612,
     }
 
-    # .income_stmt (annuel)
+    # .income_stmt (annual)
     dates_annual = [pd.Timestamp("2024-12-31"), pd.Timestamp("2023-12-31")]
     income_data = {
         dates_annual[0]: {
@@ -295,10 +295,10 @@ class TestFetchHighlights(_DatabaseTestCase):
         self.assertEqual(highlight.shares_short_date, date(2026, 9, 15))
 
     def test_highlights_upsert(self):
-        """L'upsert doit mettre à jour, pas dupliquer."""
+        """The upsert must update, not duplicate."""
         mock_ticker = _make_mock_ticker()
         self.enricher._fetch_highlights(1, mock_ticker)
-        # Modifier et refaire
+        # Change and run again
         mock_ticker.info["marketCap"] = 200000000000
         self.enricher._fetch_highlights(1, mock_ticker)
 
@@ -310,7 +310,7 @@ class TestFetchHighlights(_DatabaseTestCase):
         session.close()
 
     def test_highlights_empty_info(self):
-        """Ne doit pas crasher avec un info vide."""
+        """Must not crash with an empty info."""
         mock_ticker = MagicMock()
         mock_ticker.info = {}
         self.enricher._fetch_highlights(1, mock_ticker)  # No exception
@@ -344,7 +344,7 @@ class TestFetchStatements(_DatabaseTestCase):
         stmts = session.query(FinancialStatement).filter_by(asset_id=1).all()
         self.assertGreaterEqual(len(stmts), 4)
 
-        # Vérifier une entrée income spécifique
+        # Check one income entry
         income_2024 = (
             session.query(FinancialStatement)
             .filter_by(
@@ -361,7 +361,7 @@ class TestFetchStatements(_DatabaseTestCase):
         session.close()
 
     def test_statements_empty_df(self):
-        """Ne doit pas crasher avec des DataFrames vides."""
+        """Must not crash with empty DataFrames."""
         mock_ticker = MagicMock()
         mock_ticker.income_stmt = pd.DataFrame()
         mock_ticker.quarterly_income_stmt = pd.DataFrame()
@@ -378,13 +378,13 @@ class TestFetchStatements(_DatabaseTestCase):
         session.close()
 
     def test_statements_upsert(self):
-        """L'upsert ne doit pas créer de doublons."""
+        """The upsert must not create duplicates."""
         mock_ticker = _make_mock_ticker()
         self.enricher._fetch_statements(1, mock_ticker)
         self.enricher._fetch_statements(1, mock_ticker)
 
         session = self.Session()
-        # Doit avoir exactement le même nombre d'entrées
+        # Must have exactly the same number of entries
         income_count = (
             session.query(FinancialStatement)
             .filter_by(
@@ -394,7 +394,7 @@ class TestFetchStatements(_DatabaseTestCase):
             )
             .count()
         )
-        self.assertEqual(income_count, 2)  # 2 années
+        self.assertEqual(income_count, 2)  # 2 years
         session.close()
 
 
@@ -434,7 +434,7 @@ class TestFetchEarnings(_DatabaseTestCase):
         session.close()
 
     def test_earnings_none(self):
-        """Ne doit pas crasher quand earnings_history est None."""
+        """Must not crash when earnings_history is None."""
         mock_ticker = MagicMock()
         mock_ticker.earnings_history = None
         self.enricher._fetch_earnings(1, mock_ticker)
@@ -478,7 +478,7 @@ class TestFetchRatings(_DatabaseTestCase):
         session.close()
 
     def test_ratings_consensus(self):
-        """Le consensus doit être déterminé par le vote majoritaire."""
+        """The consensus is the majority vote."""
         mock_ticker = _make_mock_ticker()
         self.enricher._fetch_ratings(1, mock_ticker)
 
@@ -489,7 +489,7 @@ class TestFetchRatings(_DatabaseTestCase):
         session.close()
 
     def test_ratings_no_data(self):
-        """Ne doit pas crasher sans données."""
+        """Must not crash without data."""
         mock_ticker = MagicMock()
         mock_ticker.analyst_price_targets = None
         mock_ticker.recommendations = None
@@ -502,7 +502,7 @@ class TestFetchRatings(_DatabaseTestCase):
 
 
 # ---------------------------------------------------------------------------
-# Test enrich() (orchestrateur)
+# Test enrich() (orchestrator)
 # ---------------------------------------------------------------------------
 
 
@@ -529,11 +529,11 @@ class TestEnrich(_DatabaseTestCase):
 
     @patch("financials.enrichment.yfinance_enricher.yf.Ticker")
     def test_enrich_partial_failure(self, mock_yf_ticker_class):
-        """Une méthode qui échoue ne doit pas bloquer les autres."""
+        """A failing method must not block the others."""
         mock_ticker = _make_mock_ticker()
         mock_yf_ticker_class.return_value = mock_ticker
 
-        # Patch _fetch_earnings pour qu'elle lève une exception
+        # Patch _fetch_earnings so that it raises
         original_fetch_earnings = self.enricher._fetch_earnings
 
         def failing_fetch_earnings(asset_id, t):
@@ -549,7 +549,7 @@ class TestEnrich(_DatabaseTestCase):
         self.assertTrue(result["ratings"])
         self.assertGreater(len(result["errors"]), 0)
 
-        # Restaurer
+        # Restore
         self.enricher._fetch_earnings = original_fetch_earnings
 
 

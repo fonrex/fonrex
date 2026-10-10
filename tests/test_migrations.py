@@ -1,13 +1,12 @@
 """
-Tests de migration Alembic pour Fonrex.
+Alembic migration tests of Fonrex.
 
-Vérifie que upgrade() et downgrade() fonctionnent correctement
-sans base de données réelle (SQLite in-memory avec StaticPool).
+Check that upgrade() and downgrade() work without a real database
+(in-memory SQLite with StaticPool).
 
-Note: La migration 001 contient des chemins conditionnels (checkfirst)
-et la migration 002 utilise des fonctionnalités PostgreSQL-spécifiques
-(JSONB, ON CONFLICT, CREATE VIEW). Ces tests valident la logique Python
-des migrations en mode SQLite-compatible autant que possible.
+Note: migration 001 has conditional paths (checkfirst) and migration 002
+uses PostgreSQL-specific features (JSONB, ON CONFLICT, CREATE VIEW). These
+tests check the Python logic of the migrations as far as SQLite allows.
 """
 
 import os
@@ -18,7 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.pool import StaticPool
 
-# S'assurer que le répertoire racine est dans sys.path
+# Make sure the root folder is on sys.path
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -46,7 +45,7 @@ from schemas.fundamentals import (
 
 
 def _make_sqlite_engine():
-    """SQLite in-memory partagé entre threads, compatible avec tous les tests."""
+    """In-memory SQLite shared between threads, usable by every test."""
     return create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -54,11 +53,11 @@ def _make_sqlite_engine():
     )
 
 
-# ── Tests modèles SQLAlchemy ───────────────────────────────────────────────────
+# ── SQLAlchemy model tests ─────────────────────────────────────────────────────
 
 
 class TestModelsCreateAll(unittest.TestCase):
-    """Vérifie que tous les nouveaux modèles Phase 2 se créent sans erreur."""
+    """Every new Phase 2 model is created without error."""
 
     def setUp(self):
         self.engine = _make_sqlite_engine()
@@ -80,7 +79,7 @@ class TestModelsCreateAll(unittest.TestCase):
             "etf_holdings",
         ]
         for table in expected:
-            self.assertIn(table, tables, f"Table manquante: {table}")
+            self.assertIn(table, tables, f"Missing table: {table}")
 
     def test_fundamentals_highlights_columns(self):
         cols = {c["name"] for c in self.inspector.get_columns("fundamentals_highlights")}
@@ -104,13 +103,13 @@ class TestModelsCreateAll(unittest.TestCase):
             "book_value_per_share",
         }
         for col in required:
-            self.assertIn(col, cols, f"Colonne manquante dans fundamentals_highlights: {col}")
+            self.assertIn(col, cols, f"Missing column in fundamentals_highlights: {col}")
 
     def test_financial_statements_columns(self):
         cols = {c["name"] for c in self.inspector.get_columns("financial_statements")}
         # Phase 2 rename: 'statement' → 'statement_type'
-        self.assertIn("statement_type", cols, "statement_type manquant (Phase 2)")
-        self.assertNotIn("statement", cols, "Ancien champ 'statement' toujours présent")
+        self.assertIn("statement_type", cols, "statement_type missing (Phase 2)")
+        self.assertNotIn("statement", cols, "Old field 'statement' still present")
         # New fields
         for col in (
             "ebit",
@@ -121,7 +120,7 @@ class TestModelsCreateAll(unittest.TestCase):
             "dividends_paid",
             "depreciation_amortization",
         ):
-            self.assertIn(col, cols, f"Nouveau champ manquant: {col}")
+            self.assertIn(col, cols, f"Missing new field: {col}")
 
     def test_earnings_history_columns(self):
         cols = {c["name"] for c in self.inspector.get_columns("earnings_history")}
@@ -132,7 +131,7 @@ class TestModelsCreateAll(unittest.TestCase):
         cols = {c["name"] for c in self.inspector.get_columns("analyst_ratings")}
         self.assertIn("target_mean", cols)
         self.assertIn("target_median", cols)  # nouveau champ Phase 2
-        self.assertNotIn("target_price", cols, "target_price supprimé en Phase 2")
+        self.assertNotIn("target_price", cols, "target_price removed in Phase 2")
 
     def test_etf_details_table(self):
         cols = {c["name"] for c in self.inspector.get_columns("etf_details")}
@@ -154,7 +153,7 @@ class TestModelsCreateAll(unittest.TestCase):
             "alloc_bond",
         }
         for col in required:
-            self.assertIn(col, cols, f"Colonne ETFDetails manquante: {col}")
+            self.assertIn(col, cols, f"Missing ETFDetails column: {col}")
 
     def test_etf_holdings_table(self):
         cols = {c["name"] for c in self.inspector.get_columns("etf_holdings")}
@@ -169,14 +168,14 @@ class TestModelsCreateAll(unittest.TestCase):
             "country",
         }
         for col in required:
-            self.assertIn(col, cols, f"Colonne ETFHolding manquante: {col}")
+            self.assertIn(col, cols, f"Missing ETFHolding column: {col}")
 
 
-# ── Tests contraintes d'unicité ────────────────────────────────────────────────
+# ── Unique constraint tests ────────────────────────────────────────────────────
 
 
 class TestUniqueConstraints(unittest.TestCase):
-    """Vérifie le comportement upsert des contraintes."""
+    """Upsert behaviour of the constraints."""
 
     def setUp(self):
         self.engine = _make_sqlite_engine()
@@ -193,7 +192,7 @@ class TestUniqueConstraints(unittest.TestCase):
         session.commit()
 
     def test_financial_statement_unique_constraint(self):
-        """Deux insertions pour le même (asset, statement_type, period_type, period_end) doivent violer la contrainte."""
+        """Two inserts of the same (asset, statement_type, period_type, period_end) must violate the constraint."""
         from datetime import date
 
         session = self.Session()
@@ -222,7 +221,7 @@ class TestUniqueConstraints(unittest.TestCase):
         session.close()
 
     def test_earnings_unique_constraint(self):
-        """Deux insertions pour le même (asset_id, period) doivent violer la contrainte."""
+        """Two inserts of the same (asset_id, period) must violate the constraint."""
         session = self.Session()
         self._make_asset(session)
         e1 = EarningsHistory(asset_id=1, period="2024Q4", eps_actual=1.21)
@@ -237,7 +236,7 @@ class TestUniqueConstraints(unittest.TestCase):
         session.close()
 
     def test_analyst_ratings_unique_per_asset(self):
-        """Un actif ne peut avoir qu'un seul enregistrement de ratings (unique=True sur asset_id)."""
+        """An asset has at most one ratings row (unique=True on asset_id)."""
         session = self.Session()
         self._make_asset(session)
         r1 = AnalystRatings(asset_id=1, consensus="Buy", nb_analysts=10)
@@ -252,11 +251,11 @@ class TestUniqueConstraints(unittest.TestCase):
         session.close()
 
 
-# ── Tests schémas Pydantic ─────────────────────────────────────────────────────
+# ── Pydantic schema tests ──────────────────────────────────────────────────────
 
 
 class TestPydanticSchemas(unittest.TestCase):
-    """Vérifie que les schémas Pydantic v2 se valident correctement."""
+    """The Pydantic v2 schemas validate correctly."""
 
     def test_highlights_schema_valid(self):
         data = {
@@ -339,7 +338,7 @@ class TestPydanticSchemas(unittest.TestCase):
         self.assertAlmostEqual(float(schema.weight), 0.0745, places=4)
 
     def test_deep_fundamentals_response_empty(self):
-        """Vérifie que DeepFundamentalsResponse peut être instancié avec des données minimales."""
+        """DeepFundamentalsResponse can be built from minimal data."""
         response = DeepFundamentalsResponse(
             asset_profile={"ticker": "AAPL", "name": "Apple Inc"},
         )
@@ -385,20 +384,20 @@ class TestPydanticSchemas(unittest.TestCase):
 
 class TestMigrationIdempotence(unittest.TestCase):
     """
-    Vérifie que create_all et drop_all sont idempotents.
-    Les migrations Alembic réelles (PostgreSQL) nécessitent un environnement Docker.
+    create_all and drop_all are idempotent.
+    The real Alembic migrations (PostgreSQL) need a Docker environment.
     """
 
     def test_create_all_is_idempotent(self):
-        """Deux appels successifs à create_all ne doivent pas lever d'erreur."""
+        """Two successive create_all calls must not raise."""
         engine = _make_sqlite_engine()
         Base.metadata.create_all(engine)
-        Base.metadata.create_all(engine)  # deuxième appel — doit être no-op
+        Base.metadata.create_all(engine)  # second call — must be a no-op
         Base.metadata.drop_all(engine)
         engine.dispose()
 
     def test_drop_all_then_create_all(self):
-        """drop_all suivi de create_all doit recréer toutes les tables."""
+        """drop_all then create_all recreates every table."""
         engine = _make_sqlite_engine()
         Base.metadata.create_all(engine)
         Base.metadata.drop_all(engine)
@@ -407,7 +406,7 @@ class TestMigrationIdempotence(unittest.TestCase):
         inspector = inspect(engine)
         tables = inspector.get_table_names()
         for table in ("assets", "fundamentals_highlights", "etf_details", "etf_holdings"):
-            self.assertIn(table, tables, f"Table absente après recréation: {table}")
+            self.assertIn(table, tables, f"Table missing after recreation: {table}")
 
         Base.metadata.drop_all(engine)
         engine.dispose()
@@ -417,26 +416,26 @@ class TestMigrationIdempotence(unittest.TestCase):
 
 
 class TestAlembicConfig(unittest.TestCase):
-    """Vérifie que les fichiers de configuration Alembic sont en place."""
+    """The Alembic configuration files are in place."""
 
     def test_alembic_ini_exists(self):
         alembic_ini = os.path.join(ROOT, "alembic.ini")
-        self.assertTrue(os.path.exists(alembic_ini), f"alembic.ini introuvable: {alembic_ini}")
+        self.assertTrue(os.path.exists(alembic_ini), f"alembic.ini not found: {alembic_ini}")
 
     def test_alembic_env_exists(self):
         alembic_env = os.path.join(ROOT, "alembic", "env.py")
-        self.assertTrue(os.path.exists(alembic_env), f"alembic/env.py introuvable: {alembic_env}")
+        self.assertTrue(os.path.exists(alembic_env), f"alembic/env.py not found: {alembic_env}")
 
     def test_migration_001_exists(self):
         migration = os.path.join(ROOT, "alembic", "versions", "001_initial_schema.py")
-        self.assertTrue(os.path.exists(migration), f"Migration 001 introuvable: {migration}")
+        self.assertTrue(os.path.exists(migration), f"Migration 001 not found: {migration}")
 
     def test_migration_002_exists(self):
         migration = os.path.join(ROOT, "alembic", "versions", "002_refonte_fundamentals.py")
-        self.assertTrue(os.path.exists(migration), f"Migration 002 introuvable: {migration}")
+        self.assertTrue(os.path.exists(migration), f"Migration 002 not found: {migration}")
 
     def test_alembic_env_imports(self):
-        """Vérifie que alembic/env.py peut être parsé sans erreurs de syntaxe."""
+        """alembic/env.py parses without syntax errors."""
         import ast
 
         alembic_env = os.path.join(ROOT, "alembic", "env.py")
@@ -445,10 +444,10 @@ class TestAlembicConfig(unittest.TestCase):
         try:
             ast.parse(source)
         except SyntaxError as e:
-            self.fail(f"Syntaxe invalide dans alembic/env.py: {e}")
+            self.fail(f"Invalid syntax in alembic/env.py: {e}")
 
     def test_migration_002_imports(self):
-        """Vérifie que la migration 002 peut être parsée sans erreurs de syntaxe."""
+        """Migration 002 parses without syntax errors."""
         import ast
 
         migration = os.path.join(ROOT, "alembic", "versions", "002_refonte_fundamentals.py")
@@ -457,7 +456,7 @@ class TestAlembicConfig(unittest.TestCase):
         try:
             ast.parse(source)
         except SyntaxError as e:
-            self.fail(f"Syntaxe invalide dans 002_refonte_fundamentals.py: {e}")
+            self.fail(f"Invalid syntax in 002_refonte_fundamentals.py: {e}")
 
 
 if __name__ == "__main__":

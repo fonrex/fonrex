@@ -160,7 +160,7 @@ class ECBService(CachedRateService):
                 response = await client.get(url, params=params, headers={"Accept": "text/csv"})
                 response.raise_for_status()
         except Exception as e:
-            logger.error("Erreur API BCE pour %s: %s", series_id, e)
+            logger.error("ECB API error for %s: %s", series_id, e)
             return None
         rate = parse_latest_observation(response.text, series)
         if rate is None:

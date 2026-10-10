@@ -49,7 +49,7 @@ async def get_asset_by_isin(
 ):
     context = await run_sync(db.get_asset_context, isin=isin)
     if not context:
-        raise HTTPException(status_code=404, detail=f"ISIN {isin} introuvable")
+        raise HTTPException(status_code=404, detail=f"ISIN {isin} not found")
     return context["details"]
 
 
@@ -64,7 +64,7 @@ async def search_listings(
     if not any((ticker, isin, exchange, currency)):
         raise HTTPException(
             status_code=400,
-            detail="Au moins un filtre ticker, isin, exchange ou currency est requis",
+            detail="At least one filter is required: ticker, isin, exchange or currency",
         )
 
     listings = await run_sync(
@@ -90,28 +90,28 @@ def _invalid(message: str) -> JSONResponse:
 
 def _validate_eod_request(ticker, period, fmt, order, from_date, to_date, isin=None):
     if not ticker or len(ticker.strip()) == 0 or len(ticker) > 10:
-        return _invalid(f"Le symbole '{ticker}' n'est pas valide")
+        return _invalid(f"The symbol '{ticker}' is not valid")
     if not ticker.replace("-", "").replace(".", "").isalnum():
-        return _invalid(f"Le symbole '{ticker}' n'est pas valide")
+        return _invalid(f"The symbol '{ticker}' is not valid")
     if not period and not (from_date and to_date):
-        return _invalid("Le paramètre 'period' est requis")
+        return _invalid("The 'period' parameter is required")
     if period and period not in VALID_PERIODS:
-        return _invalid(f"La période '{period}' n'est pas valide")
+        return _invalid(f"The period '{period}' is not valid")
     if fmt and fmt not in {"json", "csv"}:
-        return _invalid(f"Le format '{fmt}' n'est pas valide")
+        return _invalid(f"The format '{fmt}' is not valid")
     if order not in {"a", "d"}:
-        return _invalid("Le paramètre 'order' doit être 'a' ou 'd'")
+        return _invalid("The 'order' parameter must be 'a' or 'd'")
     if bool(from_date) != bool(to_date):
-        return _invalid("Les paramètres 'from' et 'to' doivent être fournis ensemble")
+        return _invalid("The 'from' and 'to' parameters must be given together")
     if isin is not None and not ISIN_PATTERN.match(isin.strip().upper()):
-        return _invalid(f"L'ISIN '{isin}' n'est pas valide (12 caractères, ex. US6516391066)")
+        return _invalid(f"The ISIN '{isin}' is not valid (12 characters, e.g. US6516391066)")
     try:
         start = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
         end = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
     except ValueError:
-        return _invalid("Les dates doivent être au format YYYY-MM-DD")
+        return _invalid("Dates must use the YYYY-MM-DD format")
     if start and end and start > end:
-        return _invalid("La date 'from' doit être antérieure ou égale à la date 'to'")
+        return _invalid("The 'from' date must be on or before the 'to' date")
     return None
 
 
@@ -278,7 +278,7 @@ async def get_eod(
             source = result.source_used or "yfinance"
 
     if not rows:
-        content = {"error": "No data found", "message": f"Aucune donnée trouvée pour {ticker}"}
+        content = {"error": "No data found", "message": f"No data found for {ticker}"}
         if ingest_error:
             # Why nothing could be fetched (e.g. no verified symbol for the listing).
             content["reason"] = ingest_error

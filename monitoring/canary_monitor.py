@@ -1,12 +1,12 @@
 """
-CanaryMonitor — Vérifie quotidiennement des actifs "canary" contre chaque provider.
+CanaryMonitor — checks "canary" assets against every provider each day.
 
-Un actif canary est un actif très liquide avec des valeurs connues et stables.
-Ex: Apple P/E est toujours entre 20 et 40. Si un provider retourne 0.4 → cassé.
+A canary asset is a very liquid asset with known, stable values.
+E.g. Apple's P/E is always between 20 and 40: a provider returning 0.4 is broken.
 
-Lancé quotidiennement via APScheduler (06:00 UTC par défaut).
+Run daily by APScheduler (06:00 UTC by default).
 
-Usage :
+Usage:
     monitor = CanaryMonitor(monitoring_repository, redis_client)
     await monitor.run_all()
     await monitor.run_provider("ZoneBourse")
@@ -41,7 +41,7 @@ from monitoring.units import to_ratio
 
 logger = logging.getLogger(__name__)
 
-# Seuils d'alerte
+# Alert thresholds
 ALERT_THRESHOLDS = {
     "canary_failures_critical": int(os.environ.get("ALERT_CANARY_CRITICAL", "3")),
     "canary_failures_warning": 1,
@@ -67,10 +67,10 @@ _is_compatible = is_compatible
 
 class CanaryMonitor:
     """
-    Moniteur canary quotidien.
+    Daily canary monitor.
 
-    Applique les règles métier de monitoring via un port de persistance et
-    utilise Redis pour publier le cache de statut de santé.
+    Applies the monitoring rules through a storage port, and publishes the
+    health status cache in Redis.
     """
 
     def __init__(
@@ -92,12 +92,12 @@ class CanaryMonitor:
         )
         self._dynamic_price_ranges = self._price_ranges.cache
 
-    # ── Point d'entrée principal ──────────────────────────────────────────────
+    # ── Main entry point ──────────────────────────────────────────────────────
 
     async def run_all(self) -> Dict[str, List[CanaryCheckResult]]:
         """
-        Exécute les checks canary pour tous les providers en parallèle.
-        Semaphore(3) pour éviter de flood. Timeout global 120s.
+        Run the canary checks of every provider in parallel.
+        Semaphore(3) to avoid flooding. Overall timeout 120s.
         """
         sem = asyncio.Semaphore(_SEMAPHORE_LIMIT)
         all_results: Dict[str, List[CanaryCheckResult]] = {}
@@ -143,7 +143,7 @@ class CanaryMonitor:
         provider_name: str,
     ) -> List[CanaryCheckResult]:
         """
-        Exécute les checks canary pour un provider spécifique.
+        Run the canary checks of one provider.
         """
         results: List[CanaryCheckResult] = []
         provider_cls = _get_provider_class(provider_name)
@@ -188,7 +188,7 @@ class CanaryMonitor:
                     )
                 continue
 
-            # Déduire dynamiquement le range pour "price" si possible
+            # Derive the range of "price" dynamically when possible
             price_range_override = None
             if "price" in expected_fields:
                 price_range_override = await self._get_dynamic_price_range(ticker)
@@ -276,14 +276,14 @@ class CanaryMonitor:
             checked_at=now,
         )
 
-    # ── Mise à jour des agrégats quotidiens ──────────────────────────────────
+    # ── Daily aggregates ─────────────────────────────────────────────────────
 
     async def _update_daily_stats(
         self,
         provider_name: str,
         results: List[CanaryCheckResult],
     ) -> DailyHealthStats:
-        """Upsert dans provider_health_daily pour aujourd'hui."""
+        """Upsert today's row of provider_health_daily."""
         checks_total = len(results)
         checks_ok = sum(1 for result in results if result.status == HealthStatus.ok)
         success_rate = round(checks_ok / checks_total, 4) if checks_total > 0 else 0.0
@@ -312,7 +312,7 @@ class CanaryMonitor:
 
         return stats
 
-    # ── Gestion des alertes ───────────────────────────────────────────────────
+    # ── Alerts ────────────────────────────────────────────────────────────────
 
     async def _evaluate_and_create_alerts(
         self,
@@ -321,8 +321,8 @@ class CanaryMonitor:
         daily_stats: DailyHealthStats,
     ) -> List[int]:
         """
-        Évalue si des alertes doivent être créées ou résolues.
-        Déduplique les alertes actives de même type pour le provider.
+        Decide whether alerts must be created or resolved.
+        Deduplicates the active alerts of the same type for the provider.
         """
         if not self._repository:
             return []
@@ -393,13 +393,13 @@ class CanaryMonitor:
 
         return created_ids
 
-    # ── Cache Redis du statut de santé ────────────────────────────────────────
+    # ── Redis cache of the health status ──────────────────────────────────────
 
     async def _update_redis_health_status(
         self,
         all_results: Dict[str, List[CanaryCheckResult]],
     ) -> None:
-        """Met à jour le cache Redis avec le statut de santé global."""
+        """Update the Redis cache with the overall health status."""
         if not self.redis:
             return
 
@@ -438,7 +438,7 @@ class CanaryMonitor:
     # ── Log canary results to DB ──────────────────────────────────────────────
 
     async def _log_canary_results(self, results: List[CanaryCheckResult]) -> None:
-        """Batch insert des résultats canary dans provider_health_log."""
+        """Batch insert of the canary results into provider_health_log."""
         if not results or not self._repository:
             return
 
@@ -450,7 +450,7 @@ class CanaryMonitor:
     # ── Field extraction ──────────────────────────────────────────────────────
 
     def _extract_field(self, obj: Any, field: str) -> Optional[Decimal]:
-        """Extrait un champ d'un objet de façon défensive."""
+        """Read a field of an object defensively."""
         try:
             if obj is None:
                 return None

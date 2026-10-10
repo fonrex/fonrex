@@ -20,7 +20,7 @@ MAX_DAYS_TO_KEEP = 36500
 
 class DatabaseMaintenance(DatabaseComponent):
     def get_model_counts(self):
-        """Récupère les comptes des principaux modèles."""
+        """Row counts of the main models."""
         session = self.get_session()
         try:
             return {
@@ -36,13 +36,13 @@ class DatabaseMaintenance(DatabaseComponent):
 
     def get_database_stats(self):
         """
-        Récupère les statistiques de la base de données.
+        Database statistics.
 
         Returns:
             tuple: (success, data_or_error_message)
-                success (bool): True si succès, False sinon
-                data (dict): Statistiques de la base de données
-                error_msg (str): Message d'erreur si échec
+                success (bool): True on success, False otherwise
+                data (dict): Database statistics
+                error_msg (str): Error message on failure
         """
         session = self.get_session()
         try:
@@ -50,7 +50,7 @@ class DatabaseMaintenance(DatabaseComponent):
             total_tickers = session.query(AssetListing).count()
             total_usage_logs = session.query(UsageLog).count()
 
-            # Statistiques par endpoint (dernières 24h)
+            # Statistics per endpoint (last 24h)
             yesterday = datetime.now(UTC) - timedelta(days=1)
 
             endpoint_stats = (
@@ -60,7 +60,7 @@ class DatabaseMaintenance(DatabaseComponent):
                 .all()
             )
 
-            # Top 5 tickers demandés par ingest_log (dernières 24h)
+            # Top 5 tickers of ingest_log (last 24h)
             top_ingests = (
                 session.query(IngestLog.ticker, func.count(IngestLog.id).label("count"))
                 .filter(IngestLog.created_at >= yesterday)
@@ -82,14 +82,14 @@ class DatabaseMaintenance(DatabaseComponent):
             return True, stats, None
 
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de la récupération des stats BDD: {e}")
+            logger.error(f"Database statistics error: {e}")
             return False, None, str(e)
         finally:
             session.close()
 
     def get_cached_tickers(self):
         """
-        Récupère la liste des tickers en cache avec leurs métadonnées.
+        The cached tickers with their metadata.
 
         Returns:
             tuple: (success, data_or_error_message)
@@ -149,7 +149,7 @@ class DatabaseMaintenance(DatabaseComponent):
 
             return True, tickers_data, None
         except SQLAlchemyError as e:
-            logger.error(f"Erreur lors de la récupération des tickers: {e}")
+            logger.error(f"Ticker list error: {e}")
             return False, None, str(e)
         finally:
             session.close()
@@ -168,7 +168,7 @@ class DatabaseMaintenance(DatabaseComponent):
         return self._cleanup_old_data(days_to_keep, dry_run)
 
     def _cleanup_old_data(self, days_to_keep=730, dry_run=False):
-        """Implémentation interne du nettoyage."""
+        """Cleanup implementation."""
         if (
             isinstance(days_to_keep, bool)
             or not isinstance(days_to_keep, int)
@@ -203,8 +203,8 @@ class DatabaseMaintenance(DatabaseComponent):
                 session.commit()
 
             logger.info(
-                "🧹 Nettoyage BDD%s: %s prix EOD, %s logs d'usage, %s logs d'ingestion",
-                " (simulation)" if dry_run else "",
+                "🧹 Database cleanup%s: %s EOD prices, %s usage logs, %s ingestion logs",
+                " (dry run)" if dry_run else "",
                 deleted_count,
                 deleted_usage_logs,
                 deleted_ingest_logs,
@@ -226,7 +226,7 @@ class DatabaseMaintenance(DatabaseComponent):
 
         except SQLAlchemyError as e:
             session.rollback()
-            logger.error(f"Erreur lors du nettoyage BDD: {e}")
+            logger.error(f"Database cleanup error: {e}")
             return False, None, str(e)
         finally:
             session.close()

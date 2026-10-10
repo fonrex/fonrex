@@ -1,9 +1,9 @@
 """
-pytest configuration — isolation des suites de tests.
+pytest configuration — isolation of the test suites.
 
-Les deux suites test_migrations.py et test_yfinance_enricher.py
-utilisent SQLAlchemy avec StaticPool et peuvent interférer si
-exécutées dans le même processus sans isolation explicite.
+test_migrations.py and test_yfinance_enricher.py both use SQLAlchemy with
+StaticPool and may interfere when run in the same process without explicit
+isolation.
 """
 
 import os
@@ -50,8 +50,8 @@ with warnings.catch_warnings():
 
 
 def pytest_collection_modifyitems(items):
-    """Garantit l'ordre d'exécution : migrations avant enricher pour éviter
-    les conflits de SQLAlchemy mapper registry."""
+    """Run the migration tests before the enricher tests, to avoid
+    conflicts in the SQLAlchemy mapper registry."""
     migration_tests = [i for i in items if "test_migrations" in str(i.fspath)]
     enricher_tests = [i for i in items if "test_yfinance_enricher" in str(i.fspath)]
     other_tests = [

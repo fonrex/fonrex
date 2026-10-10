@@ -88,7 +88,7 @@ class GoogleFinanceNewsProvider(BaseFinancialProvider):
         if not html:
             return []
 
-        # Tentative JSON d'abord, fallback HTML
+        # JSON first, HTML as a fallback
         items = self._parse_json(html, language)
         if not items:
             items = self._parse_html(html, language)
@@ -103,7 +103,7 @@ class GoogleFinanceNewsProvider(BaseFinancialProvider):
             if ticker.upper().endswith(suffix.upper()):
                 symbol = ticker[: -len(suffix)].upper()
                 return symbol, exchange
-        # US ticker — tenter NASDAQ par défaut
+        # US ticker — try NASDAQ by default
         return ticker.upper(), "NASDAQ"
 
     def _detect_language(self, ticker: str) -> str:
@@ -117,12 +117,12 @@ class GoogleFinanceNewsProvider(BaseFinancialProvider):
 
     def _parse_json(self, html: str, language: str) -> List[RawNewsItem]:
         """
-        Tente d'extraire les news depuis les blocs JSON embarqués dans la page.
-        Google Finance encode les données dans des tableaux JS.
+        Try to read the news from the JSON blocks embedded in the page.
+        Google Finance encodes its data in JS arrays.
         """
         items: List[RawNewsItem] = []
 
-        # Pattern : chercher des arrays avec des objets {title, url, time, source}
+        # Pattern: arrays of objects {title, url, time, source}
         # Google Finance news data is often in AF_initDataCallback scripts
         pattern = re.compile(
             r'\["([^"]{10,500})",\s*"(https?://[^"]+)",\s*"([^"]*)",\s*"([^"]*)"',
@@ -132,7 +132,7 @@ class GoogleFinanceNewsProvider(BaseFinancialProvider):
             title, url, source, time_str = match.groups()
             if not url.startswith("http"):
                 continue
-            # Filtrer les faux positifs (liens CSS, JS, images)
+            # Filter out false positives (CSS, JS, image links)
             if any(ext in url for ext in (".css", ".js", ".png", ".jpg", ".svg")):
                 continue
             published_at = self._parse_relative_date(time_str) if time_str else None
@@ -152,11 +152,11 @@ class GoogleFinanceNewsProvider(BaseFinancialProvider):
     # ── parsing HTML ──────────────────────────────────────────────────────────
 
     def _parse_html(self, html: str, language: str) -> List[RawNewsItem]:
-        """Fallback: scraping des blocs d'articles dans le DOM."""
+        """Fallback: scrape the article blocks of the DOM."""
         soup = BeautifulSoup(html, "html.parser")
         items: List[RawNewsItem] = []
 
-        # Sélecteurs courants de Google Finance (peuvent changer)
+        # Usual Google Finance selectors (may change)
         for container in soup.select("div.yY3Lee, div.Yfwt5, div[data-article-id]"):
             link_tag = container.find("a", href=True)
             title_tag = container.find(
@@ -199,7 +199,7 @@ class GoogleFinanceNewsProvider(BaseFinancialProvider):
 
     def _parse_relative_date(self, time_str: str) -> Optional[datetime]:
         """
-        Parse les dates relatives Google Finance en datetime UTC.
+        Parse the relative dates of Google Finance into UTC datetimes.
 
         "1 hour ago"    → now - 1h
         "3 hours ago"   → now - 3h
@@ -258,7 +258,7 @@ class GoogleFinanceNewsProvider(BaseFinancialProvider):
                 except ValueError:
                     pass
 
-        # "May 16" (année courante)
+        # "May 16" (current year)
         m = re.match(r"([a-z]+)\s+(\d{1,2})$", s)
         if m:
             month = month_map.get(m.group(1)[:3])

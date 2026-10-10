@@ -13,12 +13,12 @@ Freshness = Literal["live", "cached", "stale"]
 
 
 class MacroRate(BaseModel):
-    """Une observation d'un taux macro-économique (ex: taux sans risque)."""
+    """An observation of a macroeconomic rate (e.g. the risk-free rate)."""
     series_id: str = Field(
         ...,
         description="Series name: FRED id (DGS10) or ECB flow.key (YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y).",
     )
-    label: Optional[str] = Field(None, description="Libellé de la série.")
+    label: Optional[str] = Field(None, description="Label of the series.")
     value: Decimal = Field(
         ..., description="The rate as a ratio: 0.0412 for 4.12 %. It may be zero or negative."
     )
@@ -75,7 +75,7 @@ class MacroRatesResponse(BaseModel):
 
 
 class SolvencyRatios(BaseModel):
-    """Ratios de solvabilité et coût de la dette de l'entreprise."""
+    """Solvency ratios and cost of debt of the company."""
     debt_to_equity_ratio: Optional[Decimal] = Field(
         None, description="Total Debt / Total Equity"
     )
@@ -89,8 +89,8 @@ class SolvencyRatios(BaseModel):
         None, description="EBIT / Interest Expense"
     )
     actual_cost_of_debt: Optional[Decimal] = Field(
-        None, description="Coût de la dette réel calculé (Interest Expense / Total Debt) ou estimé sectoriel."
+        None, description="Actual cost of debt (Interest Expense / Total Debt), or a sector estimate."
     )
     cost_of_debt_source: Optional[str] = Field(
-        None, description="Source du coût de la dette : 'calculated' ou 'sector_estimate'."
+        None, description="Source of the cost of debt: 'calculated' or 'sector_estimate'."
     )

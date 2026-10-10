@@ -1,7 +1,7 @@
 """
-Tests du IndexConstituentsProvider.
+Tests of the IndexConstituentsProvider.
 
-Mocks complets — aucune requête réseau réelle.
+Complete mocks — no real network request.
 """
 
 import unittest
@@ -124,7 +124,7 @@ DAX_HTML = """
 
 
 class TestWikipediaTableParser(unittest.TestCase):
-    """Tests du parser HTML générique."""
+    """Generic HTML parser tests."""
 
     def setUp(self):
         self.provider = IndexConstituentsProvider()
@@ -144,7 +144,7 @@ class TestWikipediaTableParser(unittest.TestCase):
         self.assertEqual(rows[0].get("ISIN"), "NL0000235190")
 
     def test_parse_strips_wikipedia_annotations(self):
-        """Les [1], [note], etc. doivent être supprimés."""
+        """[1], [note], etc. are removed."""
         html = """<html><body>
         <table class="wikitable">
         <tr><th>Company[1]</th><th>ISIN[note]</th></tr>
@@ -152,11 +152,11 @@ class TestWikipediaTableParser(unittest.TestCase):
         </table></body></html>"""
         rows = self.provider._parse_wikipedia_table(html)
         self.assertEqual(len(rows), 1)
-        # Headers nettoyés
+        # Cleaned headers
         keys = list(rows[0].keys())
         self.assertIn("Company", keys)
         self.assertIn("ISIN", keys)
-        # Valeurs nettoyées
+        # Cleaned values
         self.assertEqual(rows[0]["Company"], "Apple Inc.")
 
     def test_parse_empty_table_returns_empty_list(self):
@@ -166,7 +166,7 @@ class TestWikipediaTableParser(unittest.TestCase):
 
 
 class TestSP500Fetch(unittest.IsolatedAsyncioTestCase):
-    """Tests du fetch S&P 500."""
+    """S&P 500 fetch tests."""
 
     def setUp(self):
         self.provider = IndexConstituentsProvider()
@@ -200,7 +200,7 @@ class TestSP500Fetch(unittest.IsolatedAsyncioTestCase):
 
 
 class TestCAC40Fetch(unittest.IsolatedAsyncioTestCase):
-    """Tests du fetch CAC 40."""
+    """CAC 40 fetch tests."""
 
     def setUp(self):
         self.provider = IndexConstituentsProvider()
@@ -214,7 +214,7 @@ class TestCAC40Fetch(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(result.total_count, 0)
 
     async def test_fetch_cac40_has_isin(self):
-        """Les composants du CAC 40 doivent avoir un ISIN."""
+        """The CAC 40 constituents have an ISIN."""
         with patch.object(self.provider, "_get", new_callable=AsyncMock, return_value=CAC40_HTML):
             result = await self.provider.fetch_cac40()
 
@@ -223,7 +223,7 @@ class TestCAC40Fetch(unittest.IsolatedAsyncioTestCase):
                 self.assertRegex(c.isin, r"^[A-Z]{2}[A-Z0-9]{10}$")
 
     async def test_fetch_cac40_country_from_isin(self):
-        """Le pays doit être dérivé des 2 premiers caractères de l'ISIN."""
+        """The country comes from the first 2 characters of the ISIN."""
         with patch.object(self.provider, "_get", new_callable=AsyncMock, return_value=CAC40_HTML):
             result = await self.provider.fetch_cac40()
 
@@ -233,7 +233,7 @@ class TestCAC40Fetch(unittest.IsolatedAsyncioTestCase):
 
 
 class TestFetchDispatch(unittest.IsolatedAsyncioTestCase):
-    """Tests du dispatcher fetch()."""
+    """fetch() dispatcher tests."""
 
     def setUp(self):
         self.provider = IndexConstituentsProvider()

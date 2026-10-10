@@ -1,14 +1,14 @@
 """
-ValidationLayer — Valide chaque valeur retournée par un provider en temps réel.
+ValidationLayer — checks every value returned by a provider as it arrives.
 
-Deux types de validation :
-1. Range check   : la valeur est-elle dans un range plausible ?
-2. Consensus check : la valeur dévie-t-elle trop du consensus des autres providers ?
+Two checks:
+1. Range check     : is the value within a plausible range?
+2. Consensus check : does the value deviate too much from the other providers?
 
-Intégré dans FinancialProviderRunner APRÈS la collecte des résultats.
-Une valeur invalide est remplacée par None (et le fallback prend le relais).
+Run by FinancialProviderRunner AFTER the results are collected.
+An invalid value is replaced by None (and the fallback takes over).
 
-Usage :
+Usage:
     validator = ValidationLayer(monitoring_repository)
     validated = await validator.validate_results(
         ticker="AIR.PA",
@@ -31,31 +31,31 @@ from monitoring.units import to_ratio
 
 logger = logging.getLogger(__name__)
 
-# ── Ranges plausibles par champ financier ─────────────────────────────────────
-# Format : (min, max) — valeurs en dehors = out_of_range → rejeté
-# Les ranges sont exprimés en ratio (0.0345 = 3,45 %). Les providers qui publient
-# un champ en pourcentage sont convertis avant contrôle (cf. monitoring/units.py).
+# ── Plausible range of each financial field ──────────────────────────────────
+# Format: (min, max) — a value outside is out_of_range → rejected
+# Ranges are ratios (0.0345 = 3.45 %). A provider that publishes a field as a
+# percentage is converted before the check (see monitoring/units.py).
 FIELD_RANGES: Dict[str, Tuple[float, float]] = {
-    # Valorisation
+    # Valuation
     "pe_ratio": (0.5, 1000.0),
     "pe_forward": (0.5, 500.0),
     "pb_ratio": (0.0, 100.0),
     "ps_ratio": (0.0, 200.0),
     "peg_ratio": (-10.0, 50.0),
     "ev_ebitda": (0.0, 500.0),
-    # Prix
+    # Price
     "price": (0.001, 1_000_000.0),
     "target_price": (0.001, 1_000_000.0),
-    # Rendements (en ratio, pas en %)
+    # Yields (ratios, not %)
     "dividend_yield": (0.0, 0.50),
     "dividend_rate": (0.0, 1000.0),
-    # Rentabilité (en ratio)
+    # Profitability (ratios)
     "roe": (-5.0, 10.0),
     "roa": (-2.0, 2.0),
     "net_margin": (-5.0, 1.0),
     "operating_margin": (-5.0, 1.0),
     "gross_margin": (-1.0, 1.0),
-    # Ratios de croissance (en ratio)
+    # Growth (ratios)
     "quarterly_revenue_growth_yoy": (-0.99, 10.0),
     "quarterly_earnings_growth_yoy": (-0.99, 20.0),
     # EPS
@@ -64,7 +64,7 @@ FIELD_RANGES: Dict[str, Tuple[float, float]] = {
     "eps": (-1000.0, 10000.0),
     # Beta
     "beta": (-3.0, 5.0),
-    # Short interest (en ratio)
+    # Short interest (ratio)
     "short_percent_float": (0.0, 1.0),
     # Payout ratio
     "payout_ratio": (0.0, 10.0),
@@ -73,31 +73,31 @@ FIELD_RANGES: Dict[str, Tuple[float, float]] = {
     "week_52_low": (0.001, 1_000_000.0),
 }
 
-# Seuil configurable via env
+# Threshold set by environment variable
 CONSENSUS_DEVIATION_THRESHOLD = float(os.environ.get("VALIDATION_OUTLIER_THRESHOLD", "0.50"))
 MIN_PROVIDERS_FOR_CONSENSUS = int(os.environ.get("VALIDATION_MIN_PROVIDERS", "2"))
 
-# Champs validables présents sur StandardFinancials / FinancialMetrics
+# Checked fields of StandardFinancials / FinancialMetrics
 _VALIDATABLE_FIELDS = list(FIELD_RANGES.keys())
 
 
 class ValidationLayer:
     """
-    Valide les résultats retournés par les providers financiers.
+    Checks the results returned by the financial providers.
 
-    Ne connaît que le contrat de persistance du monitoring. La technologie de
-    stockage est choisie au point de composition de l'application.
+    Knows only the storage contract of the monitoring; the storage technology
+    is chosen where the application is assembled.
     """
 
     def __init__(self, repository: ValidationLogRepository | None = None) -> None:
         """
         Args:
-            repository: port de journalisation. Si ``None``, la persistance
-                        des contrôles est désactivée.
+            repository: logging port. With ``None``, the checks are not
+                        stored.
         """
         self._repository = repository
 
-    # ── Point d'entrée principal ─────────────────────────────────────────────
+    # ── Main entry point ─────────────────────────────────────────────────────
 
     async def validate_results(
         self,
@@ -105,23 +105,23 @@ class ValidationLayer:
         results: Dict[str, Any],  # {provider_name: payload (dict or pydantic obj)}
     ) -> Dict[str, Any]:
         """
-        Valide tous les résultats des providers pour un ticker.
+        Check every provider result of a ticker.
 
-        Pour chaque champ de chaque provider :
-        1. Range check → valeur dans FIELD_RANGES ?
-        2. Consensus check → valeur trop différente des autres ?
+        For each field of each provider:
+        1. Range check → value within FIELD_RANGES?
+        2. Consensus check → value too far from the others?
 
-        Les valeurs sont d'abord ramenées en ratio (cf. monitoring/units.py) :
-        les contrôles et les logs utilisent la valeur normalisée, le payload
-        du provider conserve son unité d'origine.
+        Values are first turned into ratios (see monitoring/units.py): the
+        checks and the logs use the normalised value, the payload of the
+        provider keeps its own unit.
 
-        Si une valeur est invalide → la remplacer par None dans l'objet
-        Et logger dans provider_health_log.
+        An invalid value is replaced by None in the object and logged in
+        provider_health_log.
 
-        Retourne les résultats nettoyés (objets modifiés in-place).
+        Returns the cleaned results (objects changed in place).
         """
         try:
-            # Collecter toutes les valeurs par champ : {field: {provider: Decimal}}
+            # Collect every value per field: {field: {provider: Decimal}}
             field_values: Dict[str, Dict[str, Decimal]] = {}
             for provider_name, obj in results.items():
                 if obj is None or (isinstance(obj, dict) and obj.get("error")):
@@ -131,12 +131,12 @@ class ValidationLayer:
                     if val is not None:
                         field_values.setdefault(field, {})[provider_name] = val
 
-            # Calculer le consensus par champ
+            # Consensus of each field
             consensus_by_field: Dict[str, Optional[Decimal]] = {}
             for field, prov_vals in field_values.items():
                 consensus_by_field[field] = self._compute_consensus(field, prov_vals)
 
-            # Valider chaque (provider, field) et collecter les logs
+            # Check each (provider, field) and collect the logs
             pending_logs: List[ValidationLogEntry] = []
 
             for provider_name, obj in results.items():
@@ -249,9 +249,9 @@ class ValidationLayer:
         value: Optional[Decimal],
     ) -> Tuple[str, Optional[str]]:
         """
-        Vérifie si une valeur est dans le range plausible pour ce champ.
+        Whether a value is within the plausible range of its field.
 
-        Retourne (status, reason).
+        Returns (status, reason).
         """
         if value is None:
             return ("null", "valeur None")
@@ -278,7 +278,7 @@ class ValidationLayer:
         provider: str,
     ) -> Tuple[str, Optional[Decimal], Optional[str]]:
         """
-        Vérifie si une valeur dévie trop du consensus des autres providers.
+        Whether a value deviates too much from the consensus of the other providers.
         """
         try:
             fval = float(value)
@@ -297,13 +297,13 @@ class ValidationLayer:
                 return (
                     "outlier",
                     deviation_dec,
-                    f"{provider}.{field}={value} dévie {deviation:.1%} du consensus {consensus}",
+                    f"{provider}.{field}={value} deviates {deviation:.1%} from the consensus {consensus}",
                 )
             return ("ok", deviation_dec, None)
         except (ArithmeticError, TypeError, ValueError):
             return ("ok", None, None)
 
-    # ── Calcul du consensus ───────────────────────────────────────────────────
+    # ── Consensus ─────────────────────────────────────────────────────────────
 
     def _compute_consensus(
         self,
@@ -311,10 +311,10 @@ class ValidationLayer:
         provider_values: Dict[str, Decimal],
     ) -> Optional[Decimal]:
         """
-        Calcule la valeur de consensus (médiane) pour un champ donné.
+        Consensus value (median) of a field.
 
-        Filtre les valeurs hors range avant de calculer.
-        Si < MIN_PROVIDERS_FOR_CONSENSUS valeurs → retourner None.
+        Values out of range are left out first.
+        Fewer than MIN_PROVIDERS_FOR_CONSENSUS values → None.
         """
         # Filter out values that fail range check
         valid_values: List[float] = []
@@ -359,8 +359,8 @@ class ValidationLayer:
 
     async def _batch_log(self, entries: List[ValidationLogEntry]) -> None:
         """
-        Insère toutes les entrées en un seul batch dans provider_health_log.
-        Ne lève jamais d'exception.
+        Insert every entry into provider_health_log in one batch.
+        Never raises.
         """
         if not entries or not self._repository:
             return
@@ -369,13 +369,13 @@ class ValidationLayer:
         except MonitoringRepositoryError as exc:
             logger.warning("[ValidationLayer] Failed to log checks: %s", exc)
 
-    # ── Extraction des champs ─────────────────────────────────────────────────
+    # ── Field reading ─────────────────────────────────────────────────────────
 
     def _extract_field(self, obj: Any, field: str) -> Optional[Decimal]:
         """
-        Extrait un champ d'un objet (Pydantic model ou dict) de façon défensive.
-        Retourne None si l'attribut n'existe pas ou est None.
-        Convertit en Decimal.
+        Read a field of an object (Pydantic model or dict) defensively.
+        None when the attribute is missing or None.
+        Converted to Decimal.
         """
         try:
             if isinstance(obj, dict):
@@ -389,11 +389,11 @@ class ValidationLayer:
             return None
 
     def _extract_normalized(self, provider: str, obj: Any, field: str) -> Optional[Decimal]:
-        """Extrait un champ et le convertit dans l'unité des ranges (ratio)."""
+        """Read a field and convert it to the unit of the ranges (ratio)."""
         return to_ratio(provider, field, self._extract_field(obj, field))
 
     def _set_field_none(self, obj: Any, field: str) -> None:
-        """Remet un champ à None sur un objet (Pydantic ou dict)."""
+        """Set a field of an object (Pydantic or dict) to None."""
         try:
             if isinstance(obj, dict):
                 obj[field] = None

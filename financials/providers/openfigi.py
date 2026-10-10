@@ -1,10 +1,10 @@
 """
-OpenFIGIProvider — Résolution d'identifiants financiers via l'API OpenFIGI.
+OpenFIGIProvider — resolves financial identifiers with the OpenFIGI API.
 
-API : https://api.openfigi.com/v3/mapping (Bloomberg, gratuit avec clé)
-Utilité : ISIN → FIGI, Ticker, MIC, exchange code, sécurité type, etc.
+API: https://api.openfigi.com/v3/mapping (Bloomberg, free with a key)
+Use: ISIN → FIGI, ticker, MIC, exchange code, security type, etc.
 
-Rate limits (clé gratuite) : 25 req/min, 100 ISIN/requête max.
+Rate limits (free key): 25 req/min, at most 100 ISINs per request.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from financials.providers.base import BaseFinancialProvider
 logger = logging.getLogger(__name__)
 
 
-# ── Modèles ───────────────────────────────────────────────────────────────────
+# ── Models ───────────────────────────────────────────────────────────────────
 
 
 class FIGIMapping(BaseModel):
@@ -50,8 +50,8 @@ class OpenFIGIResult(BaseModel):
 
 class OpenFIGIProvider(BaseFinancialProvider):
     """
-    Provider OpenFIGI pour la résolution d'identifiants.
-    Utilisé principalement lors de l'import pour enrichir asset_mappings.
+    OpenFIGI provider resolving identifiers.
+    Used mainly by the import, to enrich asset_mappings.
     """
 
     name = "OpenFIGI"
@@ -59,7 +59,7 @@ class OpenFIGIProvider(BaseFinancialProvider):
     max_retries = 2
     retry_delay = 2.5
 
-    # Rate limit conservateur : 20 req/min avec clé
+    # Conservative rate limit: 20 req/min with a key
     _semaphore: asyncio.Semaphore = asyncio.Semaphore(5)
 
     API_URL = "https://api.openfigi.com/v3/mapping"
@@ -84,8 +84,8 @@ class OpenFIGIProvider(BaseFinancialProvider):
         **kwargs,
     ) -> Optional[OpenFIGIResult]:
         """
-        Résout les identifiants pour un ISIN ou ticker.
-        Priorité : ISIN > ticker.
+        Resolve the identifiers of an ISIN or a ticker.
+        Priority: ISIN > ticker.
         """
         identifier = isin or ticker
         if not identifier:
@@ -98,7 +98,7 @@ class OpenFIGIProvider(BaseFinancialProvider):
                 return results[0]
             return OpenFIGIResult(isin=identifier, mappings=[])
         except Exception as exc:
-            logger.error("[OpenFIGI] Erreur fetch(%s): %s", identifier, exc)
+            logger.error("[OpenFIGI] fetch(%s) error: %s", identifier, exc)
             return OpenFIGIResult(isin=identifier, mappings=[])
 
     async def fetch_batch(
@@ -107,16 +107,16 @@ class OpenFIGIProvider(BaseFinancialProvider):
         id_type: str = "ID_ISIN",
     ) -> List[OpenFIGIResult]:
         """
-        Résout jusqu'à 100 ISINs en une seule requête POST.
+        Resolve up to 100 ISINs in one POST request.
 
-        Body : [{"idType": "ID_ISIN", "idValue": "ISIN1"}, ...]
-        Réponse : array de la même taille — chaque élément est
-                  {"data": [...mappings...]} ou {"error": "..."}
+        Body: [{"idType": "ID_ISIN", "idValue": "ISIN1"}, ...]
+        Answer: an array of the same size — each element is
+                {"data": [...mappings...]} or {"error": "..."}
         """
         if not isins:
             return []
 
-        # Limiter à 100 par batch (limite API)
+        # At most 100 per batch (API limit)
         results: List[OpenFIGIResult] = []
         chunk_size = 100
 
@@ -128,14 +128,14 @@ class OpenFIGIProvider(BaseFinancialProvider):
             try:
                 raw = await self._post_json(self.API_URL, body, headers=headers)
                 if not raw or not isinstance(raw, list):
-                    # Retourner des résultats vides pour ce chunk
+                    # Empty results for this chunk
                     results.extend([OpenFIGIResult(isin=isin, mappings=[]) for isin in chunk])
                     continue
 
                 for i, item in enumerate(raw):
                     isin = chunk[i] if i < len(chunk) else "unknown"
                     if "error" in item:
-                        logger.debug("[OpenFIGI] ISIN %s non trouvé: %s", isin, item["error"])
+                        logger.debug("[OpenFIGI] ISIN %s not found: %s", isin, item["error"])
                         results.append(OpenFIGIResult(isin=isin, mappings=[]))
                     elif "data" in item:
                         mappings = [self._parse_response(isin, m) for m in item["data"]]
@@ -144,17 +144,17 @@ class OpenFIGIProvider(BaseFinancialProvider):
                         results.append(OpenFIGIResult(isin=isin, mappings=[]))
 
             except Exception as exc:
-                logger.error("[OpenFIGI] Erreur fetch_batch: %s", exc)
+                logger.error("[OpenFIGI] fetch_batch error: %s", exc)
                 results.extend([OpenFIGIResult(isin=isin, mappings=[]) for isin in chunk])
 
         return results
 
     def _build_request_body(self, isins: List[str], id_type: str = "ID_ISIN") -> List[dict]:
-        """Construit le body de la requête batch OpenFIGI."""
+        """Body of the OpenFIGI batch request."""
         return [{"idType": id_type, "idValue": isin} for isin in isins]
 
     def _parse_response(self, isin: str, data: dict) -> FIGIMapping:
-        """Parse un élément de réponse OpenFIGI en FIGIMapping."""
+        """Parse an element of the OpenFIGI answer into a FIGIMapping."""
         return FIGIMapping(
             figi=data.get("figi"),
             composite_figi=data.get("compositeFIGI"),

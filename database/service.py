@@ -47,10 +47,10 @@ class DatabaseService:
         try:
             with self.engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
-            logger.info("✅ Connexion à la base de données vérifiée")
+            logger.info("✅ Database connection checked")
             return True
         except SQLAlchemyError as exc:
-            logger.error("❌ Base de données indisponible: %s", exc)
+            logger.error("❌ Database unavailable: %s", exc)
             return False
 
     def check_migrations(self):
@@ -58,16 +58,16 @@ class DatabaseService:
         try:
             status = self.migrations.get_status()
         except (SQLAlchemyError, CommandError, ConfigParserError, OSError) as exc:
-            logger.error("❌ Impossible de vérifier la révision Alembic: %s", exc)
+            logger.error("❌ Cannot check the Alembic revision: %s", exc)
             return False
         if not status.is_current:
             logger.error(
-                "❌ Schéma obsolète (révision=%s, attendue=%s). Exécutez `alembic upgrade head`.",
+                "❌ Outdated schema (revision=%s, expected=%s). Run `alembic upgrade head`.",
                 status.current_heads or ("aucune",),
                 status.expected_heads,
             )
             return False
-        logger.info("✅ Schéma à jour à la révision Alembic %s", status.current_heads)
+        logger.info("✅ Schema up to date at Alembic revision %s", status.current_heads)
         return True
 
     def close(self):

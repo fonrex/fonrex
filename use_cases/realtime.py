@@ -25,7 +25,7 @@ def _load_yfinance_fast_info(ticker):
 def require_worker(worker):
     if worker is None:
         raise DependencyUnavailable(
-            "RealtimePriceWorker non disponible (DATABASE_URL manquant ou erreur démarrage)"
+            "RealtimePriceWorker unavailable (DATABASE_URL missing or start-up error)"
         )
     return worker
 
@@ -95,9 +95,9 @@ class GetQuote:
                     timestamp=datetime.now(timezone.utc),
                 )
         except Exception as exc:
-            logger.warning("Fallback yfinance échoué pour %s: %s", ticker, exc)
+            logger.warning("yfinance fallback failed for %s: %s", ticker, exc)
 
-        raise ResourceNotFound(f"Aucun prix disponible pour {ticker}")
+        raise ResourceNotFound(f"No price available for {ticker}")
 
 
 class SubscribeTickers:
@@ -107,7 +107,7 @@ class SubscribeTickers:
     async def execute(self, tickers: list[str]):
         worker = require_worker(self.worker)
         if len(tickers) > 50:
-            raise InvalidInput("Maximum 50 tickers par requête")
+            raise InvalidInput("At most 50 tickers per request")
 
         results = []
         for raw_ticker in tickers:
@@ -129,7 +129,7 @@ class SubscribeTickers:
                     )
                 )
             except Exception as exc:
-                logger.warning("Erreur abonnement %s: %s", ticker, exc)
+                logger.warning("Subscription error %s: %s", ticker, exc)
         return results
 
 
@@ -141,7 +141,7 @@ class UnsubscribeTicker:
         worker = require_worker(self.worker)
         ticker = ticker.upper()
         if not await worker.unsubscribe(ticker):
-            raise ResourceNotFound(f"Ticker {ticker} non trouvé dans les abonnements actifs")
+            raise ResourceNotFound(f"Ticker {ticker} not found among the active subscriptions")
         return {"status": "unsubscribed", "ticker": ticker}
 
 
@@ -157,7 +157,7 @@ class GetRealtimeStatus:
                 "active_tickers": [],
                 "ws_connections": {},
                 "worker_running": False,
-                "error": "RealtimePriceWorker non initialisé",
+                "error": "RealtimePriceWorker not initialised",
             }
 
         active_tickers = await self.worker.get_active_tickers()
@@ -207,7 +207,7 @@ class GetQuotesBatch:
                     else:
                         results[ticker] = None
             except RedisError as exc:
-                logger.warning("Erreur pipeline Redis multi-quotes: %s", exc)
+                logger.warning("Redis multi-quote pipeline error: %s", exc)
 
         missing = [ticker for ticker in ticker_list if not results.get(ticker)]
         if missing:

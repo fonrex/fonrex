@@ -64,7 +64,7 @@ class BulkIngestResponse(BaseModel):
 
 @router.post("/historical/ingest", response_model=historical_schemas.IngestResult)
 async def post_historical_ingest(
-    ticker: str = Query(..., description="Ticker de l'actif"),
+    ticker: str = Query(..., description="Ticker of the asset"),
     resolution: str = Query("1D", pattern="^(1D|1W|1M)$"),
     source: str = Query("auto", pattern="^(auto|yfinance|tradingview)$"),
     force_refresh: bool = False,

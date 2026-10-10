@@ -45,7 +45,7 @@ def upgrade() -> None:
                 onupdate=sa.text("now()"),
             ),
             sa.Column("source", sa.String(50), server_default="yfinance"),
-            # Valorisation
+            # Valuation
             sa.Column("market_cap", sa.Numeric(20, 2)),
             sa.Column("enterprise_value", sa.Numeric(20, 2)),
             sa.Column("pe_ratio", sa.Numeric(10, 4)),
@@ -55,7 +55,7 @@ def upgrade() -> None:
             sa.Column("peg_ratio", sa.Numeric(10, 4)),
             sa.Column("ev_ebitda", sa.Numeric(10, 4)),
             sa.Column("ev_revenue", sa.Numeric(10, 4)),
-            # Rentabilité
+            # Profitability
             sa.Column("roe", sa.Numeric(10, 6)),
             sa.Column("roa", sa.Numeric(10, 6)),
             sa.Column("roic", sa.Numeric(10, 6)),
@@ -67,13 +67,13 @@ def upgrade() -> None:
             sa.Column("eps_forward", sa.Numeric(10, 4)),
             sa.Column("book_value_per_share", sa.Numeric(10, 4)),
             sa.Column("revenue_per_share", sa.Numeric(10, 4)),
-            # Dividende
+            # Dividend
             sa.Column("dividend_yield", sa.Numeric(10, 6)),
             sa.Column("dividend_rate", sa.Numeric(10, 4)),
             sa.Column("dividend_ex_date", sa.Date()),
             sa.Column("dividend_pay_date", sa.Date()),
             sa.Column("payout_ratio", sa.Numeric(10, 6)),
-            # Technique
+            # Technical
             sa.Column("beta", sa.Numeric(8, 4)),
             sa.Column("week_52_high", sa.Numeric(14, 4)),
             sa.Column("week_52_low", sa.Numeric(14, 4)),
@@ -105,7 +105,7 @@ def upgrade() -> None:
             sa.Column("period_end", sa.Date(), nullable=False),
             sa.Column("fetched_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.Column("currency", sa.String(3), server_default="USD"),
-            # Compte de résultat
+            # Income statement
             sa.Column("revenue", sa.Numeric(20, 2)),
             sa.Column("gross_profit", sa.Numeric(20, 2)),
             sa.Column("ebitda", sa.Numeric(20, 2)),
@@ -120,7 +120,7 @@ def upgrade() -> None:
             sa.Column("sga_expense", sa.Numeric(20, 2)),
             sa.Column("interest_expense", sa.Numeric(20, 2)),
             sa.Column("tax_provision", sa.Numeric(20, 2)),
-            # Bilan
+            # Balance sheet
             sa.Column("total_assets", sa.Numeric(20, 2)),
             sa.Column("total_liabilities", sa.Numeric(20, 2)),
             sa.Column("total_equity", sa.Numeric(20, 2)),

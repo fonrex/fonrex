@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-# S'assurer que le dossier racine est dans le PYTHONPATH
+# Make sure the root folder is on the PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import fakeredis.aioredis
@@ -48,7 +48,7 @@ async def test_connection_manager_exposes_unexpected_programming_errors():
 
 @pytest.fixture
 def fake_redis():
-    """Crée une instance asynchrone isolée de FakeRedis (synchrone pour pytest)."""
+    """An isolated asynchronous FakeRedis instance (synchronous for pytest)."""
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     try:
         yield client
@@ -61,7 +61,7 @@ def fake_redis():
 
 @pytest.fixture
 def mock_session():
-    """Mock une session SQLAlchemy asynchrone."""
+    """Mock of an asynchronous SQLAlchemy session."""
 
     class MockResult:
         def __init__(self, first_val=None, all_val=None):
@@ -95,7 +95,7 @@ def mock_session():
 
 @pytest.fixture
 def session_factory(mock_session):
-    """Factory qui retourne notre mock de session."""
+    """Factory returning our session mock."""
 
     def _factory():
         return mock_session
@@ -105,15 +105,15 @@ def session_factory(mock_session):
 
 @pytest.fixture
 def test_app_client(fake_redis, session_factory):
-    """Configure l'application FastAPI de test avec les mocks et retourne un client de test."""
+    """Set up the FastAPI test application with the mocks and return a test client."""
     old_state_worker = getattr(app.state, "realtime_worker", None)
     old_state_redis = getattr(app.state, "redis_client", None)
     old_state_ws_manager = getattr(app.state, "ws_manager", None)
 
-    # Recréer le manager pour isoler les connexions WS
+    # Create the manager again to isolate the WS connections
     ws_manager = main.ConnectionManager()
 
-    # Créer le worker de test
+    # Create the test worker
     worker = RealtimePriceWorker(fake_redis, session_factory)
     worker._running = True
     app.state.realtime_worker = worker
@@ -129,7 +129,7 @@ def test_app_client(fake_redis, session_factory):
     app.state.ws_manager = old_state_ws_manager
 
 
-# Helper pour simuler une Task asyncio awaitable et annulable
+# Helper simulating an awaitable and cancellable asyncio Task
 class AwaitableMockTask:
     def __init__(self):
         self.cancelled = False
@@ -144,12 +144,12 @@ class AwaitableMockTask:
         return _dummy().__await__()
 
 
-# ── TESTS DU WORKER ───────────────────────────────────────────────────────────
+# ── WORKER TESTS ──────────────────────────────────────────────────────────────
 
 
 class TestRealtimePriceWorker:
     def test_resolve_tv_symbol(self):
-        """Vérifie la conversion des symboles Yahoo → TradingView."""
+        """Yahoo symbols are turned into TradingView symbols."""
         worker = RealtimePriceWorker(None, None)
         assert worker._resolve_tv_symbol("AIR.PA") == ("EURONEXT", "AIR")
         assert worker._resolve_tv_symbol("BMW.DE") == ("XETRA", "BMW")
@@ -158,8 +158,8 @@ class TestRealtimePriceWorker:
 
     @pytest.mark.asyncio
     async def test_subscribe_valid_ticker(self, fake_redis, mock_session, session_factory):
-        """Vérifie l'abonnement nominal d'un ticker."""
-        # Configurer le mock pour retourner l'existence de l'asset
+        """Nominal subscription of a ticker."""
+        # The mock says the asset exists
         mock_result = MagicMock()
         mock_result.first.return_value = (123,)
         mock_session.execute.return_value = mock_result
@@ -167,25 +167,25 @@ class TestRealtimePriceWorker:
         worker = RealtimePriceWorker(fake_redis, session_factory)
         worker._running = True
 
-        # Mocker la tâche de streaming en arrière-plan pour éviter de lancer le scraper réel
+        # Mock the background streaming task, so as not to start the real scraper
         with patch.object(worker, "_stream_ticker", return_value=None):
             success = await worker.subscribe("AIR.PA")
             assert success is True
 
-            # Vérifier l'insertion de l'abonnement
+            # The subscription was inserted
             assert (
                 mock_session.execute.call_count == 2
             )  # 1. select Asset.id, 2. upsert RealtimeSubscription
             mock_session.commit.assert_called_once()
 
-            # Vérifier l'ajout au set Redis
+            # The ticker was added to the Redis set
             active = await worker.get_active_tickers()
             assert "AIR.PA" in active
             assert "AIR.PA" in worker._tasks
 
     @pytest.mark.asyncio
     async def test_process_tick_stores_redis(self, fake_redis, mock_session, session_factory):
-        """Vérifie qu'un tick valide est sauvegardé dans le cache Redis."""
+        """A valid tick is stored in the Redis cache."""
         worker = RealtimePriceWorker(fake_redis, session_factory)
         worker._running = True
 
@@ -198,10 +198,10 @@ class TestRealtimePriceWorker:
             "timestamp": int(datetime.now(timezone.utc).timestamp()),
         }
 
-        # Traiter le tick avec persistance DB activée (asset_id défini)
+        # Process the tick with database storage on (asset_id set)
         await worker._process_tick("AAPL", raw_tick, asset_id=42)
 
-        # Vérifier dans le cache Redis
+        # Check the Redis cache
         cached = await worker.get_quote_from_cache("AAPL")
         assert cached is not None
         assert cached["ticker"] == "AAPL"
@@ -210,13 +210,13 @@ class TestRealtimePriceWorker:
         assert cached["volume"] == 5000
         assert cached["source"] == "tradingview"
 
-        # Doit déclencher upsert intraday et mise à jour de la subscription
+        # Must upsert the intraday bar and update the subscription
         assert mock_session.execute.call_count == 2
         assert mock_session.commit.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_tick_publishes_pubsub(self, fake_redis, mock_session, session_factory):
-        """Vérifie qu'un nouveau tick est publié sur le canal Redis Pub/Sub."""
+        """A new tick is published on the Redis Pub/Sub channel."""
         worker = RealtimePriceWorker(fake_redis, session_factory)
         worker._running = True
 
@@ -230,11 +230,11 @@ class TestRealtimePriceWorker:
 
         await worker._process_tick("MSFT", raw_tick, asset_id=None)
 
-        # Consommer la confirmation de subscription
+        # Read the subscription confirmation
         sub_msg = await pubsub.get_message(timeout=1.0)
         assert sub_msg["type"] == "subscribe"
 
-        # Consommer le tick publié
+        # Read the published tick
         tick_msg = await pubsub.get_message(timeout=1.0)
         assert tick_msg is not None
         assert tick_msg["type"] == "message"
@@ -247,11 +247,11 @@ class TestRealtimePriceWorker:
     async def test_process_tick_invalid_price_rejected(
         self, fake_redis, mock_session, session_factory
     ):
-        """Vérifie les rejets de ticks incorrects."""
+        """Wrong ticks are rejected."""
         worker = RealtimePriceWorker(fake_redis, session_factory)
         worker._running = True
 
-        # Prix négatif ou nul
+        # Negative or zero price
         await worker._process_tick(
             "AAPL",
             {"close": 0.0, "timestamp": int(datetime.now(timezone.utc).timestamp())},
@@ -259,7 +259,7 @@ class TestRealtimePriceWorker:
         )
         assert await worker.get_quote_from_cache("AAPL") is None
 
-        # Timestamp dans le futur (>1min)
+        # Timestamp in the future (>1min)
         future_ts = int((datetime.now(timezone.utc) + timedelta(minutes=2)).timestamp())
         await worker._process_tick("AAPL", {"close": 150.0, "timestamp": future_ts}, asset_id=None)
         assert await worker.get_quote_from_cache("AAPL") is None
@@ -271,7 +271,7 @@ class TestRealtimePriceWorker:
 
     @pytest.mark.asyncio
     async def test_reconnect_on_disconnect(self, fake_redis, mock_session, session_factory):
-        """Vérifie la reconnexion avec backoff exponentiel si le stream échoue."""
+        """Reconnection with exponential backoff when the stream fails."""
         worker = RealtimePriceWorker(fake_redis, session_factory)
         worker._running = True
 
@@ -283,19 +283,19 @@ class TestRealtimePriceWorker:
             if call_count == 1:
                 raise Exception("Network failure")
             else:
-                worker._running = False  # Arrête la boucle infinie de stream_ticker
+                worker._running = False  # Stops the endless loop of stream_ticker
 
         with patch.object(worker, "_run_streamer", side_effect=mock_run_streamer):
             with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
                 await worker._stream_ticker("AAPL", "NASDAQ", "AAPL", asset_id=None)
 
                 assert call_count == 2
-                # Vérifier que le sommeil correspond au backoff initial (5s par défaut)
+                # The sleep is the initial backoff (5s by default)
                 mock_sleep.assert_called_once_with(5)
 
     @pytest.mark.asyncio
     async def test_unsubscribe_cancels_task(self, fake_redis, mock_session, session_factory):
-        """Vérifie la désinscription propre d'un ticker."""
+        """Clean unsubscription of a ticker."""
         worker = RealtimePriceWorker(fake_redis, session_factory)
         worker._running = True
 
@@ -317,7 +317,7 @@ class TestRealtimePriceWorker:
 
     @pytest.mark.asyncio
     async def test_restore_subscriptions_on_start(self, fake_redis, mock_session, session_factory):
-        """Vérifie que start() restaure les abonnements marqués actifs dans la base."""
+        """start() restores the subscriptions marked active in the database."""
         sub1 = RealtimeSubscription(
             id=1, asset_id=10, ticker="AAPL", tv_exchange="NASDAQ", tv_symbol="AAPL", is_active=True
         )
@@ -340,15 +340,15 @@ class TestRealtimePriceWorker:
             mock_subscribe.assert_any_call("MSFT", persist=False)
 
 
-# ── TESTS DES ENDPOINTS WS & REST ─────────────────────────────────────────────
+# ── WS & REST ROUTE TESTS ─────────────────────────────────────────────────────
 
 
 class TestWebSocketEndpoint:
     def test_connect_receives_snapshot(self, test_app_client, fake_redis):
-        """Vérifie que la connexion WebSocket envoie immédiatement le snapshot actuel."""
+        """The WebSocket connection sends the current snapshot at once."""
         client, worker = test_app_client
 
-        # Pré-charger une quote dans Redis
+        # Preload a quote into Redis
         now_str = datetime.now(timezone.utc).isoformat()
         snapshot = {
             "ticker": "AAPL",
@@ -367,14 +367,14 @@ class TestWebSocketEndpoint:
                 assert resp["data"]["close"] == 150.5
 
     def test_tick_broadcast_to_subscribers(self, test_app_client, fake_redis):
-        """Vérifie qu'un nouveau message Pub/Sub est poussé en temps réel aux clients WS."""
+        """A new Pub/Sub message is pushed to the WS clients as it arrives."""
         client, worker = test_app_client
 
         with patch.object(worker, "subscribe", new_callable=AsyncMock):
             with client.websocket_connect("/ws/realtime/AAPL") as ws:
-                # Vider le snapshot initial s'il y en a un (ici aucun n'est dans Redis)
+                # Drain the initial snapshot, if any (none is in Redis here)
 
-                # Simuler la réception d'un nouveau tick par Redis Pub/Sub
+                # Simulate a new tick received through Redis Pub/Sub
                 new_tick = {
                     "ticker": "AAPL",
                     "close": 152.3,
@@ -382,7 +382,7 @@ class TestWebSocketEndpoint:
                 }
                 asyncio.run(fake_redis.publish("price:AAPL", json.dumps(new_tick)))
 
-                # Réceptionner le tick poussé
+                # Receive the pushed tick
                 resp = ws.receive_json()
                 assert resp["type"] == "tick"
                 assert resp["ticker"] == "AAPL"
@@ -415,27 +415,27 @@ class TestWebSocketEndpoint:
                 assert second.receive_json()["data"]["close"] == 152.9
 
     def test_websocket_ping_pong_and_unsubscribe(self, test_app_client):
-        """Vérifie les messages de contrôle du client WS (ping, unsubscribe)."""
+        """Control messages of the WS client (ping, unsubscribe)."""
         client, worker = test_app_client
 
         with patch.object(worker, "subscribe", new_callable=AsyncMock):
             with client.websocket_connect("/ws/realtime/AAPL") as ws:
-                # Envoyer un ping
+                # Send a ping
                 ws.send_text("ping")
                 resp = ws.receive_json()
                 assert resp["type"] == "pong"
 
-                # Envoyer unsubscribe (doit clore la connexion)
+                # Send unsubscribe (must close the connection)
                 ws.send_text("unsubscribe")
-                # Doit se clore proprement sans exception
+                # Must close cleanly without an exception
                 try:
                     ws.receive_json()
-                    pytest.fail("La connexion WS aurait dû être fermée.")
+                    pytest.fail("The WS connection should have been closed.")
                 except Exception:
                     pass
 
     def test_websocket_requires_key_by_default(self, test_app_client, monkeypatch):
-        """Sans aucune configuration d'auth, la connexion WS est refusée (secure by default)."""
+        """Without any auth configuration, the WS connection is refused (secure by default)."""
         from starlette.websockets import WebSocketDisconnect
 
         client, _worker = test_app_client
@@ -447,7 +447,7 @@ class TestWebSocketEndpoint:
                 pass
         assert exc.value.code == 1008
 
-        # Une clé bien formée mais non configurée n'est pas un identifiant valide.
+        # A well-formed key that is not configured is not a valid credential.
         with pytest.raises(WebSocketDisconnect) as exc:
             with client.websocket_connect(
                 "/ws/realtime/AAPL",
@@ -457,19 +457,19 @@ class TestWebSocketEndpoint:
         assert exc.value.code == 1008
 
     def test_websocket_auth_enforcement_when_configured(self, test_app_client, monkeypatch):
-        """Vérifie que la connexion WS requiert une clé API valide quand FONREX_API_KEY est configurée."""
+        """The WS connection needs a valid API key when FONREX_API_KEY is set."""
         from starlette.websockets import WebSocketDisconnect
 
         client, worker = test_app_client
         monkeypatch.setenv("FONREX_API_KEY", "frx_live_ws_secret_999")
 
-        # 1. Non authentifié -> rejet immédiat avec code 1008
+        # 1. Not authenticated -> rejected at once with code 1008
         with pytest.raises(WebSocketDisconnect) as exc:
             with client.websocket_connect("/ws/realtime/AAPL"):
                 pass
         assert exc.value.code == 1008
 
-        # 2. Clé invalide -> code 1008
+        # 2. Invalid key -> code 1008
         with pytest.raises(WebSocketDisconnect) as exc:
             with client.websocket_connect(
                 "/ws/realtime/AAPL",
@@ -478,7 +478,7 @@ class TestWebSocketEndpoint:
                 pass
         assert exc.value.code == 1008
 
-        # 3. Clé valide via Authorization: Bearer
+        # 3. Valid key through Authorization: Bearer
         with patch.object(worker, "subscribe", new_callable=AsyncMock):
             with client.websocket_connect(
                 "/ws/realtime/AAPL",
@@ -487,7 +487,7 @@ class TestWebSocketEndpoint:
                 ws.send_text("ping")
                 assert ws.receive_json() == {"type": "pong"}
 
-        # 4. Clé valide via query param token
+        # 4. Valid key through the token query parameter
         with patch.object(worker, "subscribe", new_callable=AsyncMock):
             with client.websocket_connect(
                 "/ws/realtime/AAPL?token=frx_live_ws_secret_999",
@@ -498,7 +498,7 @@ class TestWebSocketEndpoint:
 
 class TestQuoteEndpoint:
     def test_quote_from_redis_cache(self, test_app_client, fake_redis):
-        """Vérifie que GET /quote/{ticker} renvoie le cache Redis s'il est frais."""
+        """GET /quote/{ticker} returns the Redis cache when it is fresh."""
         client, worker = test_app_client
 
         now_str = datetime.now(timezone.utc).isoformat()
@@ -519,7 +519,7 @@ class TestQuoteEndpoint:
         assert data["source"] == "tradingview"
 
     def test_quote_fallback_yfinance(self, test_app_client):
-        """Vérifie que GET /quote/{ticker} bascule sur yfinance en l'absence de cache."""
+        """GET /quote/{ticker} falls back on yfinance without cache."""
         client, worker = test_app_client
 
         # Mocker yfinance
@@ -531,7 +531,7 @@ class TestQuoteEndpoint:
         mock_ticker.fast_info = FakeFastInfo()
 
         with patch("yfinance.Ticker", return_value=mock_ticker):
-            # subscribe_if_missing=False pour ne pas lancer de tâche asynchrone
+            # subscribe_if_missing=False so that no asynchronous task starts
             response = client.get("/quote/AAPL?subscribe_if_missing=false")
             assert response.status_code == 200
             data = response.json()
@@ -541,7 +541,7 @@ class TestQuoteEndpoint:
             assert data["source"] == "yfinance"
 
     def test_quote_triggers_subscription(self, test_app_client):
-        """Vérifie qu'appeler GET /quote/ déclenche un abonnement asynchrone si le ticker est absent."""
+        """GET /quote/ starts an asynchronous subscription when the ticker is missing."""
         client, worker = test_app_client
 
         class FakeFastInfo:
@@ -556,14 +556,14 @@ class TestQuoteEndpoint:
                 response = client.get("/quote/TSLA?subscribe_if_missing=true")
                 assert response.status_code == 200
 
-                # Attendre un court instant pour laisser l'event loop exécuter la task
+                # Wait a moment so that the event loop runs the task
                 asyncio.run(asyncio.sleep(0.01))
                 mock_sub.assert_called_once_with("TSLA")
 
 
 class TestManualSubscriptionEndpoints:
     def test_subscribe_and_unsubscribe_endpoints(self, test_app_client, mock_session):
-        """Vérifie les endpoints d'inscription et de désinscription manuelles."""
+        """Manual subscription and unsubscription routes."""
         client, worker = test_app_client
 
         # Setup mocks
@@ -582,17 +582,17 @@ class TestManualSubscriptionEndpoints:
             assert data[1]["ticker"] == "MSFT"
 
             # Test DELETE /realtime/subscribe/AAPL
-            # Pré-charger AAPL dans les tâches locales pour faire comme s'il était actif
+            # Preload AAPL into the local tasks, as if it were active
             worker._tasks["AAPL"] = AwaitableMockTask()
             response = client.delete("/realtime/subscribe/AAPL")
             assert response.status_code == 200
             assert response.json()["status"] == "unsubscribed"
 
     def test_status_endpoint(self, test_app_client, fake_redis):
-        """Vérifie le fonctionnement de l'endpoint d'état global."""
+        """The overall status route."""
         client, worker = test_app_client
 
-        # Mocker les abonnements actifs sur le worker
+        # Mock the active subscriptions of the worker
         worker._tasks["AAPL"] = AsyncMock()
         asyncio.run(fake_redis.sadd("realtime:subscriptions", "AAPL"))
 
@@ -604,10 +604,10 @@ class TestManualSubscriptionEndpoints:
         assert data["worker_running"] is True
 
     def test_quotes_batch_endpoint(self, test_app_client, fake_redis):
-        """Vérifie l'endpoint de lecture par lot GET /quotes."""
+        """The batch route GET /quotes."""
         client, worker = test_app_client
 
-        # Pré-charger AAPL dans Redis
+        # Preload AAPL into Redis
         now_str = datetime.now(timezone.utc).isoformat()
         snapshot = {
             "ticker": "AAPL",
@@ -616,7 +616,7 @@ class TestManualSubscriptionEndpoints:
         }
         asyncio.run(fake_redis.set("quote:AAPL", json.dumps(snapshot)))
 
-        # Mocker yfinance pour MSFT
+        # Mock yfinance for MSFT
         class FakeFastInfo:
             last_price = 320.0
             previous_close = 319.0
@@ -632,10 +632,10 @@ class TestManualSubscriptionEndpoints:
             assert "AAPL" in data["quotes"]
             assert "MSFT" in data["quotes"]
 
-            # AAPL provient de Redis
+            # AAPL comes from Redis
             assert data["quotes"]["AAPL"]["is_realtime"] is True
             assert float(data["quotes"]["AAPL"]["data"]["close"]) == 150.5
 
-            # MSFT provient de yfinance
+            # MSFT comes from yfinance
             assert data["quotes"]["MSFT"]["is_realtime"] is False
             assert float(data["quotes"]["MSFT"]["data"]["close"]) == 320.0

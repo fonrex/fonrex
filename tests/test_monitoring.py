@@ -1,9 +1,9 @@
 """
-tests/test_monitoring.py — Tests unitaires du système de monitoring providers.
+tests/test_monitoring.py — unit tests of the provider monitoring.
 
-Couvre :
+Covers:
   - ValidationLayer : range check, consensus, batch logging
-  - CanaryMonitor : check canary, daily stats, alertes
+  - CanaryMonitor : canary check, daily stats, alerts
   - Router endpoints : via TestClient FastAPI
 """
 
@@ -39,7 +39,7 @@ from schemas.monitoring import (
 
 
 class TestValidationLayerRangeCheck:
-    """Tests pour la validation par range."""
+    """Range validation tests."""
 
     def setup_method(self):
         self.validator = ValidationLayer(repository=None)
@@ -62,7 +62,7 @@ class TestValidationLayerRangeCheck:
         assert status == "null"
 
     def test_range_check_unknown_field(self):
-        """Un champ inconnu ne doit pas lever d'erreur."""
+        """An unknown field must not raise."""
         status, reason = self.validator._check_range("unknown_field", Decimal("42.0"))
         assert status == "ok"
 
@@ -80,7 +80,7 @@ class TestValidationLayerRangeCheck:
 
 
 class TestValidationLayerConsensus:
-    """Tests pour la validation par consensus."""
+    """Consensus validation tests."""
 
     def setup_method(self):
         self.validator = ValidationLayer(repository=None)
@@ -92,7 +92,7 @@ class TestValidationLayerConsensus:
         assert status == "ok"
 
     def test_consensus_outlier(self):
-        """Valeur qui dépasse le seuil de déviation → outlier."""
+        """A value beyond the deviation threshold → outlier."""
         status, dev, reason = self.validator._check_consensus(
             "pe_ratio", Decimal("0.8"), Decimal("24.0"), "TestProv"
         )
@@ -101,14 +101,14 @@ class TestValidationLayerConsensus:
         assert float(dev) > CONSENSUS_DEVIATION_THRESHOLD
 
     def test_consensus_near_zero(self):
-        """Consensus proche de 0 → pas de rejet."""
+        """Consensus close to 0 → no rejection."""
         status, dev, reason = self.validator._check_consensus(
             "pe_ratio", Decimal("0.001"), Decimal("0.0"), "TestProv"
         )
         assert status == "ok"
 
     def test_compute_consensus_median(self):
-        """Le consensus est la médiane des valeurs valides."""
+        """The consensus is the median of the valid values."""
         vals = {
             "A": Decimal("20.0"),
             "B": Decimal("22.0"),
@@ -125,11 +125,11 @@ class TestValidationLayerConsensus:
         assert consensus is None
 
     def test_compute_consensus_filters_out_of_range(self):
-        """Les valeurs hors range sont exclues du consensus."""
+        """Values out of range are left out of the consensus."""
         vals = {
             "A": Decimal("20.0"),
             "B": Decimal("22.0"),
-            "C": Decimal("99999.0"),  # out of range pour pe_ratio
+            "C": Decimal("99999.0"),  # out of range for pe_ratio
         }
         consensus = self.validator._compute_consensus("pe_ratio", vals)
         assert consensus is not None
@@ -137,7 +137,7 @@ class TestValidationLayerConsensus:
 
 
 class TestValidationLayerValidateResults:
-    """Tests d'intégration pour validate_results."""
+    """Integration tests of validate_results."""
 
     def setup_method(self):
         self.validator = ValidationLayer(repository=None)
@@ -184,7 +184,7 @@ class TestValidationLayerValidateResults:
 
     @pytest.mark.asyncio
     async def test_validate_results_never_raises(self):
-        """validate_results ne doit jamais lever d'exception."""
+        """validate_results must never raise."""
         results = {
             "Bad": {"pe_ratio": "invalid_string"},
         }
@@ -205,7 +205,7 @@ class TestValidationLayerValidateResults:
 
 
 class TestValidationLayerFieldExtraction:
-    """Tests pour l'extraction de champs."""
+    """Field reading tests."""
 
     def setup_method(self):
         self.validator = ValidationLayer(repository=None)
@@ -447,7 +447,7 @@ class TestCanaryMonitorDailyStats:
 
     @pytest.mark.asyncio
     async def test_update_daily_stats_no_db(self):
-        """Sans session factory, retourne quand même les stats calculées."""
+        """Without a session factory, the computed stats are still returned."""
         from schemas.monitoring import CanaryCheckResult
 
         results = [
@@ -578,7 +578,7 @@ class TestCanaryMonitorPersistencePorts:
 class TestCanaryMonitorRedis:
     @pytest.mark.asyncio
     async def test_update_redis_health_status(self):
-        """Vérifie que le résumé est écrit dans Redis."""
+        """The summary is written to Redis."""
         import fakeredis.aioredis
 
         redis_client = fakeredis.aioredis.FakeRedis()
@@ -660,7 +660,7 @@ class TestMonitoringSchemas:
 
 
 class TestMonitoringRouter:
-    """Tests basiques des endpoints (sans DB réelle)."""
+    """Basic route tests (no real database)."""
 
     def setup_method(self):
         from fastapi import FastAPI
@@ -681,7 +681,7 @@ class TestMonitoringRouter:
         self.client = TestClient(self.app)
 
     def test_health_providers_no_config(self):
-        """Sans session factory ni Redis → 503."""
+        """Without session factory nor Redis → 503."""
         resp = self.client.get("/health/providers")
         assert resp.status_code == 503
 
@@ -708,7 +708,7 @@ class TestMonitoringRouter:
 
 
 class TestMonitoringRouterWithRedis:
-    """Tests des endpoints avec Redis factice."""
+    """Route tests with a fake Redis."""
 
     def setup_method(self):
         from fastapi import FastAPI

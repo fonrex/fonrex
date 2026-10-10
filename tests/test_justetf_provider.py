@@ -1,7 +1,7 @@
 """
-Tests du JustETFProvider.
+Tests of the JustETFProvider.
 
-Mocks complets — aucune requête réseau réelle.
+Complete mocks — no real network request.
 """
 
 import unittest
@@ -65,7 +65,7 @@ JUSTETF_API_RESPONSE = {
 
 
 class TestJustETFPercentageParsing(unittest.TestCase):
-    """Tests des helpers de conversion numérique."""
+    """Number conversion helper tests."""
 
     def setUp(self):
         self.provider = JustETFProvider()
@@ -99,7 +99,7 @@ class TestJustETFPercentageParsing(unittest.TestCase):
 
 
 class TestJustETFCurrencyAmountParsing(unittest.TestCase):
-    """Tests du parsing des montants financiers."""
+    """Financial amount parsing tests."""
 
     def setUp(self):
         self.provider = JustETFProvider()
@@ -130,13 +130,13 @@ class TestJustETFCurrencyAmountParsing(unittest.TestCase):
 
 
 class TestJustETFAPIFetch(unittest.IsolatedAsyncioTestCase):
-    """Tests du fetch via l'API JSON interne."""
+    """Fetch through the internal JSON API."""
 
     def setUp(self):
         self.provider = JustETFProvider()
 
     async def test_fetch_via_api_success(self):
-        """L'API JSON retourne un JustETFResult correctement parsé."""
+        """The JSON API returns a correctly parsed JustETFResult."""
         with patch.object(
             self.provider, "_get_json", new_callable=AsyncMock, return_value=JUSTETF_API_RESPONSE
         ):
@@ -155,25 +155,25 @@ class TestJustETFAPIFetch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result.top_holdings), 2)
 
     async def test_fetch_via_api_none_returns_none(self):
-        """Si l'API retourne None, _fetch_via_api renvoie None."""
+        """When the API returns None, _fetch_via_api returns None."""
         with patch.object(self.provider, "_get_json", new_callable=AsyncMock, return_value=None):
             result = await self.provider._fetch_via_api("IE00XXXX")
         self.assertIsNone(result)
 
     async def test_fetch_without_isin_returns_none(self):
-        """Appel sans ISIN → None directement."""
+        """Call without ISIN → None at once."""
         result = await self.provider.fetch(isin=None)
         self.assertIsNone(result)
 
 
 class TestJustETFHTMLScraping(unittest.IsolatedAsyncioTestCase):
-    """Tests du fallback HTML scraping."""
+    """HTML scraping fallback tests."""
 
     def setUp(self):
         self.provider = JustETFProvider()
 
     async def test_scraping_parses_ter(self):
-        """Le TER doit être correctement parsé depuis le HTML."""
+        """The TER is parsed correctly from the HTML."""
         with patch.object(
             self.provider, "_get", new_callable=AsyncMock, return_value=JUSTETF_HTML_MSCI_WORLD
         ):
@@ -185,7 +185,7 @@ class TestJustETFHTMLScraping(unittest.IsolatedAsyncioTestCase):
             self.assertAlmostEqual(float(result.net_expense_ratio), 0.002, places=4)
 
     async def test_fallback_used_when_api_fails(self):
-        """Si l'API échoue, le fallback HTML est utilisé."""
+        """When the API fails, the HTML fallback is used."""
         with (
             patch.object(
                 self.provider, "_fetch_via_api", new_callable=AsyncMock, return_value=None
@@ -203,7 +203,7 @@ class TestJustETFHTMLScraping(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.name, "Test ETF")
 
     async def test_scraping_html_not_found_returns_none(self):
-        """Si le GET échoue, retourner None."""
+        """When the GET fails, None is returned."""
         with (
             patch.object(self.provider, "_get_json", new_callable=AsyncMock, return_value=None),
             patch.object(self.provider, "_get", new_callable=AsyncMock, return_value=None),

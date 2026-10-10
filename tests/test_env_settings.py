@@ -271,7 +271,7 @@ class TestTechnicalSettings:
             await technical_router.get_technical_batch(payload, service=MagicMock())
 
         assert error.value.status_code == 400
-        assert "Maximum 1 indicateurs" in error.value.detail
+        assert "Maximum 1 indicators" in error.value.detail
 
     async def test_default_batch_limits_are_unchanged(self):
         assert technical_router.TECHNICAL_MAX_BATCH_TICKERS == 20

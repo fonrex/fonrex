@@ -1,7 +1,7 @@
 """
-Tests du OpenFIGIProvider.
+Tests of the OpenFIGIProvider.
 
-Mocks complets — aucune requête réseau réelle.
+Complete mocks — no real network request.
 """
 
 import unittest
@@ -67,13 +67,13 @@ OPENFIGI_BATCH_RESPONSE = [
 
 
 class TestOpenFIGIFetch(unittest.IsolatedAsyncioTestCase):
-    """Tests du fetch unitaire."""
+    """Single fetch tests."""
 
     def setUp(self):
         self.provider = OpenFIGIProvider()
 
     async def test_fetch_by_isin_success(self):
-        """Fetch par ISIN → FIGIMapping correctement parsé."""
+        """Fetch by ISIN → FIGIMapping parsed correctly."""
         with patch.object(
             self.provider, "_post_json", new_callable=AsyncMock, return_value=OPENFIGI_AAPL_RESPONSE
         ):
@@ -88,7 +88,7 @@ class TestOpenFIGIFetch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.mappings[0].currency, "USD")
 
     async def test_fetch_isin_not_found(self):
-        """ISIN non trouvé → OpenFIGIResult avec mappings=[]."""
+        """ISIN not found → OpenFIGIResult with mappings=[]."""
         with patch.object(
             self.provider, "_post_json", new_callable=AsyncMock, return_value=OPENFIGI_NOT_FOUND
         ):
@@ -98,12 +98,12 @@ class TestOpenFIGIFetch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.mappings, [])
 
     async def test_fetch_no_identifier_returns_none(self):
-        """Sans ISIN ni ticker → None."""
+        """Without ISIN nor ticker → None."""
         result = await self.provider.fetch()
         self.assertIsNone(result)
 
     async def test_fetch_api_failure_returns_empty(self):
-        """Si l'API est KO → résultat vide sans exception."""
+        """API down → empty result, no exception."""
         with patch.object(self.provider, "_post_json", new_callable=AsyncMock, return_value=None):
             result = await self.provider.fetch(isin="US0378331005")
 
@@ -112,13 +112,13 @@ class TestOpenFIGIFetch(unittest.IsolatedAsyncioTestCase):
 
 
 class TestOpenFIGIBatchFetch(unittest.IsolatedAsyncioTestCase):
-    """Tests du fetch batch."""
+    """Batch fetch tests."""
 
     def setUp(self):
         self.provider = OpenFIGIProvider()
 
     async def test_fetch_batch_returns_correct_count(self):
-        """Le batch retourne un résultat par ISIN (même pour les non-trouvés)."""
+        """The batch returns one result per ISIN (even the ones not found)."""
         with patch.object(
             self.provider,
             "_post_json",
@@ -132,7 +132,7 @@ class TestOpenFIGIBatchFetch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 3)
         self.assertEqual(results[0].isin, "US0378331005")
         self.assertEqual(len(results[0].mappings), 1)
-        # ISIN non trouvé
+        # ISIN not found
         self.assertEqual(results[1].isin, "XX0000000000")
         self.assertEqual(results[1].mappings, [])
         # Airbus
@@ -140,7 +140,7 @@ class TestOpenFIGIBatchFetch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[2].mappings[0].ticker, "AIR")
 
     async def test_fetch_batch_empty_list(self):
-        """Un batch vide retourne une liste vide."""
+        """An empty batch returns an empty list."""
         results = await self.provider.fetch_batch([])
         self.assertEqual(results, [])
 
@@ -163,7 +163,7 @@ class TestOpenFIGIBatchFetch(unittest.IsolatedAsyncioTestCase):
 
 
 class TestOpenFIGIRequestBody(unittest.TestCase):
-    """Tests de la construction du body de requête."""
+    """Request body tests."""
 
     def setUp(self):
         self.provider = OpenFIGIProvider()
@@ -197,7 +197,7 @@ class TestOpenFIGIRequestBody(unittest.TestCase):
         self.assertEqual(mapping.isin, "US0378331005")
 
     def test_parse_response_missing_fields(self):
-        """Les champs manquants doivent être None, pas de KeyError."""
+        """Missing fields must be None, no KeyError."""
         mapping = self.provider._parse_response("XX0000000000", {"figi": "BBG000XXXXX"})
         self.assertEqual(mapping.figi, "BBG000XXXXX")
         self.assertIsNone(mapping.ticker)
@@ -205,10 +205,10 @@ class TestOpenFIGIRequestBody(unittest.TestCase):
 
 
 class TestOpenFIGIHeaders(unittest.TestCase):
-    """Tests des headers HTTP."""
+    """HTTP header tests."""
 
     def test_headers_without_api_key(self):
-        """Sans clé API, pas d'en-tête X-OPENFIGI-APIKEY."""
+        """Without an API key, no X-OPENFIGI-APIKEY header."""
         provider = OpenFIGIProvider()
         provider.api_key = ""
         headers = provider._openfigi_headers()
@@ -216,7 +216,7 @@ class TestOpenFIGIHeaders(unittest.TestCase):
         self.assertIn("Content-Type", headers)
 
     def test_headers_with_api_key(self):
-        """Avec clé API, l'en-tête doit être présent."""
+        """With an API key, the header is present."""
         provider = OpenFIGIProvider()
         provider.api_key = "test-key-12345"
         headers = provider._openfigi_headers()

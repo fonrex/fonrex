@@ -4,10 +4,10 @@ Revision ID: 010
 Revises: 009
 Create Date: 2026-05-25
 
-Description :
-    Crée la table news_articles pour stocker les articles
-    financiers agrégés depuis les providers de news.
-    Politique de rétention : 90 jours (articles plus anciens supprimés).
+Description:
+    Creates the news_articles table storing the financial articles
+    gathered from the news providers.
+    Retention policy: 90 days (older articles deleted).
 """
 
 import sqlalchemy as sa
@@ -39,26 +39,26 @@ def upgrade() -> None:
         # Dates
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("fetched_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        # Sentiment (optionnel — calculé en Phase suivante)
+        # Sentiment (optional — computed in a later phase)
         sa.Column("sentiment", sa.String(10), nullable=True),
         sa.Column("sentiment_score", sa.Numeric(4, 3), nullable=True),
-        # Tickers associés (un article peut concerner plusieurs actifs)
+        # Related tickers (an article may concern several assets)
         sa.Column("related_tickers", postgresql.ARRAY(sa.String(20)), nullable=True),
         sa.Column("related_isin", postgresql.ARRAY(sa.String(12)), nullable=True),
-        # Langue
+        # Language
         sa.Column("language", sa.String(5), nullable=True, server_default="en"),
     )
 
-    # Index sur asset_id + published_at pour la requête principale
+    # Index on asset_id + published_at for the main query
     op.create_index("ix_news_asset_published", "news_articles", ["asset_id", "published_at"])
 
-    # Index sur published_at pour le feed global
+    # Index on published_at for the global feed
     op.create_index("ix_news_published_at", "news_articles", ["published_at"])
 
-    # Index sur provider pour les stats
+    # Index on provider for the statistics
     op.create_index("ix_news_provider", "news_articles", ["provider"])
 
-    # Politique de rétention 90 jours (TimescaleDB si disponible)
+    # 90-day retention policy (TimescaleDB when available)
     op.execute("""
         DO $$
         BEGIN

@@ -11,7 +11,7 @@ _ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}\d")
 
 
 class FinancialProviderRunner:
-    """Exécute les providers financiers avec timeout et normalisation de réponse."""
+    """Runs the financial providers with a timeout and normalised answers."""
 
     def __init__(
         self,
@@ -24,7 +24,7 @@ class FinancialProviderRunner:
         self.validation = validation_layer
 
     def resolve_providers(self, provider_params: Iterable[str]) -> Tuple[list[str], Dict[str, Any]]:
-        """Résout une liste de providers demandés en conservant les erreurs de nom."""
+        """Resolve a list of requested providers, keeping the name errors."""
         requested = [
             provider.strip() for provider in provider_params if provider and provider.strip()
         ]
@@ -54,7 +54,7 @@ class FinancialProviderRunner:
         asset_profile: Optional[Dict[str, Any]] = None,
         verified_symbols: Optional[Dict[str, str]] = None,
     ):
-        """Détermine l'identifiant le plus fiable pour un provider donné."""
+        """The most reliable identifier for a provider."""
         provider_key = provider_name.lower()
         # A symbol verified for the listing (ISIN and currency checked) is used as
         # it is: nothing guessed from the ticker or the exchange may replace it.
@@ -74,10 +74,10 @@ class FinancialProviderRunner:
                 search_term = mapping.provider_ticker
                 used_source = f"Ticker: {search_term}"
 
-        # Yahoo Finance : Correction forcée du ticker via l'exchange du profil
+        # Yahoo Finance: ticker corrected with the exchange of the profile
         if provider_key == "yahoofinance" and asset_profile:
             db_exchange = asset_profile.get("exchange")
-            # On utilise official_symbol en priorité car il est souvent plus "propre" (ex: ACA vs XCA)
+            # official_symbol first: it is often "cleaner" (e.g. ACA vs XCA)
             db_ticker = (
                 asset_profile.get("official_symbol") or asset_profile.get("ticker") or ticker
             )
@@ -85,10 +85,10 @@ class FinancialProviderRunner:
             if db_exchange and db_ticker and len(db_ticker) < 10:
                 from financials.exchange import get_yahoo_ticker
 
-                # On génère le ticker avec suffixe
+                # Build the ticker with its suffix
                 generated = get_yahoo_ticker(db_ticker, db_exchange)
 
-                # On donne priorité au ticker généré s'il contient un suffixe (différent du ticker de base)
+                # The built ticker wins when it has a suffix (differs from the base ticker)
                 if generated != db_ticker:
                     search_term = generated
                     used_source = f"Auto-generated (via {db_exchange}): {search_term}"
@@ -96,10 +96,10 @@ class FinancialProviderRunner:
                     search_term = generated
                     used_source = f"Auto-generated: {search_term}"
 
-        # Google Finance : Correction forcée du ticker via l'exchange du profil
+        # Google Finance: ticker corrected with the exchange of the profile
         if provider_key == "googlefinance" and asset_profile:
             db_exchange = asset_profile.get("exchange")
-            # Idem, on privilégie official_symbol pour éviter les tickers spécifiques à d'autres places (ex: XCA)
+            # Same: official_symbol first, to avoid tickers of other exchanges (e.g. XCA)
             db_ticker = (
                 asset_profile.get("official_symbol") or asset_profile.get("ticker") or ticker
             )
@@ -109,7 +109,7 @@ class FinancialProviderRunner:
 
                 generated = get_google_ticker(db_ticker, db_exchange)
 
-                # On donne priorité au ticker généré s'il contient un séparateur :
+                # The built ticker wins when it holds a separator:
                 if ":" in generated and generated.split(":")[0] != generated:
                     search_term = generated
                     used_source = f"Auto-generated (via {db_exchange}): {search_term}"
@@ -117,7 +117,7 @@ class FinancialProviderRunner:
                     search_term = generated
                     used_source = f"Auto-generated: {search_term}"
 
-        # GuruFocus : Correction forcée du ticker via l'exchange du profil pour aider la résolution
+        # GuruFocus: ticker corrected with the exchange of the profile, to help the resolution
         if provider_key == "gurufocus" and asset_profile:
             db_exchange = asset_profile.get("exchange")
             db_ticker = (
@@ -132,7 +132,7 @@ class FinancialProviderRunner:
                     search_term = f"{db_ticker}{suffix}"
                     used_source = f"Auto-generated (via {db_exchange}): {search_term}"
 
-        # Utilisation de l'ISIN du profil si disponible et si le provider le supporte mieux que le ticker
+        # The ISIN of the profile, when known and better supported by the provider than the ticker
         profile_isin = asset_profile.get("isin") if asset_profile else None
         target_isin = isin or profile_isin
 
@@ -186,7 +186,7 @@ class FinancialProviderRunner:
             if provider_info["type"] == "async":
                 provider_instance = provider_info["class"]()
                 data = await provider_instance.get_financials(search_term)
-                # Si le provider retourne le terme de recherche (ex: ISIN) comme ticker, on restaure le ticker d'origine
+                # A provider returning the search term (e.g. the ISIN) as ticker gets the original ticker back
                 if hasattr(data, "ticker") and data.ticker == search_term and search_term != ticker:
                     data.ticker = ticker
                 return data
@@ -225,7 +225,7 @@ class FinancialProviderRunner:
         verified_symbols: Optional[Dict[str, str]] = None,
         refused_providers: Optional[Dict[str, str]] = None,
     ):
-        """Exécute les providers demandés en parallèle et retourne résultats + sources utilisées.
+        """Run the requested providers in parallel; returns the results and the sources used.
 
         ``verified_symbols`` gives, per provider (lower case), the symbol to query
         instead of anything derived from the ticker. ``refused_providers`` gives the
@@ -288,17 +288,17 @@ class FinancialProviderRunner:
                         payload["isin"] = target_isin
                 return provider_name, payload
             except TimeoutError:
-                logger.warning(f"Timeout provider {provider_name} après {self.timeout_seconds}s")
+                logger.warning(f"Provider {provider_name} timed out after {self.timeout_seconds}s")
                 return provider_name, {"error": "Provider timeout"}
             except Exception as e:
-                logger.error(f"Erreur avec le provider {provider_name}: {e}")
+                logger.error(f"Provider {provider_name} error: {e}")
                 return provider_name, {"error": str(e)}
 
         provider_results = await asyncio.gather(*(execute(name) for name in providers_to_use))
         for provider_name, payload in provider_results:
             results[provider_name] = payload
 
-        # Validation layer — filtre les outliers et valeurs hors range
+        # Validation layer — filters outliers and values out of range
         if self.validation and results:
             try:
                 results = await self.validation.validate_results(

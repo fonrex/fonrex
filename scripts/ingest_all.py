@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Script CLI pour lancer l'ingestion EOD historique de masse pour tous les actifs actifs.
+Command-line script running the bulk EOD history ingestion of every active asset.
 """
 
 import argparse
@@ -13,14 +13,14 @@ import time
 
 import redis.asyncio as redis
 
-# Ajouter le chemin parent pour pouvoir importer les modules
+# Add the parent directory so that the modules can be imported
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.query import QueryService
 from database.service import DatabaseService
 from historical.ingestion_service import HistoricalIngestionService
 
-# Configuration du logging
+# Logging configuration
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 async def run_bulk_ingest(resolution: str, source: str, force_refresh: bool, concurrency: int):
     start_time = time.time()
 
-    # 1. Initialisation des services
+    # 1. Services
     db_service = DatabaseService()
     query_service = QueryService()
 
@@ -40,18 +40,18 @@ async def run_bulk_ingest(resolution: str, source: str, force_refresh: bool, con
     )
 
     try:
-        # 2. Récupérer les tickers actifs
-        logger.info("🔍 Récupération des tickers actifs depuis la base de données...")
+        # 2. Active tickers
+        logger.info("🔍 Reading the active tickers from the database...")
         tickers = await query_service.get_all_tickers_for_bulk_ingest()
-        logger.info(f"📋 {len(tickers)} tickers actifs trouvés.")
+        logger.info(f"📋 {len(tickers)} active tickers found.")
 
         if not tickers:
-            logger.warning("⚠️ Aucun ticker actif trouvé pour l'ingestion.")
+            logger.warning("⚠️ No active ticker to ingest.")
             return
 
-        # 3. Lancer l'ingestion bulk
+        # 3. Bulk ingestion
         logger.info(
-            f"🔄 Lancement de l'ingestion historique pour {len(tickers)} tickers ({resolution}) via {source}..."
+            f"🔄 Ingesting the history of {len(tickers)} tickers ({resolution}) from {source}..."
         )
         results = await ingestion_service.ingest_bulk(
             tickers=tickers,
@@ -61,63 +61,63 @@ async def run_bulk_ingest(resolution: str, source: str, force_refresh: bool, con
             concurrency=concurrency,
         )
 
-        # 4. Analyser les résultats
+        # 4. Results
         success_count = sum(1 for r in results if r.status == "success")
         up_to_date_count = sum(1 for r in results if r.status == "up_to_date")
         failed_count = sum(1 for r in results if r.status == "failed")
 
         duration = time.time() - start_time
         logger.info("=========================================")
-        logger.info("📊 RAPPORT D'INGESTION DE MASSE")
-        logger.info(f"⏱️ Durée totale : {duration:.2f} secondes")
-        logger.info(f"✅ Succès : {success_count}")
-        logger.info(f"🔄 Déjà à jour : {up_to_date_count}")
-        logger.info(f"❌ Échecs : {failed_count}")
+        logger.info("📊 BULK INGESTION REPORT")
+        logger.info(f"⏱️ Total duration: {duration:.2f} seconds")
+        logger.info(f"✅ Succeeded: {success_count}")
+        logger.info(f"🔄 Already up to date: {up_to_date_count}")
+        logger.info(f"❌ Failed: {failed_count}")
         logger.info("=========================================")
 
         if failed_count > 0:
-            logger.warning("⚠️ Certains tickers ont échoué à l'ingestion :")
+            logger.warning("⚠️ Some tickers failed:")
             for r in results:
                 if r.status == "failed":
                     logger.warning(f"  - {r.ticker}: {r.error}")
 
     finally:
-        # 5. Nettoyage des connexions
+        # 5. Close the connections
         await query_service.close()
         await redis_client.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ingestion EOD historique en masse.")
+    parser = argparse.ArgumentParser(description="Bulk EOD history ingestion.")
     parser.add_argument(
         "--resolution",
         type=str,
         default="1D",
         choices=["1D", "1W", "1M"],
-        help="Résolution temporelle à ingérer (default: 1D)",
+        help="Resolution to ingest (default: 1D)",
     )
     parser.add_argument(
         "--source",
         type=str,
         default="auto",
         choices=["auto", "yfinance", "tradingview"],
-        help="Source de données à utiliser (default: auto)",
+        help="Data source (default: auto)",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Forcer le rafraîchissement complet de l'historique (ignore gap detection)",
+        help="Fetch the whole history again (ignores gap detection)",
     )
     parser.add_argument(
         "--concurrency",
         type=int,
         default=5,
-        help="Nombre maximal de requêtes parallèles (default: 5)",
+        help="Maximum number of parallel requests (default: 5)",
     )
 
     args = parser.parse_args()
 
-    # Exécuter la boucle event loop
+    # Run the event loop
     asyncio.run(
         run_bulk_ingest(
             resolution=args.resolution,

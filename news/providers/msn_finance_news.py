@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-MSNFinanceNewsProvider — News agrégées par MSN Finance.
+MSNFinanceNewsProvider — news gathered by MSN Finance.
 
-MSN Finance agrège Reuters, AP News, Bloomberg et d'autres.
-Tentative via endpoint JSON interne, fallback HTML.
+MSN Finance gathers Reuters, AP News, Bloomberg and others.
+Internal JSON endpoint first, HTML as a fallback.
 """
 
 import logging
@@ -38,7 +38,7 @@ class MSNFinanceNewsProvider(BaseFinancialProvider):
         if not symbol:
             return []
 
-        # Priorité : endpoint JSON interne
+        # First: internal JSON endpoint
         items = await self._fetch_json(symbol, limit)
         if not items:
             items = await self._fetch_html(symbol, limit)
@@ -53,7 +53,7 @@ class MSNFinanceNewsProvider(BaseFinancialProvider):
             "timeOut": "1000",
             "market": "en-us",
             "query": f'{{"topic":"finance/stockquote/{base_ticker}"}}',
-            "apikey": "0QfOX3Vn51YCzitbLaRkTkVuZEHd3cZw",  # clé publique MSN
+            "apikey": "0QfOX3Vn51YCzitbLaRkTkVuZEHd3cZw",  # public MSN key
         }
         headers = self._get_headers(
             {

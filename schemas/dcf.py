@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Schémas Pydantic pour le module DCF Valuation.
+Pydantic schemas of the DCF valuation.
 """
 
 from datetime import date, datetime, timezone
@@ -25,51 +25,49 @@ DEFAULT_RISK_FREE_RATE = env_decimal("DCF_RISK_FREE_RATE", "0.04", minimum="-0.1
 
 
 class WACCInput(BaseModel):
-    """Paramètres d'entrée personnalisés pour le calcul du WACC."""
+    """Custom inputs of the WACC."""
 
-    risk_free_rate: Optional[Decimal] = Field(
-        None, description="Taux sans risque (ex: 0.04 pour 4%)"
-    )
+    risk_free_rate: Optional[Decimal] = Field(None, description="Risk-free rate (e.g. 0.04 for 4%)")
     equity_risk_premium: Optional[Decimal] = Field(
-        None, description="Prime de risque actions (ex: 0.055 pour 5.5%)"
+        None, description="Equity risk premium (e.g. 0.055 for 5.5%)"
     )
-    beta_override: Optional[Decimal] = Field(None, description="Valeur de Beta forcée")
-    cost_of_debt_override: Optional[Decimal] = Field(None, description="Coût de la dette forcé")
-    tax_rate_override: Optional[Decimal] = Field(None, description="Taux d'imposition forcé")
+    beta_override: Optional[Decimal] = Field(None, description="Forced beta")
+    cost_of_debt_override: Optional[Decimal] = Field(None, description="Forced cost of debt")
+    tax_rate_override: Optional[Decimal] = Field(None, description="Forced tax rate")
 
 
 class DCFRequest(BaseModel):
-    """Requête de calcul DCF personnalisée."""
+    """Custom DCF request."""
 
     models: List[Literal["fcf", "eps", "ddm"]] = Field(default_factory=lambda: ["fcf"])
     projection_years: int = Field(
         DEFAULT_PROJECTION_YEARS,
         ge=3,
         le=10,
-        description="Nombre d'années de projection (3 à 10)",
+        description="Projection years (3 to 10)",
     )
     terminal_growth_rate: Decimal = Field(
         DEFAULT_TERMINAL_GROWTH_RATE,
-        description="Taux de croissance terminal (ex: 0.025 pour 2.5%)",
+        description="Terminal growth rate (e.g. 0.025 for 2.5%)",
     )
-    wacc_params: Optional[WACCInput] = Field(None, description="Paramètres de WACC personnalisés")
+    wacc_params: Optional[WACCInput] = Field(None, description="Custom WACC parameters")
     fcf_growth_override: Optional[Decimal] = Field(
-        None, description="Force le taux de croissance FCF initial"
+        None, description="Forces the initial FCF growth rate"
     )
     eps_growth_override: Optional[Decimal] = Field(
-        None, description="Force le taux de croissance EPS initial"
+        None, description="Forces the initial EPS growth rate"
     )
     dividend_growth_override: Optional[Decimal] = Field(
-        None, description="Force le taux de croissance Dividende initial"
+        None, description="Forces the initial dividend growth rate"
     )
     model_weights: Optional[Dict[Literal["fcf", "eps", "ddm"], Decimal]] = Field(
         None,
-        description="Pondérations personnalisées pour le calcul du consensus. Ex: {'fcf': 0.5, 'eps': 0.3, 'ddm': 0.2}",
+        description="Custom weights of the consensus. E.g. {'fcf': 0.5, 'eps': 0.3, 'ddm': 0.2}",
     )
 
 
 class WACCResult(BaseModel):
-    """Détail du WACC calculé."""
+    """Detail of the computed WACC."""
 
     wacc: Decimal
     cost_of_equity: Decimal
@@ -79,7 +77,7 @@ class WACCResult(BaseModel):
     weight_debt: Decimal
     beta_used: Decimal
     cost_of_debt_source: Optional[str] = Field(
-        None, description="Source du Kd (client_override, calculated, sector_estimate)"
+        None, description="Source of Kd (client_override, calculated, sector_estimate)"
     )
     risk_free_rate: Optional[Decimal] = Field(None, description="Rf used, as a ratio")
     risk_free_rate_source: Optional[str] = Field(
@@ -106,7 +104,7 @@ class WACCResult(BaseModel):
 
 
 class DCFModelResult(BaseModel):
-    """Résultat détaillé pour un modèle spécifique (FCF, EPS, ou DDM)."""
+    """Detailed result of one model (FCF, EPS or DDM)."""
 
     model_name: str
     intrinsic_value_per_share: Decimal
@@ -123,7 +121,7 @@ class DCFModelResult(BaseModel):
 
 
 class DCFResult(BaseModel):
-    """Réponse finale de l'API pour une valorisation DCF."""
+    """API answer of a DCF valuation."""
 
     ticker: str
     currency: str = Field(..., description="Currency of the statements and of the values")
@@ -136,7 +134,7 @@ class DCFResult(BaseModel):
     wacc: WACCResult
     models: Dict[str, DCFModelResult]
     solvency: Optional[SolvencyRatios] = Field(
-        None, description="Ratios de solvabilité et données d'endettement sous-jacentes"
+        None, description="Solvency ratios and the underlying debt data"
     )
     consensus_value: Optional[Decimal] = None
     consensus_upside_pct: Optional[Decimal] = None
@@ -145,7 +143,7 @@ class DCFResult(BaseModel):
 
 
 class SensitivityCell(BaseModel):
-    """Cellule de la matrice de sensibilité."""
+    """A cell of the sensitivity matrix."""
 
     wacc: Decimal
     terminal_growth: Decimal
@@ -154,7 +152,7 @@ class SensitivityCell(BaseModel):
 
 
 class SensitivityResult(BaseModel):
-    """Matrice de sensibilité complète."""
+    """The whole sensitivity matrix."""
 
     ticker: str
     model: str

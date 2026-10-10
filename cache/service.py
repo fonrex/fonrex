@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Service de gestion du cache Redis pour FonRex API.
+Redis cache service of the Fonrex API.
 """
 
 import json
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class CacheService:
-    """Service de gestion du cache Redis."""
+    """Redis cache service."""
 
     DEFAULT_TTLS = {
         "eod": 86400,
@@ -25,42 +25,42 @@ class CacheService:
         "mappings": 7776000,
         "history": 86400,
         # Deep fundamentals (yfinance enrichment)
-        "highlights": 86400,  # 24h — métriques clés (prix, ratios)
-        "statements": 604800,  # 7j  — bilans (changent par trimestre)
-        "earnings": 86400,  # 24h — peut changer lors des publications
-        "ratings": 43200,  # 12h — consensus analystes
-        # Phase 3 — nouveaux providers
+        "highlights": 86400,  # 24h — key metrics (price, ratios)
+        "statements": 604800,  # 7d  — statements (change every quarter)
+        "earnings": 86400,  # 24h — may change at earnings releases
+        "ratings": 43200,  # 12h — analyst consensus
+        # Phase 3 — new providers
         "insider_transactions": 43200,  # 12h — Form 4 SEC
-        "etf_details": 86400,  # 24h — données ETF justETF
-        "index_constituents": 604800,  # 7j  — composants indices
-        "openfigi_mapping": 7776000,  # 90j — les FIGIs changent rarement
-        # Indicateurs techniques — selon résolution
-        "technical_1D": 3600,  # 1h  — EOD stable pendant la journée
+        "etf_details": 86400,  # 24h — justETF ETF data
+        "index_constituents": 604800,  # 7d  — index constituents
+        "openfigi_mapping": 7776000,  # 90d — FIGIs rarely change
+        # Technical indicators — by resolution
+        "technical_1D": 3600,  # 1h  — EOD is stable during the day
         "technical_1W": 7200,  # 2h
         "technical_1M": 14400,  # 4h
-        "technical_1min": 60,  # 60s — intraday live (données qui bougent)
+        "technical_1min": 60,  # 60s — live intraday (moving data)
         "technical_5min": 120,  # 2min
-        "technical_list": 86400,  # 24h — liste statique des indicateurs
-        "technical_screen": 900,  # 15min — résultats du screener
-        "chart_data_1D": 3600,  # 1h  — données graphiques EOD
-        "chart_data_1min": 60,  # 60s — données graphiques intraday
-        # News financières (Phase 10)
-        "news": 1800,  # 30min — news par ticker
-        "news_feed": 1800,  # 30min — feed global
+        "technical_list": 86400,  # 24h — static list of indicators
+        "technical_screen": 900,  # 15min — screener results
+        "chart_data_1D": 3600,  # 1h  — EOD chart data
+        "chart_data_1min": 60,  # 60s — intraday chart data
+        # Financial news (Phase 10)
+        "news": 1800,  # 30min — news per ticker
+        "news_feed": 1800,  # 30min — global feed
         # Valuation DCF (Phase 11)
-        "dcf": 21600,  # 6h — DCF par ticker
-        "dcf_sensitivity": 21600,  # 6h — matrice sensibilité
+        "dcf": 21600,  # 6h — DCF per ticker
+        "dcf_sensitivity": 21600,  # 6h — sensitivity matrix
         # Macro Rates (Phase 13)
-        "macro_rates": 21600,  # 6h — taux FRED
+        "macro_rates": 21600,  # 6h — FRED rates
     }
 
     def __init__(self, redis_url=None, ttl=300, ttl_by_type=None):
         """
-        Initialise le service de cache.
+        Initialise the cache service.
 
         Args:
-            redis_url (str): URL de connexion Redis
-            ttl (int): Durée de vie du cache en secondes (défaut: 300s)
+            redis_url (str): Redis connection URL
+            ttl (int): Cache lifetime in seconds (default: 300s)
         """
         self.redis_url = redis_url or "redis://localhost:6379/0"
         self.ttl = ttl
@@ -71,7 +71,7 @@ class CacheService:
 
     @staticmethod
     def _json_default(value):
-        """Convertit les types courants de données financières en JSON."""
+        """Convert the usual types of financial data to JSON."""
         if isinstance(value, (datetime, date)):
             return value.isoformat()
         if isinstance(value, Decimal):
@@ -86,32 +86,32 @@ class CacheService:
         return value.replace(":", "_").replace(" ", "_")
 
     def get_ttl(self, cache_type="eod"):
-        """Retourne le TTL adapté au type de donnée."""
+        """The TTL of a type of data."""
         return self.ttl_by_type.get(cache_type, self.ttl)
 
     def _connect(self):
-        """Établit la connexion au serveur Redis."""
+        """Connect to the Redis server."""
         try:
             self.client = redis.from_url(self.redis_url, decode_responses=False)
-            # Test de connexion
+            # Connection test
             self.client.ping()
             self.enabled = True
-            logger.info(f"✅ Redis connecté: {self.redis_url}")
+            logger.info(f"✅ Redis connected: {self.redis_url}")
         except (redis.exceptions.RedisError, ValueError) as e:
-            logger.warning(f"⚠️ Redis indisponible: {e}. Cache désactivé.")
+            logger.warning(f"⚠️ Redis unavailable: {e}. Cache disabled.")
             self.client = None
             self.enabled = False
 
     def generate_key(self, ticker, period=None, cache_type="eod", **filters):
         """
-        Génère une clé de cache unique pour un ticker et une période.
+        Build the cache key of a ticker and a period.
 
         Args:
-            ticker (str): Symbole du ticker
-            period (str): Période de données
+            ticker (str): Ticker symbol
+            period (str): Data period
 
         Returns:
-            str: Clé de cache hashée
+            str: Cache key
         """
         key_parts = [cache_type, ticker.upper()]
         if period:
@@ -125,16 +125,16 @@ class CacheService:
 
     def get(self, cache_key):
         """
-        Récupère des données du cache Redis.
+        Read data from the Redis cache.
 
         Args:
-            cache_key (str): Clé de cache
+            cache_key (str): Cache key
 
         Returns:
-            any: Données en cache ou None si non trouvées
+            any: Cached data, or None when not found
         """
         if not self.enabled:
-            # Tenter de se reconnecter si le cache était désactivé
+            # Try to reconnect if the cache was disabled
             self._connect()
             if not self.enabled:
                 return None
@@ -142,7 +142,7 @@ class CacheService:
         try:
             cached_data = self.client.get(cache_key)
             if cached_data:
-                logger.info(f"🎯 Cache HIT pour la clé: {cache_key}")
+                logger.info(f"🎯 Cache HIT for key: {cache_key}")
                 # An entry is JSON, written by ``set``. Anything else is ignored:
                 # it is never rebuilt with ``pickle``, which runs the code an
                 # entry carries — whoever can write to Redis would run it here.
@@ -150,32 +150,32 @@ class CacheService:
                     cached_data = cached_data.decode("utf-8")
                 return json.loads(cached_data)
             else:
-                logger.info(f"❌ Cache MISS pour la clé: {cache_key}")
+                logger.info(f"❌ Cache MISS for key: {cache_key}")
                 return None
         except redis.exceptions.ConnectionError:
-            logger.warning("Connexion Redis perdue. Tentative de reconnexion...")
+            logger.warning("Redis connection lost. Reconnecting...")
             self._connect()
             return None
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            logger.warning(f"Entrée de cache illisible ignorée ({cache_key}): {e}")
+            logger.warning(f"Unreadable cache entry ignored ({cache_key}): {e}")
             return None
         except redis.exceptions.RedisError as e:
-            logger.error(f"Erreur lors de la lecture du cache: {e}")
+            logger.error(f"Cache read error: {e}")
             return None
 
     def set(self, cache_key, data, cache_type="eod", ttl=None):
         """
-        Sauvegarde des données dans le cache Redis.
+        Write data to the Redis cache.
 
         Args:
-            cache_key (str): Clé de cache
-            data (any): Données à mettre en cache
+            cache_key (str): Cache key
+            data (any): Data to cache
 
         Returns:
-            bool: True si succès, False sinon
+            bool: True on success, False otherwise
         """
         if not self.enabled:
-            # Tenter de se reconnecter si le cache était désactivé
+            # Try to reconnect if the cache was disabled
             self._connect()
             if not self.enabled:
                 return False
@@ -185,62 +185,62 @@ class CacheService:
             serialized_data = json.dumps(data, default=self._json_default).encode("utf-8")
             # ``SET ... EX``: the Redis client flags ``setex`` as deprecated.
             self.client.set(cache_key, serialized_data, ex=expires_in)
-            logger.info(f"💾 Données mises en cache pour {expires_in}s avec la clé: {cache_key}")
+            logger.info(f"💾 Data cached for {expires_in}s under key: {cache_key}")
             return True
         except redis.exceptions.ConnectionError:
-            logger.warning("Connexion Redis perdue. Tentative de reconnexion...")
+            logger.warning("Redis connection lost. Reconnecting...")
             self._connect()
             return False
         except (redis.exceptions.RedisError, TypeError, ValueError) as e:
-            logger.error(f"Erreur lors de l'écriture dans le cache: {e}")
+            logger.error(f"Cache write error: {e}")
             return False
 
     def clear(self, pattern="eod:*"):
         """
-        Vide le cache Redis pour un motif donné.
+        Clear the Redis keys matching a pattern.
 
         Args:
-            pattern (str): Motif des clés à supprimer (défaut: "eod:*")
+            pattern (str): Pattern of the keys to delete (default: "eod:*")
 
         Returns:
             tuple: (success, deleted_count, error_message)
         """
         if not self.enabled:
-            return False, 0, "Cache non activé"
+            return False, 0, "Cache not enabled"
 
         try:
             keys = self.client.keys(pattern)
             if keys:
                 deleted_count = self.client.delete(*keys)
-                logger.info(f"🗑️ Cache vidé: {deleted_count} clés supprimées")
+                logger.info(f"🗑️ Cache cleared: {deleted_count} keys deleted")
                 return True, deleted_count, None
             else:
-                logger.info("Cache déjà vide")
+                logger.info("Cache already empty")
                 return True, 0, None
         except redis.exceptions.RedisError as e:
-            error_msg = f"Erreur lors du vidage du cache: {e}"
+            error_msg = f"Cache clear error: {e}"
             logger.error(error_msg)
             return False, 0, error_msg
 
     def get_stats(self):
         """
-        Récupère les statistiques du cache Redis.
+        Statistics of the Redis cache.
 
         Returns:
             tuple: (success, stats_dict, error_message)
         """
         if not self.enabled:
-            return False, None, "Cache non activé"
+            return False, None, "Cache not enabled"
 
         try:
             info = self.client.info()
             all_keys = self.client.keys("eod:*")
 
-            # Analyser les clés par ticker
+            # Count the keys per ticker
             ticker_stats = {}
             for key in all_keys:
                 try:
-                    # Format de clé attendu: eod:TICKER:PERIOD
+                    # Expected key format: eod:TICKER:PERIOD
                     parts = key.decode("utf-8").split(":")
                     if len(parts) >= 3:
                         ticker = parts[1]
@@ -254,7 +254,7 @@ class CacheService:
                 except (UnicodeError, AttributeError, IndexError):
                     continue
 
-            # Convertir les périodes en listes
+            # Turn the periods into lists
             for ticker in ticker_stats:
                 ticker_stats[ticker]["periods"] = list(ticker_stats[ticker]["periods"].keys())
 
@@ -273,23 +273,23 @@ class CacheService:
 
             return True, stats, None
         except redis.exceptions.RedisError as e:
-            error_msg = f"Erreur lors de la récupération des stats: {e}"
+            error_msg = f"Cache statistics error: {e}"
             logger.error(error_msg)
             return False, None, error_msg
 
     def clear_ticker_cache(self, ticker, period=None):
         """
-        Vide le cache Redis pour un ticker spécifique et optionnellement une période.
+        Clear the Redis cache of a ticker, optionally of one period only.
 
         Args:
-            ticker (str): Symbole du ticker
-            period (str, optional): Période spécifique à vider
+            ticker (str): Ticker symbol
+            period (str, optional): Period to clear
 
         Returns:
             tuple: (success, deleted_count, error_message)
         """
         if not self.enabled:
-            return False, 0, "Cache non activé"
+            return False, 0, "Cache not enabled"
 
         try:
             pattern = f"eod:{ticker.upper()}:*"
@@ -299,22 +299,22 @@ class CacheService:
             keys = self.client.keys(pattern)
             if keys:
                 deleted_count = self.client.delete(*keys)
-                logger.info(f"🗑️ Cache vidé pour {ticker}: {deleted_count} clés supprimées")
+                logger.info(f"🗑️ Cache cleared for {ticker}: {deleted_count} keys deleted")
                 return True, deleted_count, None
             else:
-                logger.info(f"Cache déjà vide pour {ticker}")
+                logger.info(f"Cache already empty for {ticker}")
                 return True, 0, None
         except redis.exceptions.RedisError as e:
-            error_msg = f"Erreur lors du vidage du cache pour {ticker}: {e}"
+            error_msg = f"Cache clear error for {ticker}: {e}"
             logger.error(error_msg)
             return False, 0, error_msg
 
     def get_status(self):
         """
-        Récupère le statut de connexion Redis.
+        Status of the Redis connection.
 
         Returns:
-            str: "connected", "error" ou "disabled"
+            str: "connected", "error" or "disabled"
         """
         if not self.enabled:
             return "disabled"

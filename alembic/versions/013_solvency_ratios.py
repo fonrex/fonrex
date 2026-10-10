@@ -1,13 +1,13 @@
-"""Migration 013 — Ratios de solvabilité + cache taux macro
+"""Migration 013 — Solvency ratios + macro rate cache
 
 Revision ID: 013
 Revises: 012
 Create Date: 2026-09-08
 
-Modifications :
-    1. Ajouter 4 colonnes de ratios de solvabilité à fundamentals_highlights
-    2. Ajouter 2 colonnes de coût de la dette réel
-    3. Créer la table macro_rates_cache pour les taux FRED
+Changes:
+    1. Add 4 solvency ratio columns to fundamentals_highlights
+    2. Add 2 actual cost of debt columns
+    3. Create the macro_rates_cache table for the FRED rates
 """
 import sqlalchemy as sa
 
@@ -19,7 +19,7 @@ down_revision = '012'
 
 def upgrade() -> None:
 
-    # ── 1. Ratios de solvabilité sur fundamentals_highlights ─────────────────
+    # ── 1. Solvency ratios on fundamentals_highlights ────────────────────────
     op.add_column('fundamentals_highlights', sa.Column(
         'debt_to_equity_ratio', sa.Numeric(10, 4), nullable=True))
     op.add_column('fundamentals_highlights', sa.Column(
@@ -29,17 +29,17 @@ def upgrade() -> None:
     op.add_column('fundamentals_highlights', sa.Column(
         'interest_coverage_ratio', sa.Numeric(10, 4), nullable=True))
 
-    # ── 2. Coût de la dette réel ──────────────────────────────────────────────
+    # ── 2. Actual cost of debt ────────────────────────────────────────────────
     op.add_column('fundamentals_highlights', sa.Column(
         'actual_cost_of_debt', sa.Numeric(8, 6), nullable=True))
-    # Coût de la dette calculé : interest_expense / total_debt (moyenne
-    # pondérée sur les 3 derniers exercices annuels disponibles)
+    # Computed cost of debt: interest_expense / total_debt (weighted average
+    # over the last 3 fiscal years available)
     op.add_column('fundamentals_highlights', sa.Column(
         'cost_of_debt_source', sa.String(20), nullable=True))
-    # "calculated" (depuis les états financiers réels) | "sector_estimate"
+    # "calculated" (from the actual financial statements) | "sector_estimate"
     # (repli si interest_expense ou total_debt indisponible/nul)
 
-    # ── 3. Cache des taux macro (FRED) ────────────────────────────────────────
+    # ── 3. Macro rate cache (FRED) ────────────────────────────────────────────
     op.create_table(
         'macro_rates_cache',
         sa.Column('id',           sa.Integer(),  primary_key=True, autoincrement=True),

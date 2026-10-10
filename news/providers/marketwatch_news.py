@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-MarketWatchNewsProvider — News depuis MarketWatch.
+MarketWatchNewsProvider — news from MarketWatch.
 
 URL pattern : https://www.marketwatch.com/investing/stock/{ticker}/news
 """
@@ -73,8 +73,8 @@ class MarketWatchNewsProvider(BaseFinancialProvider):
 
     def _build_url(self, ticker: str):
         """
-        ticker US (sans suffix) : /stock/{ticker.lower()}/news
-        ticker EU avec suffix   : /stock/{base}/news?countrycode={cc}
+        US ticker (no suffix)   : /stock/{ticker.lower()}/news
+        EU ticker with a suffix : /stock/{base}/news?countrycode={cc}
         """
         params: Optional[dict] = None
         base_ticker = ticker

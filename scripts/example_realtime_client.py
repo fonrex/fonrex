@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Exemple de client pour l'API Temps Réel Fonrex (FonRex Pro).
+Example client of the Fonrex realtime API.
 
-Ce script montre comment :
-1. Se connecter et écouter le flux WebSocket temps réel pour un ticker particulier.
-2. Effectuer des requêtes REST pour obtenir des snapshots unitaires (/quote) et en lot (/quotes).
-3. Configurer l'auto-abonnement en tâche de fond.
+This script shows how to:
+1. Connect to the realtime WebSocket stream of a ticker and listen to it.
+2. Call the REST routes for one snapshot (/quote) and a batch (/quotes).
+3. Subscribe a ticker in the background.
 
-Dépendances requises :
+Requirements:
     pip install httpx websockets
 
-Lancement :
+Run:
     FONREX_API_KEY=frx_live_... python scripts/example_realtime_client.py
 """
 
@@ -24,7 +24,7 @@ from urllib.parse import urlencode
 import httpx
 import websockets
 
-# Configuration de base des logs
+# Basic logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -42,24 +42,24 @@ AUTH_HEADERS = {"X-API-KEY": API_KEY} if API_KEY else {}
 
 async def listen_websocket(ticker: str):
     """
-    Se connecte à l'endpoint WebSocket temps réel pour un ticker donné et écoute le flux.
+    Connect to the realtime WebSocket route of a ticker and listen to the stream.
     """
     ws_uri = f"{BASE_URL_WS}/ws/realtime/{ticker}"
-    logger.info(f"Connexion WebSocket à {ws_uri}...")
+    logger.info(f"Connecting to the WebSocket {ws_uri}...")
 
     try:
         # WebSocket clients cannot always set headers: the key travels as a query parameter.
         connect_uri = f"{ws_uri}?{urlencode({'token': API_KEY})}" if API_KEY else ws_uri
         async with websockets.connect(connect_uri) as websocket:
-            logger.info(f"✅ Connecté au flux WebSocket pour {ticker} !")
-            logger.info("Le serveur envoie d'abord un snapshot, puis des ticks temps réel...")
+            logger.info(f"✅ Connected to the WebSocket stream of {ticker}!")
+            logger.info("The server sends a snapshot first, then realtime ticks...")
 
-            # Démarre une tâche parallèle pour envoyer des pings périodiques (keep-alive)
+            # Background task sending periodic pings (keep-alive)
             async def send_pings():
                 while True:
                     await asyncio.sleep(30)
                     try:
-                        logger.debug("Envoi ping keep-alive...")
+                        logger.debug("Sending keep-alive ping...")
                         await websocket.send("ping")
                     except websockets.exceptions.ConnectionClosed:
                         break
@@ -67,7 +67,7 @@ async def listen_websocket(ticker: str):
             ping_task = asyncio.create_task(send_pings())
 
             try:
-                # Boucle de réception des messages
+                # Message loop
                 async for message in websocket:
                     data = json.loads(message)
                     msg_type = data.get("type")
@@ -77,14 +77,14 @@ async def listen_websocket(ticker: str):
 
                     if msg_type == "snapshot":
                         logger.info(
-                            f"📸 [SNAPSHOT] {ticker_name} | Dernier prix: {payload.get('close')} | Vol: {payload.get('volume')} (source: {payload.get('source')} à {ts})"
+                            f"📸 [SNAPSHOT] {ticker_name} | Last price: {payload.get('close')} | Vol: {payload.get('volume')} (source: {payload.get('source')} at {ts})"
                         )
                     elif msg_type == "tick":
                         logger.info(
-                            f"⚡ [TICK] {ticker_name} | Nouveau prix: {payload.get('close')} | Vol: {payload.get('volume')} | Open: {payload.get('open')} (reçu à {ts})"
+                            f"⚡ [TICK] {ticker_name} | New price: {payload.get('close')} | Vol: {payload.get('volume')} | Open: {payload.get('open')} (received at {ts})"
                         )
                     elif msg_type == "pong":
-                        logger.debug("Reçu pong du serveur.")
+                        logger.debug("Pong received from the server.")
                     else:
                         logger.info(f"📩 [MESSAGE] Type: {msg_type} | Data: {data}")
 
@@ -92,16 +92,16 @@ async def listen_websocket(ticker: str):
                 ping_task.cancel()
 
     except ConnectionRefusedError:
-        logger.error(f"❌ Connexion refusée. Assurez-vous que l'API est lancée sur {BASE_URL_REST}")
+        logger.error(f"❌ Connection refused. Check that the API runs on {BASE_URL_REST}")
     except websockets.exceptions.ConnectionClosed as e:
-        logger.warning(f"⚠️ Connexion WebSocket fermée par le serveur : {e}")
+        logger.warning(f"⚠️ WebSocket connection closed by the server: {e}")
     except Exception as e:
-        logger.error(f"💥 Erreur WebSocket: {e}", exc_info=True)
+        logger.error(f"💥 WebSocket error: {e}", exc_info=True)
 
 
 async def get_rest_snapshot(ticker: str) -> dict:
     """
-    Récupère le dernier snapshot de prix pour un ticker via l'endpoint REST.
+    The last price snapshot of a ticker, from the REST route.
     """
     url = f"{BASE_URL_REST}/quote/{ticker}"
     async with httpx.AsyncClient(headers=AUTH_HEADERS) as client:
@@ -110,23 +110,23 @@ async def get_rest_snapshot(ticker: str) -> dict:
             if response.status_code == 200:
                 data = response.json()
                 logger.info(
-                    f"🟢 [REST Quote] {ticker} -> Prix: {data.get('price')} | "
-                    f"Variation: {data.get('change')} ({data.get('change_pct')}%) | "
-                    f"Temps réel: {data.get('is_realtime')} | Source: {data.get('source')}"
+                    f"🟢 [REST Quote] {ticker} -> Price: {data.get('price')} | "
+                    f"Change: {data.get('change')} ({data.get('change_pct')}%) | "
+                    f"Realtime: {data.get('is_realtime')} | Source: {data.get('source')}"
                 )
                 return data
             else:
                 logger.warning(
-                    f"🔴 Impossible de récupérer le snapshot pour {ticker} : {response.status_code} - {response.text}"
+                    f"🔴 Cannot read the snapshot of {ticker}: {response.status_code} - {response.text}"
                 )
         except Exception as e:
-            logger.error(f"Erreur requête REST quote: {e}")
+            logger.error(f"REST quote request error: {e}")
     return {}
 
 
 async def get_rest_quotes_batch(tickers: list[str]) -> dict:
     """
-    Récupère les snapshots pour plusieurs tickers en un seul appel batch.
+    The snapshots of several tickers in one batch call.
     """
     tickers_str = ",".join(tickers)
     url = f"{BASE_URL_REST}/quotes"
@@ -135,21 +135,21 @@ async def get_rest_quotes_batch(tickers: list[str]) -> dict:
             response = await client.get(url, params={"tickers": tickers_str})
             if response.status_code == 200:
                 data = response.json()
-                logger.info(f"🟣 [REST Batch] Reçu {data.get('count')} quotes :")
+                logger.info(f"🟣 [REST Batch] Received {data.get('count')} quotes:")
                 for ticker, quote in data.get("quotes", {}).items():
                     if quote:
                         q_data = quote.get("data", {})
                         logger.info(
-                            f"   - {ticker} : Close={q_data.get('close')} | "
-                            f"Temps Réel={quote.get('is_realtime')} | Source={quote.get('source')}"
+                            f"   - {ticker}: Close={q_data.get('close')} | "
+                            f"Realtime={quote.get('is_realtime')} | Source={quote.get('source')}"
                         )
                     else:
-                        logger.warning(f"   - {ticker} : Non trouvé ou non disponible")
+                        logger.warning(f"   - {ticker}: not found or unavailable")
                 return data
             else:
-                logger.warning(f"🔴 Échec de la requête REST batch : {response.status_code}")
+                logger.warning(f"🔴 REST batch request failed: {response.status_code}")
         except Exception as e:
-            logger.error(f"Erreur requête REST batch: {e}")
+            logger.error(f"REST batch request error: {e}")
     return {}
 
 
@@ -159,19 +159,19 @@ async def main():
     else:
         ticker = "AAPL"
 
-    logger.info("=== DÉBUT DES EXEMPLES REST ===")
+    logger.info("=== REST EXAMPLES ===")
 
-    # 1. Snapshot unitaire (s'abonne automatiquement en arrière-plan si manquant)
+    # 1. One snapshot (subscribes in the background when missing)
     await get_rest_snapshot(ticker)
 
-    # 2. Snapshot de repli / autre ticker européen
+    # 2. Another snapshot, a European ticker
     await get_rest_snapshot("AIR.PA")
 
-    # 3. Snapshot en lot (batch)
+    # 3. Batch of snapshots
     await get_rest_quotes_batch([ticker, "AIR.PA", "BNP.PA"])
 
-    logger.info("=== DÉBUT DE L'EXEMPLE WEBSOCKET ===")
-    logger.info(f"Démarrage de l'écoute WebSocket pour {ticker}. Ctrl+C pour quitter.")
+    logger.info("=== WEBSOCKET EXAMPLE ===")
+    logger.info(f"Listening to the WebSocket of {ticker}. Ctrl+C to quit.")
 
     await listen_websocket(ticker)
 
@@ -180,4 +180,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("\nArrêt du client demandé par l'utilisateur.")
+        logger.info("\nClient stopped by the user.")

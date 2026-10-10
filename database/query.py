@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class QueryService:
     """
-    Service de requête asynchrone pour les données financières.
+    Asynchronous query service for financial data.
     """
 
     def __init__(self, database_url: str = None, session_factory=None, engine=None):
@@ -89,7 +89,7 @@ class QueryService:
         }
 
     async def get_asset_id(self, ticker: str) -> Optional[int]:
-        """Récupère l'ID d'un actif à partir d'une cotation ou du ticker legacy."""
+        """The asset id of a listing, or of a legacy ticker."""
         series = await self.get_series(ticker)
         return series.asset_id if series else None
 
@@ -104,19 +104,19 @@ class QueryService:
         isin: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Récupère l'historique des prix pour un ticker donné.
+        Price history of a ticker.
 
         Args:
-            ticker: Le symbole de l'actif.
-            start_date: Date de début (optionnel).
-            end_date: Date de fin (optionnel).
-            interval: Résolution ('1D', '1W', '1M' ou legacy 'daily', 'weekly', 'monthly').
+            ticker: Symbol of the asset.
+            start_date: First day (optional).
+            end_date: Last day (optional).
+            interval: Resolution ('1D', '1W', '1M' or legacy 'daily', 'weekly', 'monthly').
         """
         series = await self.get_series(ticker, currency, exchange, isin)
         if not series:
             return []
 
-        # Normalisation de l'intervalle en résolution
+        # Turn the interval into a resolution
         res_map = {
             "daily": "1D",
             "weekly": "1W",
@@ -131,7 +131,7 @@ class QueryService:
         res = res_map.get(interval.strip(), "1D")
 
         async with self.async_session() as session:
-            # Query standard sur prices_eod en filtrant par resolution
+            # Standard query on prices_eod, filtered by resolution
             # One series = one listing and one resolution. A bar is stored at
             # midnight UTC of its session date: the bounds are sent as such, so
             # the comparison does not depend on the time zone of the session.
@@ -155,10 +155,10 @@ class QueryService:
             result = await session.execute(text(query), params)
             rows = result.mappings().all()
 
-            # Fallback vers la vue weekly/monthly si aucune donnée EOD directe n'a été trouvée pour 1W ou 1M
+            # Fall back on the weekly/monthly view when no 1W or 1M bar is stored
             if not rows and res in ["1W", "1M"]:
                 view_name = "prices_weekly" if res == "1W" else "prices_monthly"
-                # Vérifier si la vue existe dans pg_matviews ou dans les agrégats continus TimescaleDB
+                # Check that the view exists in pg_matviews or among the TimescaleDB continuous aggregates
                 check_view_query = """
                     SELECT 1 FROM pg_matviews WHERE matviewname = :view_name
                     UNION
@@ -197,7 +197,7 @@ class QueryService:
         isin: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Récupère les dates minimales et maximales ainsi que le compte de données en base pour une cotation.
+        First and last dates and number of stored bars of a listing.
         """
         series = await self.get_series(ticker, currency, exchange, isin)
         if not series:

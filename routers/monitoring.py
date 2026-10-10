@@ -1,14 +1,14 @@
 """
-routers/monitoring.py — Endpoints de monitoring des providers.
+routers/monitoring.py — monitoring routes of the providers.
 
-7 endpoints pour le suivi de la santé des providers financiers :
-  1. GET  /health/providers              — résumé global (depuis Redis)
-  2. GET  /health/providers/{name}       — détail par provider
-  3. GET  /health/alerts                 — alertes actives
-  4. POST /health/alerts/{id}/resolve    — résolution manuelle
-  5. POST /health/canary/run             — check canary manuel
-  6. GET  /health/canary/history         — historique des checks
-  7. GET  /health/stats                  — statistiques globales
+7 routes following the health of the financial providers:
+  1. GET  /health/providers              — overall summary (from Redis)
+  2. GET  /health/providers/{name}       — detail of one provider
+  3. GET  /health/alerts                 — active alerts
+  4. POST /health/alerts/{id}/resolve    — manual resolution
+  5. POST /health/canary/run             — manual canary check
+  6. GET  /health/canary/history         — check history
+  7. GET  /health/stats                  — overall statistics
 """
 
 import json
@@ -54,7 +54,7 @@ def _decimal_to_float(val):
     return val
 
 
-# ── Endpoint 1 : Statut global (depuis Redis cache) ──────────────────────────
+# ── Endpoint 1: overall status (from the Redis cache) ────────────────────────
 
 
 @router.get("/health/providers", response_model=ProviderHealthSummary)
@@ -63,9 +63,9 @@ async def get_providers_health(
     async_session_factory=Depends(get_async_session_factory),
 ):
     """
-    Statut de santé de tous les providers en temps réel.
-    Lit depuis Redis (mis à jour par le canary monitor quotidien).
-    Fallback sur la base de données si Redis indisponible.
+    Health status of every provider, now.
+    Read from Redis (updated by the daily canary monitor).
+    Falls back on the database when Redis is unavailable.
     """
     # Try Redis first
     if redis_client:
@@ -180,7 +180,7 @@ async def get_providers_health(
     )
 
 
-# ── Endpoint 2 : Détail par provider ─────────────────────────────────────────
+# ── Endpoint 2: detail of one provider ───────────────────────────────────────
 
 
 @router.get("/health/providers/{provider_name}", response_model=ProviderDetailResponse)
@@ -189,7 +189,7 @@ async def get_provider_health_detail(
     days: int = Query(7, ge=1, le=90),
     async_session_factory=Depends(get_async_session_factory),
 ):
-    """Détail de santé d'un provider sur les N derniers jours."""
+    """Health detail of a provider over the last N days."""
     if not async_session_factory:
         raise HTTPException(status_code=503, detail="Monitoring not configured")
 
@@ -307,7 +307,7 @@ async def get_provider_health_detail(
         )
 
 
-# ── Endpoint 3 : Alertes actives ─────────────────────────────────────────────
+# ── Endpoint 3: active alerts ────────────────────────────────────────────────
 
 
 @router.get("/health/alerts", response_model=List[AlertSchema])
@@ -318,7 +318,7 @@ async def get_active_alerts(
     limit: int = Query(50, ge=1, le=500),
     async_session_factory=Depends(get_async_session_factory),
 ):
-    """Liste des alertes actives (ou résolues si include_resolved=True)."""
+    """The active alerts (and the resolved ones with include_resolved=True)."""
     if not async_session_factory:
         raise HTTPException(status_code=503, detail="Monitoring not configured")
 
@@ -344,7 +344,7 @@ async def get_active_alerts(
         return [AlertSchema.model_validate(r) for r in rows]
 
 
-# ── Endpoint 4 : Résolution manuelle d'une alerte ────────────────────────────
+# ── Endpoint 4: manual resolution of an alert ────────────────────────────────
 
 
 @router.post("/health/alerts/{alert_id}/resolve")
@@ -353,7 +353,7 @@ async def resolve_alert(
     resolution_note: Optional[str] = None,
     async_session_factory=Depends(get_async_session_factory),
 ):
-    """Marque une alerte comme résolue manuellement."""
+    """Mark an alert as resolved by hand."""
     if not async_session_factory:
         raise HTTPException(status_code=503, detail="Monitoring not configured")
 
@@ -383,7 +383,7 @@ async def resolve_alert(
     }
 
 
-# ── Endpoint 5 : Déclencher un check canary manuel ───────────────────────────
+# ── Endpoint 5: run a canary check by hand ───────────────────────────────────
 
 
 @router.post("/health/canary/run")
@@ -392,7 +392,7 @@ async def run_canary_check(
     background_tasks: BackgroundTasks = None,
     canary_monitor=Depends(get_canary_monitor),
 ):
-    """Déclenche un check canary immédiat en background."""
+    """Run a canary check now, in the background."""
     if not canary_monitor:
         raise HTTPException(status_code=503, detail="Canary monitor not configured")
 
@@ -404,11 +404,11 @@ async def run_canary_check(
     return {
         "status": "queued",
         "provider": provider_name or "all",
-        "message": "Check canary déclenché en arrière-plan",
+        "message": "Canary check started in the background",
     }
 
 
-# ── Endpoint 6 : Historique des checks canary ────────────────────────────────
+# ── Endpoint 6: canary check history ─────────────────────────────────────────
 
 
 @router.get("/health/canary/history")
@@ -419,7 +419,7 @@ async def get_canary_history(
     limit: int = Query(100, ge=1, le=1000),
     async_session_factory=Depends(get_async_session_factory),
 ):
-    """Historique des résultats canary."""
+    """History of the canary results."""
     if not async_session_factory:
         raise HTTPException(status_code=503, detail="Monitoring not configured")
 
@@ -455,14 +455,14 @@ async def get_canary_history(
         ]
 
 
-# ── Endpoint 7 : Statistiques globales de validation ─────────────────────────
+# ── Endpoint 7: overall validation statistics ────────────────────────────────
 
 
 @router.get("/health/stats", response_model=HealthStatsResponse)
 async def get_health_stats(
     async_session_factory=Depends(get_async_session_factory),
 ):
-    """Statistiques globales sur la validation des données (7 derniers jours)."""
+    """Overall data validation statistics (last 7 days)."""
     if not async_session_factory:
         raise HTTPException(status_code=503, detail="Monitoring not configured")
 

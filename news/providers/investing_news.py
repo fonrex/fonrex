@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-InvestingComNewsProvider — News depuis Investing.com.
+InvestingComNewsProvider — news from Investing.com.
 
-Couverture mondiale, excellente qualité.
-Protection Cloudflare modérée — headers Chrome complets requis.
+Worldwide coverage, excellent quality.
+Moderate Cloudflare protection — full Chrome headers needed.
 """
 
 import logging
@@ -36,7 +36,7 @@ class InvestingComNewsProvider(BaseFinancialProvider):
     ) -> List[RawNewsItem]:
         url = self._build_url(provider_url, provider_ticker)
         if not url:
-            logger.debug("[investing_com] Pas d'URL disponible pour %s", ticker)
+            logger.debug("[investing_com] No URL available for %s", ticker)
             return []
 
         headers = self._get_headers(
@@ -54,9 +54,9 @@ class InvestingComNewsProvider(BaseFinancialProvider):
         if not html:
             return []
 
-        # Détecter Cloudflare / accès refusé
+        # Detect Cloudflare / access denied
         if "Just a moment" in html or "cf-browser-verification" in html:
-            logger.warning("[investing_com] Cloudflare détecté pour %s", url)
+            logger.warning("[investing_com] Cloudflare detected for %s", url)
             return []
 
         return self._parse(html, limit)
@@ -82,7 +82,7 @@ class InvestingComNewsProvider(BaseFinancialProvider):
         soup = BeautifulSoup(html, "html.parser")
         items: List[RawNewsItem] = []
 
-        # Sélecteurs Investing.com articles news
+        # Investing.com news article selectors
         article_containers = (
             soup.select("div.articleItem")
             or soup.select("article.news-item")
@@ -99,7 +99,7 @@ class InvestingComNewsProvider(BaseFinancialProvider):
             if url.startswith("/"):
                 url = "https://www.investing.com" + url
 
-            # Titre
+            # Title
             title_tag = container.find(class_=re.compile(r"title|headline", re.I)) or link_tag
             title = title_tag.get_text(strip=True)
             if not title or len(title) < 5:

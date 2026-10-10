@@ -1,9 +1,9 @@
 """
-SECEdgarProvider — Insider transactions depuis l'API publique SEC EDGAR.
+SECEdgarProvider — insider transactions from the public SEC EDGAR API.
 
-Source : https://data.sec.gov (officiel, gratuit, sans scraping)
-Rate limit officiel : 10 req/s par IP.
-User-Agent obligatoire : "Fonrex contact@fonrex.io" (policy SEC).
+Source: https://data.sec.gov (official, free, no scraping)
+Official rate limit: 10 req/s per IP.
+User-Agent required: "Fonrex contact@fonrex.io" (SEC policy).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from financials.providers.base import BaseFinancialProvider
 logger = logging.getLogger(__name__)
 
 
-# ── Modèles Pydantic ──────────────────────────────────────────────────────────
+# ── Pydantic models ──────────────────────────────────────────────────────────
 
 
 class InsiderTransaction(BaseModel):
@@ -69,7 +69,7 @@ _TRANSACTION_CODES = {
 
 
 class SECEdgarProvider(BaseFinancialProvider):
-    """Provider SEC EDGAR pour les insider transactions Form 4."""
+    """SEC EDGAR provider of the Form 4 insider transactions."""
 
     name = "SECEdgar"
     timeout = 12.0
@@ -114,7 +114,7 @@ class SECEdgarProvider(BaseFinancialProvider):
                 total_count=len(transactions),
             )
         except Exception as exc:
-            logger.error("[SECEdgar] Erreur fetch(%s): %s", ticker, exc)
+            logger.error("[SECEdgar] fetch(%s) error: %s", ticker, exc)
             return InsiderTransactionsResult(ticker=ticker, transactions=[], total_count=0)
 
     async def _resolve_cik(self, ticker: str) -> Optional[str]:
@@ -134,7 +134,7 @@ class SECEdgarProvider(BaseFinancialProvider):
                 if entry.get("ticker", "").upper() == ticker_upper:
                     return str(entry.get("cik_str", "")).zfill(10)
         except Exception as exc:
-            logger.warning("[SECEdgar] Erreur company_tickers.json: %s", exc)
+            logger.warning("[SECEdgar] company_tickers.json error: %s", exc)
         return None
 
     async def _resolve_cik_via_search(self, ticker: str) -> Optional[str]:
@@ -158,7 +158,7 @@ class SECEdgarProvider(BaseFinancialProvider):
             if match:
                 return match.group(1).zfill(10)
         except Exception as exc:
-            logger.warning("[SECEdgar] Erreur _resolve_cik_via_search: %s", exc)
+            logger.warning("[SECEdgar] _resolve_cik_via_search error: %s", exc)
         return None
 
     async def _get_submissions(self, cik: str) -> Optional[dict]:

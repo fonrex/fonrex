@@ -327,7 +327,7 @@ class TestNewsServiceDeduplicate:
         )
         newer = _make_raw_item(
             url="https://example.com/2",
-            title="Airbus receives record order for 500 aircrafts",  # très similaire
+            title="Airbus receives record order for 500 aircrafts",  # very similar
             published_at=datetime(2026, 5, 16, 10, 0, tzinfo=timezone.utc),
         )
         result = svc._deduplicate([older, newer])

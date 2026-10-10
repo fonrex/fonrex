@@ -64,15 +64,15 @@ async def websocket_realtime(
     ws_manager=Depends(get_ws_manager),
 ):
     """
-    WebSocket de streaming prix temps réel pour un ticker.
+    Realtime price WebSocket of a ticker.
 
-    Protocol client/serveur :
-    - Connexion → le serveur envoie immédiatement le snapshot actuel (si disponible)
-    - Push continu → le serveur envoie un message à chaque nouveau tick Redis
-    - Client peut envoyer "ping" → serveur répond {"type":"pong"}
-    - Client peut envoyer "unsubscribe" → ferme la connexion proprement
+    Client/server protocol:
+    - Connection → the server sends the current snapshot at once (when available)
+    - Continuous push → the server sends a message at each new Redis tick
+    - The client may send "ping" → the server answers {"type":"pong"}
+    - The client may send "unsubscribe" → closes the connection cleanly
 
-    Format des messages serveur :
+    Server message format:
     {
         "type": "tick",
         "ticker": "AIR.PA",
@@ -93,7 +93,7 @@ async def websocket_realtime(
 
     await ws_manager.connect(ticker, websocket)
 
-    # S'assurer que le ticker est streamé par le worker. A read-only key cannot
+    # Make sure the worker streams the ticker. A read-only key cannot
     # start a stream: the client is told so, and still receives the ticks if a
     # full-access key subscribes the ticker later.
     active_tickers = await worker.get_active_tickers()
@@ -117,7 +117,7 @@ async def websocket_realtime(
                 ).model_dump(mode="json")
             )
 
-        # Snapshot immédiat depuis Redis
+        # Immediate snapshot from Redis
         quote = await worker.get_quote_from_cache(ticker)
         if quote:
             await websocket.send_json(
@@ -129,7 +129,7 @@ async def websocket_realtime(
                 ).model_dump(mode="json")
             )
 
-        # Abonnement Redis Pub/Sub
+        # Redis Pub/Sub subscription
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(f"price:{ticker}")
 
@@ -156,7 +156,7 @@ async def websocket_realtime(
                         ts=datetime.now(timezone.utc),
                     )
                 except Exception as e:
-                    logger.debug(f"[WS:{ticker}] Erreur traitement message Redis: {e}")
+                    logger.debug(f"[WS:{ticker}] Redis message processing error: {e}")
                     continue
                 try:
                     await websocket.send_json(msg.model_dump(mode="json"))
@@ -165,7 +165,7 @@ async def websocket_realtime(
                     return
 
         async def _client_listener():
-            """Écoute les messages entrants du client (ping, unsubscribe)."""
+            """Listen to the client messages (ping, unsubscribe)."""
             while True:
                 try:
                     data = await websocket.receive_text()
@@ -179,7 +179,7 @@ async def websocket_realtime(
                 except Exception:
                     return
 
-        # Exécuter les deux listeners en parallèle
+        # Run both listeners in parallel
         redis_task = asyncio.create_task(_redis_listener())
         client_task = asyncio.create_task(_client_listener())
 
@@ -193,7 +193,7 @@ async def websocket_realtime(
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        logger.error(f"[WS:{ticker}] Erreur: {e}")
+        logger.error(f"[WS:{ticker}] Error: {e}")
     finally:
         ws_manager.disconnect(ticker, websocket)
         if pubsub:

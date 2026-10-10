@@ -1,20 +1,20 @@
-"""Migration 004 — Champs Premium parité EODHD
+"""Migration 004 — Premium fields, EODHD parity
 
 Revision ID: 004
 Revises: 003
 Create Date: 2026-05-14
 
-Modifications :
-    1. Table fundamentals_highlights :
-       - Ajouter colonnes short selling
-       - Ajouter colonnes GICS classification
-       - Ajouter colonnes TTM et croissance
-    2. Nouvelles tables :
-       - earnings_trend (estimations futures)
+Changes:
+    1. Table fundamentals_highlights:
+       - Add short selling columns
+       - Add GICS classification columns
+       - Add TTM and growth columns
+    2. New tables:
+       - earnings_trend (future estimates)
        - esg_scores
        - outstanding_shares_history
-    3. Table assets :
-       - Ajouter colonnes GICS
+    3. Table assets:
+       - Add GICS columns
 """
 
 import sqlalchemy as sa
@@ -30,7 +30,7 @@ depends_on = None
 
 def upgrade() -> None:
 
-    # ── 1. Colonnes sur fundamentals_highlights ─────────────────────────────
+    # ── 1. Columns of fundamentals_highlights ───────────────────────────────
 
     # Short selling
     op.add_column(
@@ -53,7 +53,7 @@ def upgrade() -> None:
         "fundamentals_highlights", sa.Column("shares_short_date", sa.Date(), nullable=True)
     )
 
-    # TTM et croissance
+    # TTM and growth
     op.add_column(
         "fundamentals_highlights", sa.Column("gross_profit_ttm", sa.Numeric(20, 2), nullable=True)
     )
@@ -83,7 +83,7 @@ def upgrade() -> None:
         "fundamentals_highlights", sa.Column("ebitda_ttm", sa.Numeric(20, 2), nullable=True)
     )
 
-    # ── 2. Colonnes GICS sur assets ──────────────────────────────────────────
+    # ── 2. GICS columns of assets ────────────────────────────────────────────
     op.add_column("assets", sa.Column("gic_sector", sa.String(100), nullable=True))
     op.add_column("assets", sa.Column("gic_group", sa.String(100), nullable=True))
     op.add_column("assets", sa.Column("gic_industry", sa.String(100), nullable=True))
@@ -109,7 +109,7 @@ def upgrade() -> None:
         sa.Column("eps_high", sa.Numeric(10, 4), nullable=True),
         sa.Column("eps_nb_analysts", sa.Integer(), nullable=True),
         sa.Column("eps_growth", sa.Numeric(10, 6), nullable=True),
-        # Contrainte unicité
+        # Unique constraint
         sa.UniqueConstraint("asset_id", "period", name="uq_earnings_trend_period"),
     )
     op.create_index("ix_earnings_trend_asset_id", "earnings_trend", ["asset_id"])
@@ -128,21 +128,21 @@ def upgrade() -> None:
             onupdate=sa.func.now(),
         ),
         sa.Column("rating_date", sa.Date(), nullable=True),
-        # Scores globaux (sur 100 ou percentile)
+        # Overall scores (out of 100, or percentile)
         sa.Column("total_esg", sa.Numeric(6, 2), nullable=True),
         sa.Column("environment_score", sa.Numeric(6, 2), nullable=True),
         sa.Column("social_score", sa.Numeric(6, 2), nullable=True),
         sa.Column("governance_score", sa.Numeric(6, 2), nullable=True),
         sa.Column("controversy_level", sa.Integer(), nullable=True),  # 0-5
         sa.Column("controversy_score", sa.Numeric(6, 2), nullable=True),
-        # Percentiles dans l'industrie
+        # Percentiles within the industry
         sa.Column("percentile", sa.Numeric(6, 2), nullable=True),
         sa.Column("peer_group", sa.String(200), nullable=True),
         sa.Column("peer_count", sa.Integer(), nullable=True),
         sa.Column("peer_esg_score_perf_min", sa.Numeric(6, 2), nullable=True),
         sa.Column("peer_esg_score_perf_avg", sa.Numeric(6, 2), nullable=True),
         sa.Column("peer_esg_score_perf_max", sa.Numeric(6, 2), nullable=True),
-        # Catégories de risque
+        # Risk categories
         sa.Column(
             "esg_risk_rating", sa.String(50), nullable=True
         ),  # "Negligible"|"Low"|"Medium"|"High"|"Severe"
@@ -183,10 +183,10 @@ def downgrade() -> None:
     op.drop_table("outstanding_shares_history")
     op.drop_table("esg_scores")
     op.drop_table("earnings_trend")
-    # Supprimer les colonnes GICS de assets
+    # Drop the GICS columns of assets
     for col in ["gic_sector", "gic_group", "gic_industry", "gic_sub_industry"]:
         op.drop_column("assets", col)
-    # Supprimer les colonnes de fundamentals_highlights
+    # Drop the columns of fundamentals_highlights
     for col in [
         "shares_short",
         "shares_short_prior",

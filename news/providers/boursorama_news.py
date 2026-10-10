@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-BoursoramaNewsProvider — News financières FR depuis Boursorama.
+BoursoramaNewsProvider — French financial news from Boursorama.
 
-Source complémentaire de ZoneBourse, forte couverture marché français.
+Complements ZoneBourse, with a wide coverage of the French market.
 """
 
 import logging
@@ -49,11 +49,11 @@ class BoursoramaNewsProvider(BaseFinancialProvider):
         **kwargs,
     ) -> List[RawNewsItem]:
         """
-        Récupère les news depuis Boursorama.
+        News from Boursorama.
         """
         url = self._build_url(provider_url, provider_ticker, ticker)
         if not url:
-            logger.debug("[boursorama] Impossible de construire l'URL pour %s", ticker)
+            logger.debug("[boursorama] Cannot build the URL of %s", ticker)
             return []
 
         headers = self._get_headers(
@@ -95,7 +95,7 @@ class BoursoramaNewsProvider(BaseFinancialProvider):
         soup = BeautifulSoup(html, "html.parser")
         items: List[RawNewsItem] = []
 
-        # Sélecteurs Boursorama actualités
+        # Boursorama news selectors
         article_containers = (
             soup.select("div.c-list-info-item")
             or soup.select("article.c-article-item")
@@ -113,7 +113,7 @@ class BoursoramaNewsProvider(BaseFinancialProvider):
             if url.startswith("/"):
                 url = self.BASE_URL + url
 
-            # Titre
+            # Title
             title_tag = container.find(
                 class_=re.compile(r"title|headline|link", re.I)
             ) or container.find(["h3", "h4", "h2"])
@@ -121,7 +121,7 @@ class BoursoramaNewsProvider(BaseFinancialProvider):
             if not title or len(title) < 5:
                 continue
 
-            # Date — priorité à l'attribut datetime ISO
+            # Date — the ISO datetime attribute first
             published_at: Optional[datetime] = None
             time_tag = container.find("time")
             if time_tag:
@@ -140,7 +140,7 @@ class BoursoramaNewsProvider(BaseFinancialProvider):
             source_tag = container.find(class_=re.compile(r"source|provider|author", re.I))
             source = source_tag.get_text(strip=True) if source_tag else "Boursorama"
 
-            # Summary (optionnel)
+            # Summary (optional)
             summary_tag = container.find(class_=re.compile(r"summary|excerpt|intro", re.I))
             summary = summary_tag.get_text(strip=True) if summary_tag else None
 

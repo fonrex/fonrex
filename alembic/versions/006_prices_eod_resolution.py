@@ -1,13 +1,13 @@
-"""Migration 006 — Enrichissement prices_eod pour multi-résolution
+"""Migration 006 — prices_eod with several resolutions
 
 Revision ID: 006
 Revises: 005
 Create Date: 2026-05-20
 
-Modifications :
-    1. Ajouter colonnes resolution, adjusted, source à prices_eod
-    2. Index composite : (asset_id, resolution, timestamp)
-    3. Créer table ingest_log pour tracking des ingestions
+Changes:
+    1. Add the columns resolution, adjusted, source to prices_eod
+    2. Composite index: (asset_id, resolution, timestamp)
+    3. Create the ingest_log table to track ingestions
 """
 
 import sqlalchemy as sa
@@ -20,7 +20,7 @@ down_revision = "005"
 
 def upgrade() -> None:
 
-    # ── 1. Colonnes sur prices_eod ───────────────────────────────────────────
+    # ── 1. Columns of prices_eod ─────────────────────────────────────────────
     op.add_column(
         "prices_eod", sa.Column("resolution", sa.String(3), nullable=False, server_default="1D")
     )

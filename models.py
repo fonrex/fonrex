@@ -378,13 +378,13 @@ class FundamentalsHighlights(Base):
     revenue_ttm = Column(Numeric(20, 2))
     ebitda_ttm = Column(Numeric(20, 2))
 
-    # Solvabilité (Phase 13)
+    # Solvency (Phase 13)
     debt_to_equity_ratio = Column(Numeric(10, 4))
     debt_to_assets_ratio = Column(Numeric(10, 6))
     net_debt_to_ebitda = Column(Numeric(10, 4))
     interest_coverage_ratio = Column(Numeric(10, 4))
 
-    # Coût de la dette (Phase 13)
+    # Cost of debt (Phase 13)
     actual_cost_of_debt = Column(Numeric(8, 6))
     cost_of_debt_source = Column(String(20))  # "calculated"|"sector_estimate"
 
@@ -870,7 +870,7 @@ class ProviderAlert(Base):
 
 
 class MacroRateCache(Base):
-    """Cache local des séries de taux (FRED, BCE), rafraîchi périodiquement."""
+    """Local cache of the rate series (FRED, ECB), refreshed periodically."""
     __tablename__ = "macro_rates_cache"
     __table_args__ = (
         UniqueConstraint("series_id", "observation_date",

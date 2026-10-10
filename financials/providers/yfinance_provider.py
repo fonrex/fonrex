@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class YFinanceProvider(BaseProvider):
     """
-    Implémentation du provider utilisant yfinance.
+    Provider using yfinance.
     """
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
@@ -24,10 +24,10 @@ class YFinanceProvider(BaseProvider):
                 if "/quote/" in ticker:
                     ticker = ticker.split("/quote/", 1)[1].split("?", 1)[0].rstrip("/")
 
-            # Exécution dans un thread séparé pour ne pas bloquer la boucle d'événements
+            # Run in a separate thread so as not to block the event loop
             return await run_sync(self._fetch_data, ticker)
         except Exception as e:
-            logger.error(f"Erreur lors de la récupération des données yfinance pour {ticker}: {e}")
+            logger.error(f"yfinance data error for {ticker}: {e}")
             return None
 
     def _fetch_data(self, ticker: str) -> Optional[FinancialMetrics]:
@@ -37,10 +37,10 @@ class YFinanceProvider(BaseProvider):
         if not info:
             return None
 
-        # Mapping des champs yfinance vers FinancialMetrics
+        # yfinance fields → FinancialMetrics
         data = info.copy()
 
-        # Ajout explicite de l'ISIN
+        # Add the ISIN explicitly
         try:
             val = stock.isin
             if val and val != "-":
@@ -48,7 +48,7 @@ class YFinanceProvider(BaseProvider):
         except Exception:
             pass
 
-        # Ajout des détenteurs (Holders)
+        # Add the holders
         try:
             holders = {}
             if hasattr(stock, "institutional_holders") and stock.institutional_holders is not None:
@@ -57,7 +57,7 @@ class YFinanceProvider(BaseProvider):
                 holders["funds"] = stock.mutualfund_holders.to_dict("records")
             data["holders"] = holders
         except Exception as e:
-            logger.warning(f"Erreur extraction holders pour {ticker}: {e}")
+            logger.warning(f"Holders read error for {ticker}: {e}")
 
         data.update(
             {

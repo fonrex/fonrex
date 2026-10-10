@@ -77,7 +77,7 @@ class CachedRateService:
                         )
                     )
             except Exception as e:
-                logger.warning("Erreur lecture cache Redis %s: %s", redis_key, e)
+                logger.warning("Redis cache read error for %s: %s", redis_key, e)
 
         # The value stored in PostgreSQL, when it was read from the source recently.
         stored, fetched_at = await run_sync(self._get_latest_from_db, series_id)
@@ -104,7 +104,7 @@ class CachedRateService:
             try:
                 await self.redis_client.setex(redis_key, self.redis_ttl, rate.model_dump_json())
             except Exception as e:
-                logger.warning("Erreur écriture cache Redis %s: %s", redis_key, e)
+                logger.warning("Redis cache write error for %s: %s", redis_key, e)
 
         return self._tagged(rate)
 
@@ -152,7 +152,7 @@ class CachedRateService:
             session.commit()
         except Exception as e:
             session.rollback()
-            logger.error("Erreur upsert MacroRateCache: %s", e)
+            logger.error("MacroRateCache upsert error: %s", e)
         finally:
             session.close()
 
@@ -179,7 +179,7 @@ class CachedRateService:
                 )
             return None, None
         except Exception as e:
-            logger.error("Erreur lecture MacroRateCache DB: %s", e)
+            logger.error("MacroRateCache database read error: %s", e)
             return None, None
         finally:
             session.close()

@@ -1,24 +1,24 @@
-"""Migration 008 — Suppression des tables EOD legacy
+"""Migration 008 — Drop the legacy EOD tables
 
 Revision ID: 008
 Revises: 007
 Create Date: 2026-05-23
 
-Description :
-    Supprime les tables legacy du chemin EOD historique :
+Description:
+    Drops the legacy tables of the historical EOD path:
     - stock_data, cache_status, data_requests
     - daily_stock_records, weekly_stock_records,
       monthly_stock_records, yearly_stock_records
 
-    Ces tables sont remplacées par prices_eod (TimescaleDB hypertable)
-    alimentée par HistoricalIngestionService.
+    They are replaced by prices_eod (TimescaleDB hypertable), fed by
+    HistoricalIngestionService.
 
-    ⚠️  MIGRATION DESTRUCTIVE — Données non récupérables après exécution.
-    Effectuer une sauvegarde PostgreSQL avant d'appliquer :
+    ⚠️  DESTRUCTIVE MIGRATION — the data cannot be recovered afterwards.
+    Back up PostgreSQL before applying it:
     pg_dump -Fc fonrex > backup_pre_008.dump
 
-    Le downgrade recrée les tables VIDES (sans données).
-    La restauration des données nécessite le backup.
+    The downgrade recreates the tables EMPTY (without data).
+    Restoring the data needs the backup.
 """
 
 import sqlalchemy as sa
@@ -33,35 +33,35 @@ depends_on = None
 
 def upgrade() -> None:
     """
-    Supprime toutes les tables legacy dans le bon ordre
-    (respecter les FK si elles existent).
+    Drop every legacy table in the right order
+    (following the foreign keys, if any).
 
-    Utiliser IF EXISTS pour rendre la migration idempotente
-    (safe à rejouer si partiellement appliquée).
+    IF EXISTS makes the migration idempotent
+    (safe to replay when partly applied).
     """
 
-    # Tables de records historiques (pas de FK vers d'autres tables legacy)
+    # Historical record tables (no foreign key to other legacy tables)
     op.execute("DROP TABLE IF EXISTS daily_stock_records CASCADE")
     op.execute("DROP TABLE IF EXISTS weekly_stock_records CASCADE")
     op.execute("DROP TABLE IF EXISTS monthly_stock_records CASCADE")
     op.execute("DROP TABLE IF EXISTS yearly_stock_records CASCADE")
 
-    # Tables EOD legacy (data_requests peut avoir FK vers stock_data)
+    # Legacy EOD tables (data_requests may have a foreign key to stock_data)
     op.execute("DROP TABLE IF EXISTS data_requests CASCADE")
     op.execute("DROP TABLE IF EXISTS cache_status CASCADE")
     op.execute("DROP TABLE IF EXISTS stock_data CASCADE")
 
-    # Supprimer aussi les séquences orphelines si elles existent
+    # Drop the orphan sequences too, if any
     op.execute("DROP SEQUENCE IF EXISTS stock_data_id_seq CASCADE")
     op.execute("DROP SEQUENCE IF EXISTS data_requests_id_seq CASCADE")
 
 
 def downgrade() -> None:
     """
-    Recrée les tables legacy VIDES pour permettre un rollback de schéma.
-    ⚠️  Les données ne sont PAS restaurées — utiliser le backup PostgreSQL.
+    Recreate the legacy tables EMPTY, for a schema rollback.
+    ⚠️  The data is NOT restored — use the PostgreSQL backup.
 
-    Recrée dans l'ordre inverse : parents avant enfants.
+    Recreated in reverse order: parents before children.
     """
 
     # stock_data (table principale legacy)

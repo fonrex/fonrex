@@ -19,7 +19,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # On vérifie si les colonnes existent déjà pour éviter les erreurs
+    # Check whether the columns already exist, to avoid errors
     conn = op.get_bind()
     inspector = sa.inspect(conn)
     columns = [col["name"] for col in inspector.get_columns("assets")]
@@ -59,7 +59,7 @@ def upgrade() -> None:
             "assets", sa.Column("profile", postgresql.JSONB(astext_type=sa.Text()), nullable=True)
         )
 
-    # Index ISIN (001 peut déjà les avoir créés sur une base fraîche)
+    # ISIN index (001 may have created it on a fresh database)
     indexes = {index["name"] for index in inspector.get_indexes("assets")}
     if "idx_assets_isin" not in indexes:
         op.create_index("idx_assets_isin", "assets", ["isin"], unique=False)

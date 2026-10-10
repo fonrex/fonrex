@@ -1,6 +1,6 @@
 """
-Schémas Pydantic pour le système de streaming temps réel Fonrex.
-Utilisés par les endpoints WebSocket, REST /quote et /realtime/subscribe.
+Pydantic schemas of the Fonrex realtime streaming.
+Used by the WebSocket route, REST /quote and /realtime/subscribe.
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class RealtimeTick(BaseModel):
-    """Un tick de prix reçu en temps réel depuis TradingView."""
+    """A price tick received from TradingView."""
 
     ticker: str
     timestamp: datetime
@@ -33,8 +33,8 @@ class RealtimeTick(BaseModel):
 
 class QuoteSnapshot(BaseModel):
     """
-    Snapshot du dernier prix connu pour un ticker.
-    Retourné par GET /quote/{ticker}.
+    Snapshot of the last known price of a ticker.
+    Returned by GET /quote/{ticker}.
     """
 
     ticker: str
@@ -48,24 +48,24 @@ class QuoteSnapshot(BaseModel):
     low: Decimal | None = None
     close: Decimal | None = None
     volume: int | None = None
-    change: Decimal | None = None  # variation absolue vs clôture hier
-    change_pct: Decimal | None = None  # variation en %
+    change: Decimal | None = None  # absolute change vs. yesterday's close
+    change_pct: Decimal | None = None  # change in %
     previous_close: Decimal | None = None
     timestamp: datetime | None = None
-    is_realtime: bool = False  # True si données < 2min
+    is_realtime: bool = False  # True when the data is < 2min old
     is_market_open: bool | None = None
     source: str = "tradingview"
-    delay_seconds: int | None = None  # délai estimé des données
+    delay_seconds: int | None = None  # estimated delay of the data
 
 
 class SubscriptionRequest(BaseModel):
-    """Corps de POST /realtime/subscribe."""
+    """Body of POST /realtime/subscribe."""
 
-    tickers: list[str]  # ex: ["AIR.PA", "BNP.PA", "AAPL"]
+    tickers: list[str]  # e.g. ["AIR.PA", "BNP.PA", "AAPL"]
 
 
 class SubscriptionStatus(BaseModel):
-    """Statut d'abonnement pour un ticker."""
+    """Subscription status of a ticker."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -76,12 +76,12 @@ class SubscriptionStatus(BaseModel):
     subscribed_at: datetime
     last_tick_at: datetime | None = None
     tick_count: int = 0
-    is_streaming: bool = False  # True si le worker a une connexion active
+    is_streaming: bool = False  # True when the worker has an active connection
 
 
 class WebSocketMessage(BaseModel):
     """
-    Format standardisé des messages WebSocket Fonrex → Client.
+    Standard format of the Fonrex WebSocket messages → client.
     type : "tick" | "snapshot" | "error" | "subscribed" | "unsubscribed" | "pong"
            | "not_streaming" (read-only key on a ticker that is not streamed)
     """

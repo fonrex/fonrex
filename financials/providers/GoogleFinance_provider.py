@@ -133,7 +133,7 @@ class GoogleFinanceProvider(BaseProvider):
                     # We pass the raw ticker, the exchange will be deduced or default
                     google_ticker = ticker
 
-                # Normalisation finale pour l'URL (SYMBOL:EXCHANGE)
+                # Final normalisation of the URL (SYMBOL:EXCHANGE)
                 if is_url and ":" in ticker:
                     # A quote URL already carries SYMBOL:EXCHANGE: it must not be swapped.
                     url_ticker = google_ticker
@@ -311,7 +311,7 @@ class GoogleFinanceProvider(BaseProvider):
             # We don't strictly need price in FinancialMetrics base (it's in StockSummary?)
             # But let's verify if we need it. FinancialMetrics inherits StandardFinancials.
             # StockSummary has price. FinancialMetrics doesn't strictly require it but good to have.
-            # Let's skip price as it wasn't explicitly requested in 'Structure des données' bullet points.
+            # The price is skipped: it was not part of the requested data structure.
 
             # 2. Key Stats (P/E, Market Cap, Dividend Yield)
             # These are usually in a list like "P/E ratio 30.5"

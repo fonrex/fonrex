@@ -73,7 +73,7 @@ class TestGetAsyncDatabaseUrl:
             os.environ.pop("ASYNC_DATABASE_URL", None)
             result = get_async_database_url()
             assert result is None
-            assert "Impossible de déduire ASYNC_DATABASE_URL" in caplog.text
+            assert "Cannot derive ASYNC_DATABASE_URL" in caplog.text
 
     def test_sqlite_scheme_returns_none(self, caplog):
         env = {"DATABASE_URL": "sqlite:///test.db"}
@@ -81,7 +81,7 @@ class TestGetAsyncDatabaseUrl:
             os.environ.pop("ASYNC_DATABASE_URL", None)
             result = get_async_database_url()
             assert result is None
-            assert "Impossible de déduire ASYNC_DATABASE_URL" in caplog.text
+            assert "Cannot derive ASYNC_DATABASE_URL" in caplog.text
 
     # ---- Edge cases -------------------------------------------------------
 

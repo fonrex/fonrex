@@ -58,7 +58,7 @@ class FREDService(CachedRateService):
         return bool(self.api_key)
 
     def _cannot_fetch_reason(self, series_id: str) -> str:
-        return f"FRED_API_KEY manquante, impossible de mettre à jour {series_id} depuis l'API."
+        return f"FRED_API_KEY is not set: {series_id} cannot be read from the FRED API."
 
     async def _fetch_series(self, series_id: str, label: str) -> MacroRate | None:
         return await self._fetch_fred_series(series_id, label)
@@ -119,5 +119,5 @@ class FREDService(CachedRateService):
 
                 return rate
         except Exception as e:
-            logger.error("Erreur API FRED pour %s: %s", series_id, e)
+            logger.error("FRED API error for %s: %s", series_id, e)
             return None

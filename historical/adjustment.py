@@ -197,7 +197,7 @@ async def fetch_on_one_basis(
 
     result = await fetch(start, end)
     if not result or not result.get("bars"):
-        return SeriesFetch(error=result.get("error") if result else "Aucune donnée récupérée")
+        return SeriesFetch(error=result.get("error") if result else "No data fetched")
     bars = normalize(result["bars"])
 
     if edge and adjustment_changed(edge, bars):

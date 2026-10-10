@@ -23,7 +23,7 @@ USER_AGENTS = [
 
 class BoursoramaProvider(BaseProvider):
     """
-    Provider asynchrone pour Boursorama utilisant httpx et selectolax.
+    Asynchronous Boursorama provider using httpx and selectolax.
     """
 
     BASE_URL = "https://www.boursorama.com"
@@ -35,37 +35,37 @@ class BoursoramaProvider(BaseProvider):
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
         """
-        Récupère les données financières pour un ticker.
-        Flux:
-        1. Recherche du ticker interne Boursorama
-        2. Fetch de la page
-        3. Parsing
+        Financial data of a ticker.
+        Flow:
+        1. Search for the internal Boursorama ticker
+        2. Fetch the page
+        3. Parse it
         """
         async with self._session() as client:
             try:
-                # 1. Obtenir l'URL de la fiche valeur
+                # 1. Find the URL of the instrument page
                 url = await self._search_symbol(client, ticker)
                 if not url:
-                    logger.warning(f"Ticker {ticker} non trouvé sur Boursorama")
+                    logger.warning(f"Ticker {ticker} not found on Boursorama")
                     return None
 
-                # 2. Récupérer la page
+                # 2. Fetch the page
                 html = await self._fetch_page(client, url)
                 if not html:
                     return None
 
-                # 3. Parser les données
+                # 3. Parse the data
                 metrics = self._parse_page(html, ticker)
                 if metrics:
                     metrics.provider_url = url
                 return metrics
 
             except Exception as e:
-                logger.error(f"Erreur globale pour {ticker}: {e}")
+                logger.error(f"Error for {ticker}: {e}")
                 return None
 
     async def _search_symbol(self, client: ProviderSession, symbol: str) -> Optional[str]:
-        """Recherche l'URL de la fiche valeur."""
+        """Search for the URL of the instrument page."""
         url = self.SEARCH_URL.format(symbol=symbol)
 
         try:
@@ -73,12 +73,12 @@ class BoursoramaProvider(BaseProvider):
             if not response:
                 return None
 
-            # Le retour est souvent du HTML partiel ou une redirection
-            # L'ancien code cherchait le premier lien dans une liste
+            # The answer is often partial HTML or a redirection
+            # The first link of the result list is taken
             parser = HTMLParser(response.text)
 
-            # Sélecteur exact basé sur la structure des trames réseaux de la recherche
-            # Les liens des résultats (Action, ETF, etc.) ont la classe 'search__list-link'
+            # Exact selector, from the network frames of the search
+            # Result links (share, ETF, etc.) have the class 'search__list-link'
             link = parser.css_first("a.search__list-link")
 
             if link:
@@ -88,11 +88,11 @@ class BoursoramaProvider(BaseProvider):
 
             return None
         except Exception as e:
-            logger.error(f"Erreur recherche symbole {symbol}: {e}")
+            logger.error(f"Symbol search error {symbol}: {e}")
             return None
 
     async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:
-        """Récupère le HTML d'une page."""
+        """The HTML of a page."""
         response = await self._fetch_with_retry(client, url)
         if response:
             return HTMLParser(response.text)
@@ -101,26 +101,26 @@ class BoursoramaProvider(BaseProvider):
     async def _fetch_with_retry(
         self, client: ProviderSession, url: str
     ) -> Optional[httpx.Response]:
-        """Récupère une page ; reprises, pauses et limites viennent de la session commune."""
+        """Fetch a page; retries, pauses and limits come from the shared session."""
         try:
-            # Un nouveau User-Agent est tiré à chaque tentative.
+            # A new User-Agent is drawn at each attempt.
             response = await client.get(
                 url, headers=lambda: {"User-Agent": random.choice(USER_AGENTS)}
             )
         except Exception as e:
-            logger.error(f"Erreur réseau pour {url}: {e}")
+            logger.error(f"Network error for {url}: {e}")
             return None
 
         if response.status_code == 200:
             return response
-        logger.error(f"Erreur HTTP {response.status_code} pour {url}")
+        logger.error(f"HTTP error {response.status_code} for {url}")
         return None
 
     def _parse_page(self, parser: HTMLParser, ticker: str) -> FinancialMetrics:
-        """Extrait les données de la page via selectolax."""
+        """Read the data of the page with selectolax."""
         metrics = FinancialMetrics(ticker=ticker)
 
-        # Extraction ISIN
+        # ISIN
         isin_node = parser.css_first(".c-faceplate__isin")
         if isin_node:
             isin_text = isin_node.text(strip=True).replace("ISIN :", "").strip()
@@ -128,14 +128,14 @@ class BoursoramaProvider(BaseProvider):
             isin_match = re.search(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b", isin_text)
             metrics.isin = isin_match.group(0) if isin_match else isin_text
 
-        # Extraction Éligibilité (PEA, SRD, etc.)
-        # Sélecteur basé sur structure commune: souvent dans le header ou 'c-list-info'
+        # Eligibility (PEA, SRD, etc.)
+        # Selector based on the common layout: often in the header or 'c-list-info'
         metrics.eligibility = self._extract_eligibility(parser)
 
-        # Score ESG (Nouveau sélecteur Gauge ou liste)
+        # ESG score (new gauge selector, or list)
         esg_score_node = parser.css_first(".c-gauge__label")
         if not esg_score_node:
-            # Essayer de trouver dans la liste d'infos
+            # Try the info list
             for item in parser.css(".c-list-info__item"):
                 if "Risque ESG" in item.text():
                     esg_score_node = item
@@ -147,7 +147,7 @@ class BoursoramaProvider(BaseProvider):
                 esg_text = esg_text.split("Fermer")[-1].strip()
             metrics.esg_score = esg_text
 
-        # Niveau de controverse et autres données clés ESG
+        # Controversy level and other key ESG data
         for node in parser.css(".o-flex-stretch"):
             label_node = node.css_first("span")
             val_node = node.css_first("strong")
@@ -163,12 +163,12 @@ class BoursoramaProvider(BaseProvider):
                 elif "négatif" in label:
                     metrics.esg_negative_impact = val
 
-        # Données de valorisation (Tableau consensus ou chiffres clés)
-        # On essaie de trouver le tableau des chiffres clés
-        # Souvent .c-table
+        # Valuation data (consensus table or key figures)
+        # Look for the key figures table
+        # Often .c-table
         self._extract_key_figures(parser, metrics)
 
-        # Risque (ETF)
+        # Risk (ETF)
         gauge = parser.css_first(".c-gauge")
         if gauge:
             current = gauge.attributes.get("data-gauge-current-step")
@@ -179,7 +179,7 @@ class BoursoramaProvider(BaseProvider):
         return metrics
 
     def _extract_eligibility(self, parser: HTMLParser) -> List[str]:
-        # Fiche valeur : l'entrée "Éligibilité" de la liste d'infos porte un badge par dispositif
+        # Instrument page: the "Éligibilité" entry of the info list carries one badge per scheme
         # (SRD, PEA, ...).
         for item in parser.css(".c-list-info__item"):
             heading = item.css_first(".c-list-info__heading")
@@ -190,9 +190,9 @@ class BoursoramaProvider(BaseProvider):
                     return badges
 
         items = []
-        # Repli : recherche des badges d'éligibilité (PEA, SRD, etc.) dans les listes.
-        # On évite les menus de navigation et les éléments contenant des scripts ou trop
-        # longs pour être des labels.
+        # Fallback: look for eligibility badges (PEA, SRD, etc.) in the lists.
+        # Skip navigation menus, and elements holding scripts or too
+        # long to be labels.
         for node in parser.css("li"):
             if "c-navigation" in (node.attributes.get("class") or ""):
                 continue
@@ -219,17 +219,17 @@ class BoursoramaProvider(BaseProvider):
 
     def _extract_key_figures(self, parser: HTMLParser, metrics: FinancialMetrics):
         """
-        Tente d'extraire PER, Rendement, BNA depuis les tableaux.
-        Tableaux souvent structurés avec <thead> (années) et <tbody> (valeurs).
+        Try to read the P/E (PER), yield (Rendement) and EPS (BNA) from the tables.
+        Tables are often laid out with <thead> (years) and <tbody> (values).
         """
-        # Stratégie: Chercher les lignes contenant "PER", "Rendement", "BPA" (ou BNA)
+        # Strategy: look for the rows holding "PER", "Rendement", "BPA" (or BNA)
         for row in parser.css("tr"):
             cells = row.css("td")
             header = row.css_first("th")
             row_title = header.text(strip=True) if header else ""
 
             if not row_title and cells:
-                # Parfois le titre est dans le premier td
+                # Sometimes the title is in the first td
                 row_title = cells[0].text(strip=True)
                 values = cells[1:]
             else:
@@ -238,9 +238,9 @@ class BoursoramaProvider(BaseProvider):
             if not values:
                 continue
 
-            # On prend la première valeur (souvent l'année en cours ou estimée N+1)
-            # Pour PER et Rendement, Boursorama affiche souvent N, N+1, N+2
-            # On essaie de prendre la colonne qui correspond à l'année la plus pertinente (souvent index 0 ou 1)
+            # Take the first value (often the current year, or the N+1 estimate)
+            # For PER and Rendement, Boursorama often shows N, N+1, N+2
+            # The most relevant year is usually column 0 or 1
             val_text = values[0].text(strip=True)
             val = self._clean_number(val_text)
 
@@ -259,7 +259,7 @@ class BoursoramaProvider(BaseProvider):
             elif "Chiffre d'affaires" in row_title:
                 metrics.revenue = val
             elif "Dividende" in row_title and not metrics.dividend_yield:
-                # Si on a le dividende brut mais pas le rendement
+                # Gross dividend but no yield
                 pass
 
     def _clean_number(self, text: str) -> Optional[float]:

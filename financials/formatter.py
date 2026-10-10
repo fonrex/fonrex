@@ -196,14 +196,14 @@ class _Chooser:
 
 class FinancialsFormatter:
     """
-    Formateur pour transformer les résultats enrichis (DB + YFinance)
-    en une structure strictement identique à l'API Premium EODHD Fundamental Data.
+    Turns the enriched results (database + yfinance) into the exact structure
+    of the EODHD Premium Fundamental Data API.
     """
 
     @staticmethod
     def to_eodhd(results: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Transforme le dictionnaire agrégé en format EODHD.
+        Turn the merged dictionary into the EODHD format.
         """
         asset_profile = results.get("asset_profile") or {}
         # The Yahoo payload of this request, then the figures stored in the
@@ -242,7 +242,7 @@ class FinancialsFormatter:
         )
         splits_dividends["NumberDividendsByYear"] = 0
 
-        # Construction du rendu Premium
+        # Build the Premium answer
         rendered = {
             "General": FinancialsFormatter._build_general(asset_profile, yf_info),
             "Highlights": section_highlights,
@@ -267,7 +267,7 @@ class FinancialsFormatter:
             "Sources": choose.sources,
         }
 
-        # Ajout ETF_Data si c'est un ETF
+        # Add ETF_Data for an ETF
         if (asset_profile.get("quote_type") or "").upper() == "ETF":
             rendered["ETF_Data"] = FinancialsFormatter._build_etf_data(results)
 
@@ -275,8 +275,8 @@ class FinancialsFormatter:
 
     @staticmethod
     def _build_providers(results: Dict) -> Dict:
-        """Construit la section Providers : pour chaque provider appelé, expose
-        le ticker utilisé, l'URL interrogée, l'ISIN, le nom et le statut."""
+        """Build the Providers section: for each provider called, the ticker
+        used, the URL asked, the ISIN, the name and the status."""
         raw_providers = results.get("raw_providers") or {}
         providers_info = {}
 
@@ -362,7 +362,7 @@ class FinancialsFormatter:
 
     @staticmethod
     def _build_holders(yf: Dict) -> Dict:
-        # Comme précédemment, indexé par "0", "1", ...
+        # As before, indexed by "0", "1", ...
         holders_raw = yf.get("holders", {})
         res = {"Institutions": {}, "Funds": {}}
         for cat in ["institutions", "funds"]:
@@ -418,7 +418,7 @@ class FinancialsFormatter:
                 }
             return txns
 
-        # 2. Fallback sur WallStreetJournal (International)
+        # 2. Fall back on WallStreetJournal (international)
         # "wallStreetJournal" is the name the provider is registered under.
         wsj = (
             results.get("wallStreetJournal")
@@ -452,11 +452,11 @@ class FinancialsFormatter:
         if not esg:
             esg = {}
 
-        # Fallback sur les providers (Boursorama, etc.)
-        # On cherche dans tous les résultats de providers si on a des infos ESG
+        # Fallback on the providers (Boursorama, etc.)
+        # Look for ESG data in every provider result
         brs = results.get("boursorama")
         if not brs:
-            # Parfois le nom est en majuscule ou autre
+            # The name is sometimes upper case, or otherwise spelled
             brs = results.get("Boursorama")
 
         if hasattr(brs, "model_dump"):
@@ -481,7 +481,7 @@ class FinancialsFormatter:
                 "Gambling": esg.get("gambling"),
                 "Tobacco": esg.get("tobacco"),
             },
-            # Extensions non-standard EODHD mais utiles si présentes
+            # Non-standard EODHD extensions, useful when present
             "CO2_Emissions": brs.get("esg_co2"),
             "Positive_Impact": brs.get("esg_positive_impact"),
             "Negative_Impact": brs.get("esg_negative_impact"),
@@ -548,7 +548,7 @@ class FinancialsFormatter:
                 continue
 
             date_str = str(s.get("period_end"))
-            # Conversion de toutes les valeurs numériques en strings pour matching strict EODHD
+            # Every number as a string, to match EODHD strictly
             entry = {}
             for k, v in s.items():
                 if k not in [

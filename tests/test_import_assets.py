@@ -1,9 +1,9 @@
 """
 tests/test_import_assets.py
 ────────────────────────────
-Tests unitaires pour le pipeline d'import CSV ISIN-dédupliqué.
+Unit tests of the CSV import pipeline, deduplicated by ISIN.
 
-Couvre :
+Covers:
   - parse_csv            (TestParseCSV)
   - determine_exchange   (TestDetermineExchange)
   - determine_is_primary (TestDetermineIsPrimary)

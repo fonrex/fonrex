@@ -1,8 +1,8 @@
 """
-Pydantic schemas pour le monitoring des providers.
+Pydantic schemas of the provider monitoring.
 
-Définit les types d'énumération, les schémas de validation, et les modèles
-de réponse pour les endpoints /health/*.
+Defines the enumerations, the validation schemas and the answer models of
+the /health/* routes.
 """
 
 from datetime import date, datetime
@@ -31,7 +31,7 @@ class AlertType(str, Enum):
 
 
 class ProviderStatus(BaseModel):
-    """Statut temps réel d'un provider."""
+    """Current status of a provider."""
 
     name: str
     is_healthy: bool
@@ -44,7 +44,7 @@ class ProviderStatus(BaseModel):
 
 
 class ProviderHealthSummary(BaseModel):
-    """Résumé global de santé de tous les providers."""
+    """Overall health summary of every provider."""
 
     checked_at: datetime
     total_providers: int
@@ -55,7 +55,7 @@ class ProviderHealthSummary(BaseModel):
 
 
 class ValidationResult(BaseModel):
-    """Résultat de validation d'une valeur en temps réel."""
+    """Validation result of a value."""
 
     provider: str
     field: str
@@ -99,7 +99,7 @@ class DailyStatSchema(BaseModel):
 
 
 class ProviderDetailResponse(BaseModel):
-    """Détail de santé d'un provider sur les N derniers jours."""
+    """Health detail of a provider over the last N days."""
 
     provider: str
     status: str
@@ -112,7 +112,7 @@ class ProviderDetailResponse(BaseModel):
 
 
 class HealthStatsResponse(BaseModel):
-    """Statistiques globales sur la validation des données."""
+    """Overall data validation statistics."""
 
     period: str
     total_values_validated: int

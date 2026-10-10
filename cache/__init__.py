@@ -1,5 +1,5 @@
 """
-Module de gestion du cache pour FonRex API.
+Cache package of the Fonrex API.
 """
 
 from .service import CacheService as CacheService

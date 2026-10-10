@@ -49,7 +49,7 @@ class HistoricalIngestionService:
         # is found from its ISIN, checked against its currency, and remembered.
         self._symbols = symbol_resolver or YahooSymbolResolver(db_service)
 
-        # Configuration depuis variables d'environnement
+        # Configuration from environment variables
         self.concurrency = int(os.environ.get("INGEST_CONCURRENCY", 5))
         self.yf_delay = float(os.environ.get("INGEST_YF_DELAY", 0.5))
         self.tv_delay = float(os.environ.get("INGEST_TV_DELAY", 2.0))
@@ -68,7 +68,7 @@ class HistoricalIngestionService:
         isin: Optional[str] = None,
     ) -> IngestResult:
         """
-        Ingère l'historique d'un ticker individuel.
+        Ingest the history of one ticker.
 
         ``currency``, ``exchange`` and ``isin`` name one listing among those
         sharing the ticker (``GOVY`` in EUR or in CHF, ``NEM`` of Newmont or of
@@ -81,10 +81,10 @@ class HistoricalIngestionService:
                 ticker=ticker,
                 resolution=resolution,
                 status="failed",
-                error=f"Résolution non supportée: {resolution}",
+                error=f"Unsupported resolution: {resolution}",
             )
 
-        # 1. Résoudre l'Asset et la cotation
+        # 1. Resolve the asset and the listing
         asset_id, listing_id, _listing_isin, listing_currency = await run_sync(
             self._resolve_asset_context, ticker, currency, exchange, isin
         )
@@ -104,7 +104,7 @@ class HistoricalIngestionService:
                 ),
             )
 
-        # 2. Détecter les plages de dates à charger (Gap Detection)
+        # 2. Find the date ranges to load (gap detection)
         fetch_start, fetch_end, is_up_to_date = await self._detect_gaps(
             ticker, resolution, force_refresh, from_date, to_date, currency, exchange, isin
         )
@@ -138,7 +138,7 @@ class HistoricalIngestionService:
         if is_up_to_date:
             return await stop("up_to_date")
 
-        # 3. Symbole de la source. The prices of a listing are fetched with the
+        # 3. Source symbol. The prices of a listing are fetched with the
         # symbol verified for it (ISIN + currency), never with the ticker as typed:
         # a ticker shared with another instrument would bring that instrument's prices.
         yahoo_symbol, symbol_note = None, None
@@ -180,7 +180,7 @@ class HistoricalIngestionService:
         fetch_result, normalized_bars = outcome.result, outcome.bars
         source_used = fetch_result["source_used"]
 
-        # 6. Insérer en base (Upsert). A series fetched in one piece replaces the
+        # 6. Upsert into the database. A series fetched in one piece replaces the
         # fetched range instead of merging into it, so that no bar of an earlier
         # fetch (other adjustment basis, wrongly dated row) survives next to the
         # new ones.
@@ -190,10 +190,10 @@ class HistoricalIngestionService:
         if outcome.whole_series and normalized_bars:
             await record_scheme(self.db_service.get_session, listing_id, resolution)
 
-        # 7. Invalider le cache Redis
+        # 7. Invalidate the Redis cache
         await self._invalidate_cache(ticker)
 
-        # 8. Logger l'opération
+        # 8. Log the operation
         duration_ms = int((time.time() - start_time) * 1000)
         status = "success" if records_added > 0 else "up_to_date"
 
@@ -234,7 +234,7 @@ class HistoricalIngestionService:
         concurrency: Optional[int] = None,
     ) -> List[IngestResult]:
         """
-        Ingère une liste de tickers en parallèle avec limitation de concurrence.
+        Ingest a list of tickers in parallel, with limited concurrency.
         """
         sem_limit = concurrency or self.concurrency
         semaphore = asyncio.Semaphore(sem_limit)
@@ -242,7 +242,7 @@ class HistoricalIngestionService:
 
         async def worker(ticker: str):
             async with semaphore:
-                # Délai aléatoire pour lisser la charge et éviter les bans
+                # Random delay to spread the load and avoid bans
                 await asyncio.sleep(random.uniform(0.1, 0.5))
                 try:
                     res = await self.ingest(
@@ -253,7 +253,7 @@ class HistoricalIngestionService:
                     )
                     results.append(res)
                 except Exception as e:
-                    logger.error(f"❌ Erreur critique lors de l'ingestion bulk de {ticker}: {e}")
+                    logger.error(f"❌ Critical error in the bulk ingestion of {ticker}: {e}")
                     results.append(
                         IngestResult(
                             ticker=ticker, resolution=resolution, status="failed", error=str(e)
@@ -276,16 +276,16 @@ class HistoricalIngestionService:
         isin: Optional[str] = None,
     ) -> Tuple[date, date, bool]:
         """
-        Détermine la plage de dates manquante.
+        The missing date range.
         """
         today = date.today()
         end_date = to_date or today
 
         if force_refresh:
-            start_date = from_date or (today - timedelta(days=365 * 10))  # 10 ans par défaut
+            start_date = from_date or (today - timedelta(days=365 * 10))  # 10 years by default
             return start_date, end_date, False
 
-        # Vérifier en base les données existantes
+        # Look at the data already stored
         db_range = await self.query_service.get_history_range(
             ticker, resolution, currency=currency, exchange=exchange, isin=isin
         )
@@ -296,14 +296,14 @@ class HistoricalIngestionService:
 
         max_date_db = db_range["max_date"]
 
-        # Si la date max en base est aujourd'hui ou hier, on considère à jour
+        # Up to date when the last stored day is today or yesterday
         if max_date_db and max_date_db >= (today - timedelta(days=1)):
             if from_date and from_date < db_range["min_date"]:
-                # Si l'utilisateur demande plus de données historiques (plus anciennes)
+                # The user asks for older history
                 return from_date, db_range["min_date"] - timedelta(days=1), False
             return max_date_db, end_date, True
 
-        # Ingestion incrémentale
+        # Incremental ingestion
         start_date = max_date_db + timedelta(days=1)
         if start_date >= end_date:
             return max_date_db, end_date, True
@@ -348,7 +348,7 @@ class HistoricalIngestionService:
         isin: Optional[str] = None,
     ) -> Tuple[Optional[int], Optional[int]]:
         """
-        Résout un ticker en (asset_id, listing_id), with the rule shared by every
+        Resolve a ticker into (asset_id, listing_id), with the rule shared by every
         reader of ``prices_eod`` (``database/price_series.py``).
         """
         series = resolve_price_series(
@@ -377,7 +377,7 @@ class HistoricalIngestionService:
             return written
         except Exception as e:
             session.rollback()
-            logger.error(f"❌ Erreur lors de l'upsert des prix EOD: {e}")
+            logger.error(f"❌ EOD price upsert error: {e}")
             raise e
         finally:
             session.close()
@@ -409,10 +409,10 @@ class HistoricalIngestionService:
             if keys_to_delete:
                 await self.redis_client.delete(*keys_to_delete)
                 logger.info(
-                    f"🧹 Cache invalidé pour {ticker} ({len(keys_to_delete)} clés supprimées)"
+                    f"🧹 Cache invalidated for {ticker} ({len(keys_to_delete)} keys deleted)"
                 )
         except Exception as e:
-            logger.warning(f"⚠️ Erreur d'invalidation Redis pour {ticker}: {e}")
+            logger.warning(f"⚠️ Redis invalidation error for {ticker}: {e}")
 
     async def _log_ingest(
         self,
@@ -428,7 +428,7 @@ class HistoricalIngestionService:
         duration_ms: Optional[int] = None,
     ):
         """
-        Crée un enregistrement de log d'ingestion.
+        Write an ingestion log row.
         """
         await run_sync(
             self._log_ingest_sync,
@@ -491,6 +491,6 @@ class HistoricalIngestionService:
             session.commit()
         except Exception as e:
             session.rollback()
-            logger.error(f"❌ Erreur lors de l'enregistrement du log d'ingestion: {e}")
+            logger.error(f"❌ Ingestion log write error: {e}")
         finally:
             session.close()

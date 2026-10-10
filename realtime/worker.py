@@ -1,21 +1,21 @@
 """
-RealtimePriceWorker — Worker asyncio qui maintient les connexions WebSocket
-TradingView et distribue les prix temps réel via Redis Pub/Sub.
+RealtimePriceWorker — asyncio worker that keeps the TradingView WebSocket
+connections open and distributes realtime prices through Redis Pub/Sub.
 
-Design :
-- Un asyncio.Task par ticker abonné
-- Sémaphore global : max TV_MAX_CONNECTIONS connexions simultanées TradingView
-- Reconnexion automatique en cas de déconnexion (backoff exponentiel)
-- Distribution via Redis Pub/Sub canal "price:{ticker}"
-- Cache Redis clé "quote:{ticker}" avec TTL configurable
-- Persistance dans prices_intraday toutes les bougies 1min complètes
+Design:
+- One asyncio.Task per subscribed ticker
+- Global semaphore: at most TV_MAX_CONNECTIONS simultaneous TradingView connections
+- Automatic reconnection after a disconnection (exponential backoff)
+- Distribution through the Redis Pub/Sub channel "price:{ticker}"
+- Redis cache key "quote:{ticker}" with a configurable TTL
+- Every complete 1-minute candle stored in prices_intraday
 
-Lifecycle :
+Lifecycle:
     worker = RealtimePriceWorker(redis_client, db_session_factory)
-    await worker.start()           # Démarre le worker (lifespan FastAPI)
+    await worker.start()           # Starts the worker (FastAPI lifespan)
     await worker.subscribe("AIR.PA")
     await worker.unsubscribe("AIR.PA")
-    await worker.stop()            # Arrêt propre (lifespan FastAPI)
+    await worker.stop()            # Clean shutdown (FastAPI lifespan)
 """
 
 from __future__ import annotations
@@ -41,16 +41,16 @@ from schemas.realtime import RealtimeTick
 
 logger = logging.getLogger(__name__)
 
-# ── Configuration depuis les variables d'environnement ──────────────────────
+# ── Configuration from environment variables ────────────────────────────────
 TV_MAX_CONNECTIONS = int(os.getenv("TV_MAX_CONNECTIONS", "10"))
 RECONNECT_DELAY_INIT = int(os.getenv("TV_RECONNECT_DELAY", "5"))
 RECONNECT_DELAY_MAX = 60
 QUOTE_TTL = int(os.getenv("REALTIME_QUOTE_TTL", "60"))
 
-# ── Clés Redis ───────────────────────────────────────────────────────────────
-REDIS_QUOTE_KEY = "quote:{ticker}"  # Dernier prix (TTL QUOTE_TTL)
-REDIS_PUBSUB_CHAN = "price:{ticker}"  # Canal Pub/Sub
-REDIS_SUBS_SET = "realtime:subscriptions"  # Set des tickers actifs
+# ── Redis keys ───────────────────────────────────────────────────────────────
+REDIS_QUOTE_KEY = "quote:{ticker}"  # Last price (TTL QUOTE_TTL)
+REDIS_PUBSUB_CHAN = "price:{ticker}"  # Pub/Sub channel
+REDIS_SUBS_SET = "realtime:subscriptions"  # Set of active tickers
 
 # ── Mapping Yahoo ticker suffix → TradingView exchange ───────────────────────
 TV_EXCHANGE_MAP: dict[str, str] = {
@@ -70,14 +70,14 @@ TV_EXCHANGE_MAP: dict[str, str] = {
     ".AX": "ASX",
 }
 
-# Thread pool dédié pour exécuter le Streamer TradingView (synchrone)
+# Dedicated thread pool running the (synchronous) TradingView Streamer
 _executor = ThreadPoolExecutor(max_workers=TV_MAX_CONNECTIONS + 2, thread_name_prefix="tv_stream")
 
 
 class RealtimePriceWorker:
     """
-    Worker central de streaming temps réel.
-    S'instancie une seule fois au démarrage de l'API (lifespan FastAPI).
+    Central realtime streaming worker.
+    Created once when the API starts (FastAPI lifespan).
     """
 
     def __init__(
@@ -100,23 +100,23 @@ class RealtimePriceWorker:
 
     async def start(self) -> None:
         """
-        Démarre le worker.
-        Restaure les abonnements actifs depuis realtime_subscriptions en base.
-        Appeler dans le lifespan context manager FastAPI.
+        Start the worker.
+        Restores the active subscriptions stored in realtime_subscriptions.
+        Call it in the FastAPI lifespan context manager.
         """
         self._running = True
-        logger.info("[RealtimeWorker] Démarrage...")
+        logger.info("[RealtimeWorker] Starting...")
 
         active_subs = await self._load_active_subscriptions()
         for sub in active_subs:
             await self.subscribe(sub.ticker, persist=False)
 
-        logger.info(f"[RealtimeWorker] {len(active_subs)} abonnements restaurés")
+        logger.info(f"[RealtimeWorker] {len(active_subs)} subscriptions restored")
 
     async def stop(self) -> None:
         """
-        Arrête proprement tous les streamers.
-        Appeler dans le lifespan context manager FastAPI (shutdown).
+        Stop every streamer cleanly.
+        Call it in the FastAPI lifespan context manager (shutdown).
         """
         self._running = False
         for ticker, task in list(self._tasks.items()):
@@ -126,32 +126,32 @@ class RealtimePriceWorker:
             except asyncio.CancelledError:
                 pass
         self._tasks.clear()
-        logger.info("[RealtimeWorker] Arrêté proprement")
+        logger.info("[RealtimeWorker] Stopped cleanly")
 
-    # ── Gestion des abonnements ──────────────────────────────────────────────
+    # ── Subscriptions ────────────────────────────────────────────────────────
 
     async def subscribe(self, ticker: str, persist: bool = True) -> bool:
         """
-        Abonne un ticker au streaming temps réel.
+        Subscribe a ticker to realtime streaming.
 
-        1. Résoudre (tv_exchange, tv_symbol) depuis le ticker Yahoo
-        2. Vérifier que l'asset existe en base
-        3. Créer/activer la RealtimeSubscription (si persist=True)
-        4. Lancer la asyncio.Task de streaming pour ce ticker
-        5. Ajouter le ticker au Set Redis realtime:subscriptions
+        1. Resolve (tv_exchange, tv_symbol) from the Yahoo ticker
+        2. Check that the asset exists in the database
+        3. Create or activate the RealtimeSubscription (if persist=True)
+        4. Start the streaming asyncio.Task of the ticker
+        5. Add the ticker to the Redis set realtime:subscriptions
 
-        Retourne True si abonnement réussi, False sinon.
+        Returns True when subscribed, False otherwise.
         """
         ticker = ticker.upper()
 
         async with self._lock:
             if ticker in self._tasks and not self._tasks[ticker].done():
-                logger.debug(f"[{ticker}] Déjà abonné")
+                logger.debug(f"[{ticker}] Already subscribed")
                 return True
 
         tv_exchange, tv_symbol = self._resolve_tv_symbol(ticker)
 
-        # Vérifier que l'asset existe en base
+        # Check that the asset exists in the database
         asset_id: Optional[int] = None
         try:
             async with self._session_factory() as session:
@@ -162,12 +162,14 @@ class RealtimePriceWorker:
                 if row:
                     asset_id = row[0]
         except SQLAlchemyError as e:
-            logger.warning(f"[{ticker}] Impossible de vérifier l'asset en base: {e}")
+            logger.warning(f"[{ticker}] Cannot check the asset in the database: {e}")
 
         if asset_id is None:
-            logger.warning(f"[{ticker}] Asset introuvable en base — streaming sans persistance DB")
+            logger.warning(
+                f"[{ticker}] Asset not found in the database — streaming without storing"
+            )
 
-        # Créer/activer la subscription en base
+        # Create or activate the subscription in the database
         if persist and asset_id is not None:
             try:
                 await self._upsert_subscription(
@@ -177,9 +179,9 @@ class RealtimePriceWorker:
                     tv_symbol=tv_symbol,
                 )
             except SQLAlchemyError as e:
-                logger.warning(f"[{ticker}] Erreur persistance subscription: {e}")
+                logger.warning(f"[{ticker}] Subscription storage error: {e}")
 
-        # Lancer la task de streaming
+        # Start the streaming task
         task = asyncio.create_task(
             self._stream_ticker(ticker, tv_exchange, tv_symbol, asset_id),
             name=f"stream_{ticker}",
@@ -187,25 +189,25 @@ class RealtimePriceWorker:
         async with self._lock:
             self._tasks[ticker] = task
 
-        # Ajouter au Set Redis
+        # Add to the Redis set
         try:
             await self.redis.sadd(REDIS_SUBS_SET, ticker)
         except RedisError as e:
-            logger.warning(f"[{ticker}] Erreur mise à jour Redis set: {e}")
+            logger.warning(f"[{ticker}] Redis set update error: {e}")
 
-        logger.info(f"[RealtimeWorker] ✅ Abonné à {ticker} ({tv_exchange}:{tv_symbol})")
+        logger.info(f"[RealtimeWorker] ✅ Subscribed to {ticker} ({tv_exchange}:{tv_symbol})")
         return True
 
     async def unsubscribe(self, ticker: str) -> bool:
         """
-        Désabonne un ticker du streaming.
+        Unsubscribe a ticker from streaming.
 
-        1. Annuler la Task asyncio associée
-        2. Marquer is_active=False dans realtime_subscriptions
-        3. Retirer du Set Redis
-        4. Supprimer la clé Redis quote:{ticker}
+        1. Cancel its asyncio Task
+        2. Set is_active=False in realtime_subscriptions
+        3. Remove it from the Redis set
+        4. Delete the Redis key quote:{ticker}
 
-        Retourne True si désabonnement réussi.
+        Returns True when unsubscribed.
         """
         ticker = ticker.upper()
 
@@ -221,7 +223,7 @@ class RealtimePriceWorker:
         except asyncio.CancelledError:
             pass
 
-        # Désactiver en base
+        # Deactivate in the database
         try:
             async with self._session_factory() as session:
                 await session.execute(
@@ -231,29 +233,29 @@ class RealtimePriceWorker:
                 )
                 await session.commit()
         except SQLAlchemyError as e:
-            logger.warning(f"[{ticker}] Erreur désactivation DB: {e}")
+            logger.warning(f"[{ticker}] Database deactivation error: {e}")
 
-        # Nettoyer Redis
+        # Clean Redis
         try:
             await self.redis.srem(REDIS_SUBS_SET, ticker)
             await self.redis.delete(REDIS_QUOTE_KEY.format(ticker=ticker))
         except RedisError as e:
-            logger.warning(f"[{ticker}] Erreur nettoyage Redis: {e}")
+            logger.warning(f"[{ticker}] Redis cleanup error: {e}")
 
-        logger.info(f"[RealtimeWorker] 🔕 Désabonné de {ticker}")
+        logger.info(f"[RealtimeWorker] 🔕 Unsubscribed from {ticker}")
         return True
 
     async def get_active_tickers(self) -> Set[str]:
-        """Retourne l'ensemble des tickers actuellement streamés."""
+        """The tickers streamed now."""
         try:
             members = await self.redis.smembers(REDIS_SUBS_SET)
             return {m.decode() if isinstance(m, bytes) else m for m in members}
         except RedisError:
-            # Fallback : inspecter les tasks locales
+            # Fallback: look at the local tasks
             async with self._lock:
                 return set(self._tasks.keys())
 
-    # ── Streaming par ticker ─────────────────────────────────────────────────
+    # ── Streaming per ticker ─────────────────────────────────────────────────
 
     async def _stream_ticker(
         self,
@@ -263,21 +265,21 @@ class RealtimePriceWorker:
         asset_id: Optional[int],
     ) -> None:
         """
-        Task asyncio principale pour un ticker.
-        Tourne en boucle infinie avec reconnexion automatique (backoff exponentiel).
+        Main asyncio task of a ticker.
+        Loops forever, reconnecting automatically (exponential backoff).
         """
         delay = RECONNECT_DELAY_INIT
 
         while self._running:
             try:
-                logger.info(f"[{ticker}] Connexion TradingView ({tv_exchange}:{tv_symbol})")
+                logger.info(f"[{ticker}] Connecting to TradingView ({tv_exchange}:{tv_symbol})")
                 await self._run_streamer(ticker, tv_exchange, tv_symbol, asset_id)
-                delay = RECONNECT_DELAY_INIT  # reset si succès propre
+                delay = RECONNECT_DELAY_INIT  # reset after a clean run
             except asyncio.CancelledError:
-                logger.info(f"[{ticker}] Streaming arrêté proprement")
+                logger.info(f"[{ticker}] Streaming stopped cleanly")
                 return
             except Exception as e:
-                logger.warning(f"[{ticker}] Erreur streaming: {e!r}. Reconnexion dans {delay}s")
+                logger.warning(f"[{ticker}] Streaming error: {e!r}. Reconnecting in {delay}s")
                 try:
                     await asyncio.sleep(delay)
                 except asyncio.CancelledError:
@@ -292,19 +294,19 @@ class RealtimePriceWorker:
         asset_id: Optional[int],
     ) -> None:
         """
-        Exécute le Streamer TradingView en mode streaming continu.
+        Run the TradingView Streamer in continuous streaming mode.
 
-        tradingview-scraper est synchrone → `run_in_executor`.
-        Le Streamer retourne un generator infini (streaming continu).
-        timeframe="1" → bougies 1 minute
-        numb_price_candles=1 → tick le plus récent uniquement
+        tradingview-scraper is synchronous → `run_in_executor`.
+        The Streamer returns an endless generator (continuous streaming).
+        timeframe="1" → 1-minute candles
+        numb_price_candles=1 → latest tick only
         """
         from tradingview_scraper.symbols.stream import Streamer
 
         loop = asyncio.get_event_loop()
 
         def _blocking_stream():
-            """Exécuté dans le thread pool. Retourne un générateur."""
+            """Runs in the thread pool. Returns a generator."""
             streamer = Streamer(export_result=False, export_type="json")
             return streamer.stream(
                 exchange=tv_exchange,
@@ -314,22 +316,22 @@ class RealtimePriceWorker:
             )
 
         async with self._semaphore:
-            # Créer le générateur dans le executor
+            # Create the generator in the executor
             gen = await loop.run_in_executor(_executor, _blocking_stream)
 
-            # Itérer sur le générateur de manière asynchrone
+            # Iterate over the generator asynchronously
             while self._running:
                 try:
                     raw_data = await loop.run_in_executor(_executor, next, gen)
                     if raw_data:
                         await self._process_tick(ticker, raw_data, asset_id)
                 except StopIteration:
-                    logger.info(f"[{ticker}] Générateur TradingView épuisé — reconnexion")
+                    logger.info(f"[{ticker}] TradingView generator exhausted — reconnecting")
                     return
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
-                    logger.warning(f"[{ticker}] Erreur lecture tick: {e}")
+                    logger.warning(f"[{ticker}] Tick read error: {e}")
                     raise
 
     async def _process_tick(
@@ -339,12 +341,12 @@ class RealtimePriceWorker:
         asset_id: Optional[int],
     ) -> None:
         """
-        Traite un tick reçu de TradingView.
+        Process a tick received from TradingView.
 
-        1. Valider et normaliser les données → RealtimeTick
-        2. Stocker dans Redis (SET quote:{ticker} EX QUOTE_TTL + PUBLISH price:{ticker})
-        3. Si asset connu → upsert prices_intraday
-        4. Mettre à jour last_tick_at et tick_count dans realtime_subscriptions
+        1. Validate and normalise the data → RealtimeTick
+        2. Store it in Redis (SET quote:{ticker} EX QUOTE_TTL + PUBLISH price:{ticker})
+        3. Known asset → upsert prices_intraday
+        4. Update last_tick_at and tick_count in realtime_subscriptions
         """
         # ── Validation ───────────────────────────────────────────────────────
         try:
@@ -354,7 +356,7 @@ class RealtimePriceWorker:
 
             close_val = Decimal(str(close_raw))
             if close_val <= 0:
-                logger.debug(f"[{ticker}] Tick rejeté: close={close_val}")
+                logger.debug(f"[{ticker}] Tick rejected: close={close_val}")
                 return
 
             # Timestamp
@@ -369,12 +371,12 @@ class RealtimePriceWorker:
                     tick_ts = tick_ts.replace(tzinfo=timezone.utc)
 
             now = datetime.now(timezone.utc)
-            # Ignorer les ticks trop anciens (>5min) ou dans le futur
+            # Ignore ticks that are too old (>5min) or in the future
             if tick_ts > now + timedelta(minutes=1):
-                logger.debug(f"[{ticker}] Tick dans le futur ignoré: {tick_ts}")
+                logger.debug(f"[{ticker}] Tick in the future ignored: {tick_ts}")
                 return
             if tick_ts < now - timedelta(minutes=5):
-                logger.debug(f"[{ticker}] Tick trop ancien ignoré: {tick_ts}")
+                logger.debug(f"[{ticker}] Tick too old ignored: {tick_ts}")
                 return
 
             volume_raw = raw_data.get("volume") or raw_data.get("Volume")
@@ -400,7 +402,7 @@ class RealtimePriceWorker:
             )
 
         except (ValueError, InvalidOperation, TypeError) as e:
-            logger.warning(f"[{ticker}] Tick invalide ignoré: {e} — {raw_data}")
+            logger.warning(f"[{ticker}] Invalid tick ignored: {e} — {raw_data}")
             return
 
         # ── Redis ────────────────────────────────────────────────────────────
@@ -419,16 +421,16 @@ class RealtimePriceWorker:
             )
             await pipe.execute()
         except RedisError as e:
-            logger.warning(f"[{ticker}] Erreur Redis publish/set: {e}")
+            logger.warning(f"[{ticker}] Redis publish/set error: {e}")
 
-        # ── Persistance DB ───────────────────────────────────────────────────
+        # ── Database ─────────────────────────────────────────────────────────
         if asset_id is not None:
             try:
                 await self._upsert_intraday(asset_id, tick)
             except SQLAlchemyError as e:
-                logger.warning(f"[{ticker}] Erreur upsert prices_intraday: {e}")
+                logger.warning(f"[{ticker}] prices_intraday upsert error: {e}")
 
-            # Mettre à jour last_tick_at + tick_count
+            # Update last_tick_at + tick_count
             try:
                 async with self._session_factory() as session:
                     await session.execute(
@@ -441,17 +443,17 @@ class RealtimePriceWorker:
                     )
                     await session.commit()
             except SQLAlchemyError as e:
-                logger.debug(f"[{ticker}] Erreur mise à jour subscription stats: {e}")
+                logger.debug(f"[{ticker}] Subscription stats update error: {e}")
 
-        logger.debug(f"[{ticker}] Tick traité: close={tick.close} ts={tick.timestamp}")
+        logger.debug(f"[{ticker}] Tick processed: close={tick.close} ts={tick.timestamp}")
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     def _resolve_tv_symbol(self, ticker: str) -> tuple[str, str]:
         """
-        Convertit un ticker Yahoo Finance en (tv_exchange, tv_symbol).
+        Turn a Yahoo Finance ticker into (tv_exchange, tv_symbol).
 
-        Exemples :
+        Examples:
         "AIR.PA" → ("EURONEXT", "AIR")
         "BNP.PA" → ("EURONEXT", "BNP")
         "BMW.DE" → ("XETRA", "BMW")
@@ -466,7 +468,7 @@ class RealtimePriceWorker:
         return "NASDAQ", ticker_up
 
     async def _load_active_subscriptions(self) -> list[RealtimeSubscription]:
-        """Charge les abonnements actifs depuis realtime_subscriptions en base."""
+        """Load the active subscriptions stored in realtime_subscriptions."""
         try:
             async with self._session_factory() as session:
                 result = await session.execute(
@@ -476,7 +478,7 @@ class RealtimePriceWorker:
                 )
                 return list(result.scalars().all())
         except SQLAlchemyError as e:
-            logger.warning(f"[RealtimeWorker] Impossible de charger les subscriptions: {e}")
+            logger.warning(f"[RealtimeWorker] Cannot load the subscriptions: {e}")
             return []
 
     async def _upsert_subscription(
@@ -486,7 +488,7 @@ class RealtimePriceWorker:
         tv_exchange: str,
         tv_symbol: str,
     ) -> None:
-        """Upsert d'une RealtimeSubscription (insert or update is_active=True)."""
+        """Upsert a RealtimeSubscription (insert, or update is_active=True)."""
         async with self._session_factory() as session:
             stmt = (
                 pg_insert(RealtimeSubscription)
@@ -515,8 +517,8 @@ class RealtimePriceWorker:
 
     async def _upsert_intraday(self, asset_id: int, tick: RealtimeTick) -> None:
         """
-        Upsert d'un tick dans prices_intraday via SQLAlchemy Core.
-        ON CONFLICT (timestamp, asset_id) DO UPDATE — atomique.
+        Upsert a tick into prices_intraday with SQLAlchemy Core.
+        ON CONFLICT (timestamp, asset_id) DO UPDATE — atomic.
         """
         async with self._session_factory() as session:
             stmt = (
@@ -549,13 +551,13 @@ class RealtimePriceWorker:
 
     async def get_quote_from_cache(self, ticker: str) -> Optional[dict]:
         """
-        Récupère le dernier prix depuis Redis.
-        Retourne None si pas de données ou TTL expiré.
+        The last price stored in Redis.
+        None when there is no data or the TTL has expired.
         """
         try:
             raw = await self.redis.get(REDIS_QUOTE_KEY.format(ticker=ticker.upper()))
             if raw:
                 return json.loads(raw)
         except (RedisError, json.JSONDecodeError, TypeError, UnicodeError) as e:
-            logger.warning(f"[{ticker}] Erreur lecture Redis quote: {e}")
+            logger.warning(f"[{ticker}] Redis quote read error: {e}")
         return None

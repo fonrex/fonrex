@@ -4,11 +4,11 @@ Revision ID: 003
 Revises: 002
 Create Date: 2026-05-14
 
-Crée la table de stockage des composants d'indices boursiers :
+Creates the table storing the constituents of stock indices:
   S&P 500, CAC 40, NASDAQ 100, DAX, EURO STOXX 50.
 
-Contrainte unique : (index_name, ticker) — pas de doublon pour un indice.
-Index additionnel  : (index_name, sector) pour les filtres par secteur.
+Unique constraint: (index_name, ticker) — no duplicate within an index.
+Extra index      : (index_name, sector) for the filters by sector.
 """
 
 import sqlalchemy as sa
@@ -41,14 +41,14 @@ def upgrade() -> None:
         sa.UniqueConstraint("index_name", "ticker", name="uq_index_ticker"),
     )
 
-    # Index pour les requêtes filtrées par indice + secteur
+    # Index for the queries filtered by index + sector
     op.create_index(
         "ix_index_constituents_index_sector",
         "index_constituents",
         ["index_name", "sector"],
     )
 
-    # Index pour les requêtes par ISIN
+    # Index for the queries by ISIN
     op.create_index(
         "ix_index_constituents_isin",
         "index_constituents",

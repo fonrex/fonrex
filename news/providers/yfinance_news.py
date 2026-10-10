@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-YFinanceNewsProvider — News via yfinance ticker.news
+YFinanceNewsProvider — news from yfinance ticker.news
 
-Source la plus simple : aucun scraping, JSON natif.
-Couverture mondiale. ~50 articles récents par actif.
+The simplest source: no scraping, native JSON.
+Worldwide coverage. About 50 recent articles per asset.
 """
 
 import logging
@@ -33,8 +33,8 @@ class YFinanceNewsProvider(BaseFinancialProvider):
         **kwargs,
     ) -> List[RawNewsItem]:
         """
-        Récupère les news depuis yfinance.
-        yfinance est synchrone — l'appel passe par le worker pool commun.
+        News from yfinance.
+        yfinance is synchronous: the call goes through the shared worker pool.
         """
         symbol = ticker or isin
         if not symbol:
@@ -43,7 +43,7 @@ class YFinanceNewsProvider(BaseFinancialProvider):
         try:
             raw_news = await run_sync(self._fetch_sync, symbol)
         except Exception as exc:
-            logger.warning("[yfinance] Erreur fetch news pour %s: %s", symbol, exc)
+            logger.warning("[yfinance] News fetch error for %s: %s", symbol, exc)
             return []
 
         if not raw_news:
@@ -54,7 +54,7 @@ class YFinanceNewsProvider(BaseFinancialProvider):
             try:
                 items.append(self._map_article(article))
             except Exception as exc:
-                logger.debug("[yfinance] Impossible de mapper un article: %s", exc)
+                logger.debug("[yfinance] Cannot map an article: %s", exc)
 
         return items
 
@@ -62,7 +62,7 @@ class YFinanceNewsProvider(BaseFinancialProvider):
 
     @staticmethod
     def _fetch_sync(symbol: str):
-        """Appel bloquant yfinance — exécuté dans un thread pool."""
+        """Blocking yfinance call — run in a thread pool."""
         t = yf.Ticker(symbol)
         return t.news or []
 
@@ -73,7 +73,7 @@ class YFinanceNewsProvider(BaseFinancialProvider):
         if epoch and epoch > 0:
             published_at = datetime.fromtimestamp(epoch, tz=timezone.utc)
 
-        # Image URL depuis thumbnail
+        # Image URL from the thumbnail
         image_url: Optional[str] = None
         thumbnail = article.get("thumbnail") or {}
         resolutions = thumbnail.get("resolutions") or []

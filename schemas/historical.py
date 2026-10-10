@@ -18,7 +18,7 @@ class DataSource(str, Enum):
 
 
 class OHLCVBar(BaseModel):
-    """Une bougie OHLCV normalisée."""
+    """A normalised OHLCV candle."""
 
     model_config = ConfigDict(from_attributes=True)
     timestamp: datetime
@@ -33,7 +33,7 @@ class OHLCVBar(BaseModel):
 
 
 class IngestResult(BaseModel):
-    """Résultat d'une opération d'ingestion."""
+    """Result of an ingestion."""
 
     ticker: str
     resolution: str
@@ -51,7 +51,7 @@ class IngestResult(BaseModel):
 
 
 class HistoryResponse(BaseModel):
-    """Réponse de GET /ticker/{symbol}/history."""
+    """Answer of GET /ticker/{symbol}/history."""
 
     ticker: str
     isin: Optional[str] = None
@@ -71,8 +71,8 @@ class IngestRequest(BaseModel):
     resolution: Resolution = Resolution.daily
     source: DataSource = DataSource.auto
     force_refresh: bool = False
-    from_date: Optional[date] = None  # None = depuis le début disponible
-    to_date: Optional[date] = None  # None = aujourd'hui
+    from_date: Optional[date] = None  # None = from the first day available
+    to_date: Optional[date] = None  # None = today
 
 
 class BulkIngestRequest(BaseModel):

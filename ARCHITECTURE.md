@@ -1121,7 +1121,7 @@ What is cached, and for how long:
 | `GET /eod/{ticker}` | `eod:{TICKER}:{period}:…` | 86 400 s (24 h) | `CacheService`, category `eod` |
 | `GET /ticker/{symbol}/history` | `history:{SYMBOL}:…` | 86 400 s (24 h) | `CacheService`, category `history` |
 | `GET /fundamental` | `fundamental:{ticker}:{exchange}:{currency}:{fmt}:{providers}` | 3 600 s (1 h) | `use_cases/fundamentals.py` |
-| `GET /fundamental/deep` | `deep:{ticker}` (every section) | 86 400 s (24 h) | `CacheService`, category `highlights` |
+| `GET /fundamental/deep` | `deep:{asset_id}` (every section) | 86 400 s (24 h) | `CacheService`, category `highlights` |
 | `GET /insider-transactions/{ticker}` | `insider_transactions:{TICKER}:limit-{limit}` | 43 200 s (12 h) | `CacheService`, category `insider_transactions` |
 | `GET /etf/{isin}/details` | `etf_details:{ISIN}` | 86 400 s (24 h) | `CacheService`, category `etf_details` |
 | `GET /index/{index_name}/constituents` | `index_constituents:{INDEX}` | 604 800 s (7 d) | `CacheService`, category `index_constituents` |

@@ -1277,6 +1277,14 @@ The service computes from what the database already holds: the highlights, the a
 
 The statements are read as **fiscal years**: the three rows of a year (income statement, balance sheet, cash flow) are put together by `financials/fiscal_years.py`, and the valuation looks back on the last five fiscal years. "The latest statement" is therefore a whole year — the debt and the cash of its balance sheet, the interest, the tax and the operating profit of its income statement, the dividends of its cash-flow statement. The enrichment stores those figures (`EBIT`, `Interest Expense`, `Tax Provision`, average share counts, dividends paid) since this rule exists; an instrument enriched before keeps them empty until `GET /fundamental/deep?refresh=true`, and the valuation uses its documented defaults meanwhile.
 
+### Currency of the valuation
+
+A valuation is made in the **currency of the statements** (`valuation/currency.py`): the enrichment records Yahoo's `financialCurrency` on every row of `financial_statements.currency` (migration 018 made the rows stored before unknown, `NULL`, instead of a `USD` written by default). When the statements name none, the valuation takes the currency of the listing of the share price, then the currency of the instrument, then USD. The answer gives it in `currency`, and the currency of the listing whose last close is the share price in `price_currency`.
+
+- **Risk-free rate of that currency.** The cash flows are discounted with the rate of their currency: EUR uses the ECB AAA 10-year rate (`ecb_*`), USD the FRED 10-year Treasury rate (`fred_*`). Another currency, or a currency whose source gives nothing, uses `DCF_RISK_FREE_RATE` (`env_fallback`): a euro company is never discounted with the US rate. `wacc.risk_free_rate_currency` names the currency of the rate used, and is empty for the configured rate and for a rate given in the request.
+- **Price in the same currency.** A price quoted in a minor unit is turned into its major one (`GBX`/`GBp` pence into GBP, `ZAC` into ZAR, `ILA` into ILS) before it is compared with the intrinsic value. A price in another currency (a US listing of a European company) is not converted: `consensus_upside_pct`, the `upside_pct` of each model and of each sensitivity cell are then empty, and `warnings` says why.
+- **Upside of each model.** `models.{fcf,eps,ddm}.upside_pct` is the upside of that model's value over the price (it used to be 0).
+
 ### Supported Models Detail
 
 1. **Free Cash Flow (FCF) Model**: 
@@ -1325,7 +1333,7 @@ The engine incorporates safeguards against mathematical anomalies:
 | --- | --- | --- |
 | `DCF_CACHE_TTL` | `21600` | Redis cache TTL in seconds (6 h) |
 | `DCF_DEFAULT_PROJECTION_YEARS` | `5` | Default number of projection years |
-| `DCF_RISK_FREE_RATE` | `0.04` | Risk-free rate used when FRED gives none and none is stored, as a ratio (`0.04` = 4 %; between -0.1 and 0.5) |
+| `DCF_RISK_FREE_RATE` | `0.04` | Risk-free rate used when the source of the currency of the statements (FRED for USD, the ECB for EUR) gives none and none is stored, and for every other currency; as a ratio (`0.04` = 4 %; between -0.1 and 0.5) |
 | `DCF_EQUITY_RISK_PREMIUM` | `0.055` | Default equity risk premium (e.g. 5.5%) |
 | `DCF_TERMINAL_GROWTH_RATE` | `0.025` | Perpetual terminal growth rate (e.g. 2.5%) |
 
@@ -1539,6 +1547,7 @@ Test coverage, by theme:
 - `tests/test_dcf_service.py`: WACC calculation (CAPM, cost of debt, 5%-20% bounds), FCF, EPS, and DDM projection and discount models with their fallbacks, safeguards against division by zero or negative denominators (when growth exceeds WACC), and sensitivity matrices shape, on statements given one row per year. The weighted consensus has no assertion of its own.
 - `tests/test_fiscal_years.py`: statements stored by the enrichment as they really are (three rows per fiscal year), then read by the valuation, the sensitivity matrix and the solvency ratios — five fiscal years, cost of debt and tax rate from the statements, free-cash-flow base over three years, net debt, dividends.
 - `tests/test_dcf_wacc_dynamic_sources.py`, `tests/test_fred_service.py`: source of the risk-free rate and of the cost of debt (FRED, stored value, request override, fallback); FRED series read from Redis, from the API, and on a day without observation; a stored rate that is old is refreshed, a recent one is not asked again, and it remains the fallback when FRED fails.
+- `tests/test_dcf_currency.py`: currency of the valuation (statements, then listing, then instrument), pence turned into pounds, no upside across currencies, the risk-free rate chosen by currency (ECB for EUR, FRED for USD, the configured rate otherwise), on statements stored by the enricher.
 - `tests/test_realtime.py`: complete behavior of realtime streaming (subscribe, unsubscribe, restore, process_tick), WebSocket connection manager, a tick delivered once to each client of a ticker, REST quote endpoints, and fallback policies.
 - `tests/test_monitoring.py`: unit tests covering the `ValidationLayer` (range checks on exact bounds, outlier consensus, filtered median, `validate_results` integration with outlier/out-of-range rejection, never-raises, dict/Pydantic field extraction), the `CanaryMonitor` (EU-only compatibility, canary checks ok/out-of-range/null/boundary, daily stats aggregation, Redis update via `fakeredis`), Pydantic schemas (`ProviderStatus`, `ProviderHealthSummary`, `DailyStatSchema`, `HealthStatsResponse`), and router endpoints (`TestClient`: 503 without config, canary trigger, Redis read via `httpx.AsyncClient`).
 - `tests/test_cache_service.py`: readable keys and duration per category, purge of a ticker, a pickled or unreadable entry is a miss and runs nothing, no application module imports `pickle`.
@@ -1577,6 +1586,7 @@ Every file of `alembic/versions/` is listed here (`tests/test_docs_consistency.p
 | 015 | `015_dividend_yield_as_ratio.py` | Data correction: `fundamentals_highlights.dividend_yield` values stored as percentages (as Yahoo publishes them) are divided by 100, the rows already stored as ratios are left alone; no schema change. |
 | 016 | `016_price_series_adjustments.py` | `price_series_adjustments` table: the adjustment scheme of each stored price series (listing and resolution) and when it was last fetched in one piece. No row is written: the series stored before have none and are fetched again in full at their next ingestion; prices are not touched. |
 | 017 | `017_macro_rates_source.py` | `macro_rates_cache` holds several sources: `series_id` widened from 30 to 60 characters (ECB series are named `flow.key`, e.g. `YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y`), new `source` column (`fred`, `ecb`), set to `fred` for the rows already stored. The downgrade drops the rows whose name exceeds 30 characters. |
+| 018 | `018_statements_currency_unknown.py` | `financial_statements.currency` loses its `USD` default and the stored rows become NULL (unknown): the enrichment never wrote it. The enrichment now stores Yahoo's `financialCurrency`; until an instrument is enriched again, the valuation takes the currency of the listing of the share price. The downgrade sets the unknown currencies back to USD. |
 
 ## Zipline Bundle (Backtesting Integration)
 

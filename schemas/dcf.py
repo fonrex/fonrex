@@ -85,13 +85,23 @@ class WACCResult(BaseModel):
     risk_free_rate_source: Optional[str] = Field(
         None,
         description=(
-            "Source of Rf: client_override, fred_live (read from FRED now), fred_cached "
-            "(read less than one cache lifetime ago), fred_stale (older stored value, FRED "
-            "could not be read), env_fallback (DCF_RISK_FREE_RATE)"
+            "Source of Rf: client_override; ecb_live, ecb_cached, ecb_stale (euro AAA "
+            "10-year rate, for cash flows in EUR); fred_live, fred_cached, fred_stale (US "
+            "10-year Treasury rate, for cash flows in USD) — live: read now, cached: read "
+            "less than one cache lifetime ago, stale: older stored value, the source could "
+            "not be read; env_fallback (DCF_RISK_FREE_RATE: no source for the currency, or "
+            "nothing read)"
         ),
     )
     risk_free_rate_date: Optional[date] = Field(
         None, description="Observation date of Rf, when it comes from a source"
+    )
+    risk_free_rate_currency: Optional[str] = Field(
+        None,
+        description=(
+            "Currency of the rate read from a source (EUR from the ECB, USD from FRED); "
+            "null for DCF_RISK_FREE_RATE or a rate set in the request"
+        ),
     )
 
 
@@ -100,7 +110,11 @@ class DCFModelResult(BaseModel):
 
     model_name: str
     intrinsic_value_per_share: Decimal
-    upside_pct: Decimal
+    upside_pct: Optional[Decimal] = Field(
+        None,
+        description="Upside over the share price, in percent; null when the price is in "
+        "another currency than the statements",
+    )
     projected_values: List[Decimal]
     terminal_value: Decimal
     present_values: List[Decimal]
@@ -112,8 +126,12 @@ class DCFResult(BaseModel):
     """Réponse finale de l'API pour une valorisation DCF."""
 
     ticker: str
-    currency: str
+    currency: str = Field(..., description="Currency of the statements and of the values")
     current_price: Optional[Decimal] = None
+    price_currency: Optional[str] = Field(
+        None, description="Currency of current_price (converted from a minor unit such as GBX)"
+    )
+    warnings: List[str] = Field(default_factory=list)
     shares_outstanding: Optional[int] = None
     wacc: WACCResult
     models: Dict[str, DCFModelResult]
@@ -132,7 +150,7 @@ class SensitivityCell(BaseModel):
     wacc: Decimal
     terminal_growth: Decimal
     intrinsic_value: Decimal
-    upside_pct: Decimal
+    upside_pct: Optional[Decimal] = None
 
 
 class SensitivityResult(BaseModel):

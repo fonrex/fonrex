@@ -87,6 +87,22 @@ def _safe_date(value):
         return None
 
 
+def _statements_currency(t) -> str | None:
+    """Currency of the financial statements of a Yahoo ticker (``financialCurrency``).
+
+    It is not always the currency of the share price: Airbus reports in EUR,
+    a London line is quoted in pence. ``None`` when Yahoo does not give it.
+    """
+    try:
+        value = (t.info or {}).get("financialCurrency")
+    except Exception as exc:  # the statements are stored without it
+        logger.debug("financialCurrency unavailable: %s", exc)
+        return None
+    if isinstance(value, str) and len(value.strip()) == 3 and value.strip().isalpha():
+        return value.strip().upper()
+    return None
+
+
 class YFinanceEnricher:
     """
     Enrichit un actif avec les données fondamentales profondes de yfinance.
@@ -338,12 +354,13 @@ class YFinanceEnricher:
                 ("cashflow", "quarterly", t.quarterly_cashflow, self.CASHFLOW_MAPPING),
             ]
 
+            currency = _statements_currency(t)
             count = 0
             for statement_type, period_type, df, mapping in statement_configs:
                 if df is None or df.empty:
                     continue
                 count += self._process_statement_df(
-                    asset_id, statement_type, period_type, df, mapping
+                    asset_id, statement_type, period_type, df, mapping, currency
                 )
 
             logger.debug("Statements upserted pour asset_id=%s: %d périodes", asset_id, count)
@@ -359,6 +376,7 @@ class YFinanceEnricher:
         period_type: str,
         df: pd.DataFrame,
         mapping: dict,
+        currency: str | None = None,
     ) -> int:
         """Traite un DataFrame de financial statement et upsert les données."""
         from models import FinancialStatement
@@ -378,6 +396,8 @@ class YFinanceEnricher:
                     "period_type": period_type,
                     "period_end": period_end,
                     "fetched_at": datetime.now(timezone.utc),
+                    # Currency of the figures (Yahoo's financialCurrency); None when unknown.
+                    "currency": currency,
                 }
 
                 # Extraire les métriques depuis les index du DataFrame

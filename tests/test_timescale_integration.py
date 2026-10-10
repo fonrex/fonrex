@@ -549,6 +549,68 @@ class TestMacroRatesFromSeveralSources:
             assert list(sources) == ["fred"]
 
 
+class TestStatementsCurrencyIsRecordedOrUnknown:
+    """Revision 018: the USD written by default on every statement becomes unknown."""
+
+    @staticmethod
+    def _currencies(engine) -> dict[str, str | None]:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT statement_type, currency FROM financial_statements
+                    WHERE period_end = DATE '2025-12-31'
+                """)
+            ).all()
+        return dict(rows)
+
+    @staticmethod
+    def _default(engine) -> str | None:
+        with engine.connect() as connection:
+            return connection.execute(
+                text("""
+                    SELECT column_default FROM information_schema.columns
+                    WHERE table_name = 'financial_statements' AND column_name = 'currency'
+                """)
+            ).scalar()
+
+    def test_default_usd_becomes_unknown_and_comes_back_on_downgrade(self, database_url, engine):
+        _alembic(database_url, "downgrade", "017")
+        with engine.begin() as connection:
+            asset_id = connection.execute(text("SELECT min(id) FROM assets")).scalar()
+            connection.execute(
+                text("""
+                    INSERT INTO financial_statements
+                        (asset_id, statement_type, period_type, period_end)
+                    VALUES (:asset, 'income', 'annual', DATE '2025-12-31')
+                """),
+                {"asset": asset_id},
+            )
+        assert self._currencies(engine) == {"income": "USD"}
+
+        _alembic(database_url, "upgrade", "head")
+        assert self._currencies(engine) == {"income": None}
+        assert self._default(engine) is None
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO financial_statements
+                        (asset_id, statement_type, period_type, period_end, currency)
+                    VALUES (:asset, 'balance', 'annual', DATE '2025-12-31', 'EUR')
+                """),
+                {"asset": asset_id},
+            )
+        _alembic(database_url, "downgrade", "017")
+        assert self._currencies(engine) == {"income": "USD", "balance": "EUR"}
+        assert "USD" in self._default(engine)
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM financial_statements WHERE period_end = DATE '2025-12-31'")
+            )
+
+
 # Price relations a migration must not hold while it waits: the tables, the
 # aggregates, their chunks and materialisation hypertables (named "_hyper_…",
 # "_materialized_hypertable_…", "_compressed_hypertable_…"). The catalog of the

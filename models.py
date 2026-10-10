@@ -411,7 +411,8 @@ class FinancialStatement(Base):
     period_type = Column(String(10), nullable=False)  # "annual" | "quarterly"
     period_end = Column(Date, nullable=False)
     fetched_at = Column(DateTime(timezone=True), server_default=func.now())
-    currency = Column(String(3), default="USD")
+    # Currency of the figures (Yahoo's financialCurrency); NULL when unknown.
+    currency = Column(String(3))
 
     # Income statement
     revenue = Column(Numeric(20, 2))

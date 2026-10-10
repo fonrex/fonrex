@@ -408,7 +408,9 @@ async def startup_event(application: FastAPI):
         logger.warning("⚠️ ECBService not started: %s", exc)
 
     try:
-        state.dcf_service = DCFService(state.db_service, state.redis_client, state.fred_service)
+        state.dcf_service = DCFService(
+            state.db_service, state.redis_client, state.fred_service, state.ecb_service
+        )
         logger.info("📈 DCFService started")
     except Exception as exc:
         state.dcf_service = None

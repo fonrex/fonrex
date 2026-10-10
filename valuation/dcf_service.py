@@ -34,6 +34,7 @@ from schemas.dcf import (
 )
 from schemas.macro import RiskFreeRate
 from settings import env_decimal
+from valuation.currency import valuation_currency
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +51,11 @@ DEFAULT_EQUITY_RISK_PREMIUM = env_decimal(
 class DCFService:
     """Financial valuation service using Discounted Cash Flow (DCF) methodology."""
 
-    def __init__(self, db_service, redis_client=None, fred_service=None):
+    def __init__(self, db_service, redis_client=None, fred_service=None, ecb_service=None):
         self.db_service = db_service
         self.redis = redis_client
         self.fred = fred_service
+        self.ecb = ecb_service
 
     def _dec(self, val) -> Decimal:
         """Safely converts a value to Decimal, returning 0 if None."""
@@ -62,6 +64,14 @@ class DCFService:
         if isinstance(val, Decimal):
             return val
         return Decimal(str(val))
+
+    def _upside(self, value: Decimal, price: Decimal, currency) -> Optional[Decimal]:
+        """Upside of ``value`` over the price, in percent; ``None`` when they cannot be compared."""
+        if not currency.price_comparable or price <= 0:
+            return None
+        return (self._safe_div(value - price, price) * Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
 
     def _safe_div(self, num: Decimal, denom: Decimal, fallback: Decimal = Decimal("0")) -> Decimal:
         """Safe division to avoid ZeroDivisionError."""
@@ -92,8 +102,33 @@ class DCFService:
 
     async def compute_dcf(self, ticker: str, request: DCFRequest) -> DCFResult:
         """Run the synchronous SQLAlchemy valuation workflow off the event loop."""
-        rf = await self.fred.get_risk_free_rate() if self.fred else None
+        currency = await run_sync(self._currency_of, ticker)
+        rf = await self._risk_free_rate(currency)
         return await run_sync(self._compute_dcf_sync, ticker, request, rf)
+
+    async def _risk_free_rate(self, currency: Optional[str]) -> RiskFreeRate:
+        """The risk-free rate of the currency of the cash flows.
+
+        EUR: the AAA 10-year rate of the ECB; USD: the 10-year Treasury rate of FRED.
+        Without a source for the currency (or when the source gives nothing),
+        ``DCF_RISK_FREE_RATE``: a rate of another currency would be wrong.
+        """
+        if currency == "EUR" and self.ecb:
+            rate = await self.ecb.get_euro_risk_free_rate()
+            if rate is not None:
+                return rate
+        elif currency in (None, "USD") and self.fred:
+            return await self.fred.get_risk_free_rate()
+        return RiskFreeRate(value=DEFAULT_RISK_FREE_RATE, source="env_fallback")
+
+    def _currency_of(self, ticker: str) -> Optional[str]:
+        """Currency of the valuation of a ticker; ``None`` when the ticker is unknown."""
+        session = self.db_service.get_session()
+        try:
+            asset = self._find_asset_by_ticker(session, ticker)
+            return valuation_currency(session, asset).currency if asset else None
+        finally:
+            session.close()
 
     def _find_asset_by_ticker(self, session, ticker: str) -> Optional[Asset]:
         """Resolves an Asset from its ticker string, handling fallback for suffix tickers (e.g. AIR.PA -> AIR)."""
@@ -190,6 +225,10 @@ class DCFService:
             latest_price_db = session.execute(latest_daily_close_of_asset(asset.id)).scalar()
             if latest_price_db:
                 current_price = self._dec(latest_price_db)
+            # In the currency of the statements when it can be (pence -> pounds).
+            currency = valuation_currency(session, asset)
+            if currency.price_comparable:
+                current_price = current_price * currency.price_factor
 
             shares = highlights.shares_outstanding or 0
             if not shares and statements:
@@ -206,6 +245,9 @@ class DCFService:
                 rf.value if rf else None,
                 rf.source if rf else None,
                 rf.observation_date if rf else None,
+            )
+            wacc_res.risk_free_rate_currency = (
+                currency.currency if rf and rf.source != "env_fallback" else None
             )
 
             # 5. Compute requested models
@@ -263,11 +305,11 @@ class DCFService:
                         weighted_sum += val_res.intrinsic_value_per_share * weight
                     consensus_val = weighted_sum.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-                    if current_price > 0:
-                        consensus_upside = (
-                            self._safe_div(consensus_val - current_price, current_price)
-                            * Decimal("100")
-                        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    consensus_upside = self._upside(consensus_val, current_price, currency)
+                for result in model_results.values():
+                    result.upside_pct = self._upside(
+                        result.intrinsic_value_per_share, current_price, currency
+                    )
 
             # Analyst target price
             analyst_target = (
@@ -288,8 +330,12 @@ class DCFService:
             # Build the response
             return DCFResult(
                 ticker=ticker,
-                currency=asset.currency or "USD",
+                currency=currency.currency,
                 current_price=current_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                price_currency=(
+                    currency.currency if currency.price_comparable else currency.price_currency
+                ),
+                warnings=[currency.warning] if currency.warning else [],
                 shares_outstanding=shares,
                 wacc=wacc_res,
                 models=model_results,
@@ -819,6 +865,10 @@ class DCFService:
             latest_price_db = session.execute(latest_daily_close_of_asset(asset.id)).scalar()
             if latest_price_db:
                 current_price = self._dec(latest_price_db)
+            # In the currency of the statements when it can be (pence -> pounds).
+            currency = valuation_currency(session, asset)
+            if currency.price_comparable:
+                current_price = current_price * currency.price_factor
 
             shares = highlights.shares_outstanding or 0
             if not shares and statements:
@@ -940,7 +990,6 @@ class DCFService:
             float_base = float(base_val)
             float_growth_rate = float(growth_rate)
             float_shares = float(shares)
-            float_price = float(current_price)
 
             # Balance sheet values for FCF model
             float_debt = float(self._dec(statements[0].total_debt)) if statements else 0.0
@@ -1007,11 +1056,7 @@ class DCFService:
                     dec_val = Decimal(str(intrinsic_value)).quantize(
                         Decimal("0.01"), rounding=ROUND_HALF_UP
                     )
-                    upside = Decimal("0")
-                    if float_price > 0:
-                        upside = (
-                            self._safe_div(dec_val - current_price, current_price) * Decimal("100")
-                        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    upside = self._upside(dec_val, current_price, currency)
 
                     row_cells.append(
                         SensitivityCell(

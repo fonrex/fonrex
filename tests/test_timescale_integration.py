@@ -611,6 +611,49 @@ class TestStatementsCurrencyIsRecordedOrUnknown:
             )
 
 
+class TestYahooEpochDatesBecomeUnknown:
+    """Revision 019: the 1970-01-01 dates written from Yahoo epoch seconds are dropped."""
+
+    def test_only_the_1970_dates_become_null(self, database_url, engine):
+        _alembic(database_url, "downgrade", "018")
+        with engine.begin() as connection:
+            asset_ids = connection.execute(
+                text("SELECT asset_id FROM fundamentals_highlights ORDER BY asset_id LIMIT 2")
+            ).scalars().all()
+            wrong, right = asset_ids
+            connection.execute(
+                text("""
+                    UPDATE fundamentals_highlights
+                    SET dividend_ex_date = DATE '1970-01-01', shares_short_date = DATE '1970-01-01'
+                    WHERE asset_id = :asset
+                """),
+                {"asset": wrong},
+            )
+            connection.execute(
+                text("""
+                    UPDATE fundamentals_highlights
+                    SET dividend_ex_date = DATE '2026-08-11', shares_short_date = DATE '2026-09-15'
+                    WHERE asset_id = :asset
+                """),
+                {"asset": right},
+            )
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT asset_id, dividend_ex_date, shares_short_date
+                    FROM fundamentals_highlights WHERE asset_id IN (:wrong, :right)
+                """),
+                {"wrong": wrong, "right": right},
+            ).all()
+        dates = {asset_id: (ex_date, short_date) for asset_id, ex_date, short_date in rows}
+        assert dates == {
+            wrong: (None, None),
+            right: (date(2026, 8, 11), date(2026, 9, 15)),
+        }
+
+
 # Price relations a migration must not hold while it waits: the tables, the
 # aggregates, their chunks and materialisation hypertables (named "_hyper_…",
 # "_materialized_hypertable_…", "_compressed_hypertable_…"). The catalog of the

@@ -13,6 +13,7 @@ import math
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -74,9 +75,21 @@ def _safe_get(source, key, converter=_to_decimal):
 
 
 def _safe_date(value):
-    """Convertit un timestamp pandas/datetime en date Python."""
-    if value is None:
+    """A date from a pandas timestamp, a datetime, a text, or Yahoo epoch seconds.
+
+    Yahoo gives the dates of ``info`` (``exDividendDate``, ``dateShortInterest``,
+    ``dividendDate``) as seconds since 1970. Read by ``pd.Timestamp`` as they are,
+    they were nanoseconds: every such date became 1970-01-01.
+    """
+    if value is None or isinstance(value, bool):
         return None
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        if not math.isfinite(value) or value <= 0:
+            return None
+        try:
+            return pd.Timestamp(value, unit="s", tz="UTC").date()
+        except (ValueError, OverflowError):  # OutOfBoundsDatetime is a ValueError
+            return None
     if isinstance(value, pd.Timestamp):
         return value.date()
     if isinstance(value, datetime):
@@ -237,6 +250,7 @@ class YFinanceEnricher:
                 "dividend_yield": _percent_to_ratio(info.get("dividendYield")),
                 "dividend_rate": _to_decimal(info.get("dividendRate")),
                 "dividend_ex_date": _safe_date(info.get("exDividendDate")),
+                "dividend_pay_date": _safe_date(info.get("dividendDate")),
                 "payout_ratio": _to_decimal(info.get("payoutRatio")),
                 # Technique
                 "beta": _to_decimal(info.get("beta")),

@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from concurrency import run_sync
 from database.price_series import latest_daily_close_of_asset
+from database.ticker_suffix import listing_on, ticker_lookups
 from financials.fiscal_years import FiscalYear, fiscal_years
 from models import (
     AnalystRatings,
@@ -131,21 +132,20 @@ class DCFService:
             session.close()
 
     def _find_asset_by_ticker(self, session, ticker: str) -> Optional[Asset]:
-        """Resolves an Asset from its ticker string, handling fallback for suffix tickers (e.g. AIR.PA -> AIR)."""
-        normalized = ticker.strip().upper()
-        tickers_to_try = [normalized]
-        if "." in normalized:
-            base_ticker = normalized.split(".")[0]
-            if base_ticker and base_ticker not in tickers_to_try:
-                tickers_to_try.append(base_ticker)
+        """Resolves an Asset from its ticker, then from its bare symbol on the place of its suffix.
 
-        for sym in tickers_to_try:
+        ``AIR.PA`` falls back on ``AIR`` only when that listing is in Paris
+        (:mod:`database.ticker_suffix`): the ``AIR`` of New York is AAR Corp.
+        """
+        for lookup in ticker_lookups(ticker):
+            sym = lookup.symbol
+            on_place = [listing_on(lookup.place)] if lookup.place is not None else []
             # Prioritize asset with populated FundamentalsHighlights
             stmt_hl = (
                 select(Asset)
                 .join(AssetListing, AssetListing.asset_id == Asset.id)
                 .join(FundamentalsHighlights, FundamentalsHighlights.asset_id == Asset.id)
-                .where(AssetListing.ticker == sym)
+                .where(AssetListing.ticker == sym, *on_place)
                 .where(AssetListing.is_active.is_(True))
                 .limit(1)
             )
@@ -157,7 +157,7 @@ class DCFService:
             stmt_asset = (
                 select(Asset)
                 .join(AssetListing, AssetListing.asset_id == Asset.id)
-                .where(AssetListing.ticker == sym)
+                .where(AssetListing.ticker == sym, *on_place)
                 .where(AssetListing.is_active.is_(True))
                 .order_by(AssetListing.is_primary.desc())
                 .limit(1)
@@ -170,6 +170,7 @@ class DCFService:
                 select(Asset)
                 .where(Asset.ticker == sym)
                 .where(Asset.is_active.is_(True))
+                .where(*(Asset.listings.any(condition) for condition in on_place))
                 .limit(1)
             )
             asset = session.execute(stmt_asset2).scalars().first()

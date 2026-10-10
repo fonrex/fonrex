@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from database.ticker_suffix import listing_on, ticker_lookups
 from models import Asset, AssetListing, AssetMapping, NewsArticle
 from news.providers.boursorama_news import BoursoramaNewsProvider
 from news.providers.google_finance_news import GoogleFinanceNewsProvider
@@ -427,22 +428,18 @@ class NewsService:
     async def _resolve_asset(self, ticker: str) -> Optional[Asset]:
         """Résout l'Asset depuis son ticker via asset_listings ou asset (avec fallback pour les suffixes)."""
         try:
-            normalized = ticker.strip().upper()
-            tickers_to_try = [normalized]
-            if "." in normalized:
-                base_ticker = normalized.split(".")[0]
-                if base_ticker and base_ticker not in tickers_to_try:
-                    tickers_to_try.append(base_ticker)
-
             async with self._session() as db:
-                for sym in tickers_to_try:
+                for lookup in ticker_lookups(ticker):
                     stmt = (
                         select(Asset)
                         .join(AssetListing, AssetListing.asset_id == Asset.id)
-                        .where(AssetListing.ticker == sym)
+                        .where(AssetListing.ticker == lookup.symbol)
                         .where(AssetListing.is_active == True)  # noqa: E712
                         .limit(1)
                     )
+                    if lookup.place is not None:
+                        # AIR.PA: the bare AIR only when it is listed in Paris.
+                        stmt = stmt.where(listing_on(lookup.place))
                     result = await db.execute(stmt)
                     asset = result.scalars().first()
                     if asset:
@@ -450,10 +447,12 @@ class NewsService:
 
                     stmt2 = (
                         select(Asset)
-                        .where(Asset.ticker == sym)
+                        .where(Asset.ticker == lookup.symbol)
                         .where(Asset.is_active == True)  # noqa: E712
                         .limit(1)
                     )
+                    if lookup.place is not None:
+                        stmt2 = stmt2.where(Asset.listings.any(listing_on(lookup.place)))
                     result2 = await db.execute(stmt2)
                     asset = result2.scalars().first()
                     if asset:

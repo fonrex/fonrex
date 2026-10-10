@@ -793,3 +793,198 @@ class TestCleanupOnPostgres:
         with engine.connect() as connection:
             assert connection.execute(text("SELECT count(*) FROM prices_eod")).scalar() == before
 
+
+
+class TestFactorReturnsOnPostgres:
+    """Revision 020 and ``factors.store`` on the database of an installation."""
+
+    @pytest.fixture
+    async def library(self, database_url):
+        from factors.french_library import parse_factor_csv, read_zip
+        from factors.store import FactorLibrary
+
+        fixtures = PROJECT_ROOT / "tests" / "fixtures" / "factors"
+
+        def table(name):
+            return parse_factor_csv(read_zip((fixtures / f"{name}_CSV.zip").read_bytes()), "monthly")
+
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        downloader = MagicMock()
+        library = FactorLibrary(async_sessionmaker(async_engine), downloader=downloader)
+        yield library, downloader, table
+        await async_engine.dispose()
+
+    @staticmethod
+    def _stored(engine, dataset):
+        with engine.connect() as connection:
+            return connection.execute(
+                text("SELECT count(*) FROM factor_returns WHERE dataset = :dataset"),
+                {"dataset": dataset},
+            ).scalar()
+
+    async def test_a_file_is_stored_whole_and_replaced_by_the_next_one(self, library, engine):
+        library, downloader, table = library
+        full = table("F-F_Research_Data_Factors")
+
+        async def download(dataset, frequency):
+            return full
+
+        downloader.side_effect = download
+        load = await library.refresh("us_3", "monthly")
+        assert (load.status, load.periods) == ("fetched", 6)
+        assert self._stored(engine, "us_3") == 6 * 4
+
+        # The library revised its file: the next download replaces every row.
+        revised = type(full)(
+            factors=full.factors,
+            rows={p: v for p, v in full.rows.items() if p.year == 2026},
+            note=full.note,
+        )
+
+        async def download_revised(dataset, frequency):
+            return revised
+
+        downloader.side_effect = download_revised
+        await library.refresh("us_3", "monthly", force=True)
+        assert self._stored(engine, "us_3") == 3 * 4
+
+        series = await library.series("us_3", "monthly", start=date(2026, 7, 1))
+        assert list(series) == [date(2026, 7, 31), date(2026, 8, 31)]
+        assert float(series[date(2026, 8, 31)]["MKT_RF"]) == 0.0256
+        status = await library.status("us_3", "monthly")
+        assert (status.status, status.periods, status.source_note) == ("fresh", 3, "CRSP 202608")
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "019")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('factor_returns')")).scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('factor_returns')")).scalar()
+            assert connection.execute(text("SELECT to_regclass('factor_dataset_loads')")).scalar()
+
+
+class TestExchangeRatesOnPostgres:
+    """Revision 021 and ``macro.fx_rates`` on the database of an installation."""
+
+    @pytest.fixture
+    async def rates(self, database_url):
+        from macro.fx_rates import EcbExchangeRates
+
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        downloader = MagicMock()
+        yield EcbExchangeRates(async_sessionmaker(async_engine), downloader=downloader), downloader
+        await async_engine.dispose()
+
+    async def test_history_then_only_the_days_after_the_last_one(self, rates):
+        from decimal import Decimal
+
+        rates, downloader = rates
+        asked = []
+        answers = [
+            {date(2026, 10, 7): Decimal("1.0861"), date(2026, 10, 8): Decimal("1.0850")},
+            # A correction of the 8th and a new day.
+            {date(2026, 10, 8): Decimal("1.0851"), date(2026, 10, 9): Decimal("1.0790")},
+        ]
+
+        async def download(currency, start):
+            asked.append((currency, start))
+            return answers[len(asked) - 1]
+
+        downloader.side_effect = download
+
+        first = await rates.refresh("USD")
+        assert (first.status, first.first_day, first.last_day) == (
+            "fetched",
+            date(2026, 10, 7),
+            date(2026, 10, 8),
+        )
+        assert asked == [("USD", date(1999, 1, 4))]
+
+        assert (await rates.refresh("USD")).status == "fresh"  # read a moment ago
+
+        second = await rates.refresh("USD", force=True)
+        assert asked[1] == ("USD", date(2026, 10, 1))  # a week before the last day stored
+        assert (second.added, second.last_day) == (2, date(2026, 10, 9))
+        assert await rates.per_euro("USD") == {
+            date(2026, 10, 7): Decimal("1.08610000"),
+            date(2026, 10, 8): Decimal("1.08510000"),
+            date(2026, 10, 9): Decimal("1.07900000"),
+        }
+        euros = await rates.rates("USD", "EUR", start=date(2026, 10, 9))
+        assert euros == {date(2026, 10, 9): Decimal("0.92678406")}
+
+    async def test_a_failed_refresh_keeps_the_stored_days(self, rates):
+        from decimal import Decimal
+
+        rates, downloader = rates
+        async def download(currency, start):
+            return {date(2026, 10, 8): Decimal("0.8412")}
+
+        downloader.side_effect = download
+        await rates.refresh("GBP")
+        downloader.side_effect = RuntimeError("ECB down\nmore")
+
+        failed = await rates.refresh("GBP", force=True)
+
+        assert (failed.status, failed.last_day, failed.reason) == (
+            "failed",
+            date(2026, 10, 8),
+            "RuntimeError: ECB down",
+        )
+        assert await rates.per_euro("GBP") == {date(2026, 10, 8): Decimal("0.84120000")}
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "020")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('fx_rates')")).scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('fx_rates')")).scalar()
+
+
+class TestFactorExposureReadsTheListing:
+    """``FactorExposure`` reads the daily closes of one listing, by its session date."""
+
+    async def test_closes_of_the_listing_asked_in_its_currency(self, database_url, engine):
+        from factors.exposure import FactorExposure
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin)
+                    VALUES (77, 'FFX', 'Exposure test', 'EUR', true, 'FR0000000077');
+                    INSERT INTO asset_listings
+                        (id, asset_id, ticker, exchange, currency, source, is_primary, is_active,
+                         created_at, updated_at)
+                    VALUES (770, 77, 'FFX', 'XPAR', 'EUR', 'csv', true, true, now(), now());
+                    INSERT INTO prices_eod
+                        (time, asset_id, asset_listing_id, close, adj_close, resolution)
+                    VALUES
+                        ('2026-09-29 00:00+00', 77, 770, 10.0, 9.5, '1D'),
+                        ('2026-09-30 00:00+00', 77, 770, 11.0, NULL, '1D'),
+                        ('2026-09-30 00:00+00', 77, 770, 99.0, 99.0, '1W');
+                """)
+            )
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        exposure = FactorExposure(async_sessionmaker(async_engine), library=None, fx=None)
+        try:
+            _, listing, closes = await exposure._listing("FFX", None, None, None)
+            missing = await exposure._listing("NOPE", None, None, None)
+        finally:
+            await async_engine.dispose()
+
+        assert (listing["ticker"], listing["currency"], listing["isin"]) == (
+            "FFX",
+            "EUR",
+            "FR0000000077",
+        )
+        # Daily bars only; the dividend-adjusted close, else the close.
+        assert closes == {date(2026, 9, 29): 9.5, date(2026, 9, 30): 11.0}
+        assert missing == (None, None, {})

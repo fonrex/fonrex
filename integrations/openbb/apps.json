@@ -184,6 +184,28 @@
             }
           }
         ]
+      },
+      "factors": {
+        "id": "factors",
+        "name": "Factors",
+        "layout": [
+          {
+            "i": "fonrex_factor_exposure",
+            "x": 0,
+            "y": 0,
+            "w": 10,
+            "h": 12,
+            "state": { "params": { "model": "ff5", "frequency": "monthly" } }
+          },
+          {
+            "i": "fonrex_factor_returns",
+            "x": 10,
+            "y": 0,
+            "w": 14,
+            "h": 12,
+            "state": { "params": { "dataset": "europe_5", "frequency": "monthly" } }
+          }
+        ]
       }
     },
     "groups": [
@@ -201,7 +223,8 @@
           "fonrex_dcf_compare",
           "fonrex_dcf_sensitivity",
           "fonrex_technical_chart",
-          "fonrex_technical_multi"
+          "fonrex_technical_multi",
+          "fonrex_factor_exposure"
         ]
       }
     ]

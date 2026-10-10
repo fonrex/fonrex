@@ -422,5 +422,93 @@
         ]
       }
     ]
+  },
+  "fonrex_factor_exposure": {
+    "name": "Fonrex Factor Exposure",
+    "description": "Exposure of a listing to the Fama/French factors (Kenneth French Data Library): alpha, betas with t-stats, R², on returns in US dollars",
+    "category": "Factors",
+    "type": "table",
+    "endpoint": "openbb/factors/exposure/{ticker}",
+    "gridData": { "w": 20, "h": 10 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Ticker of a listing with stored daily prices (e.g. AAPL, AIR.PA)"
+      },
+      {
+        "paramName": "model",
+        "value": "ff3",
+        "label": "Model",
+        "type": "text",
+        "description": "ff3 (market, size, value), ff5 (plus profitability, investment), carhart (ff3 plus momentum)",
+        "options": [
+          { "label": "Fama/French 3", "value": "ff3" },
+          { "label": "Fama/French 5", "value": "ff5" },
+          { "label": "Carhart 4", "value": "carhart" }
+        ]
+      },
+      {
+        "paramName": "frequency",
+        "value": "monthly",
+        "label": "Frequency",
+        "type": "text",
+        "description": "Monthly (60 months) or daily (252 days) returns",
+        "options": [
+          { "label": "Monthly", "value": "monthly" },
+          { "label": "Daily", "value": "daily" }
+        ]
+      }
+    ]
+  },
+  "fonrex_factor_returns": {
+    "name": "Fonrex Factor Returns",
+    "description": "Cumulative returns of the Fama/French factors of a region (US, Europe, developed markets), in US dollars (Kenneth French Data Library)",
+    "category": "Factors",
+    "type": "chart",
+    "endpoint": "openbb/factors/{dataset}/chart",
+    "gridData": { "w": 20, "h": 12 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "dataset",
+        "value": "us_5",
+        "label": "Dataset",
+        "type": "text",
+        "description": "Region and factors",
+        "options": [
+          { "label": "US 3 factors", "value": "us_3" },
+          { "label": "US 5 factors", "value": "us_5" },
+          { "label": "US momentum", "value": "us_mom" },
+          { "label": "Europe 3 factors", "value": "europe_3" },
+          { "label": "Europe 5 factors", "value": "europe_5" },
+          { "label": "Europe momentum", "value": "europe_mom" },
+          { "label": "Developed 3 factors", "value": "developed_3" },
+          { "label": "Developed 5 factors", "value": "developed_5" },
+          { "label": "Developed momentum", "value": "developed_mom" }
+        ]
+      },
+      {
+        "paramName": "frequency",
+        "value": "monthly",
+        "label": "Frequency",
+        "type": "text",
+        "description": "Monthly or daily returns",
+        "options": [
+          { "label": "Monthly", "value": "monthly" },
+          { "label": "Daily", "value": "daily" }
+        ]
+      },
+      {
+        "paramName": "start",
+        "value": "",
+        "label": "Start",
+        "type": "date",
+        "description": "First period (10 years ago when empty)"
+      }
+    ]
   }
 }

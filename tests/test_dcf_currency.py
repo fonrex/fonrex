@@ -263,3 +263,38 @@ class TestValuationCurrency:
             "ACME", "fcf", [Decimal("0.08")], [Decimal("0.02")]
         )
         assert result.matrix[0][0].upside_pct is None
+
+
+class TestFactorCostOfEquityOnStoredData:
+    def test_the_valuation_discounts_with_the_factor_cost_of_equity(self):
+        from factors.cost_of_equity import FactorCostOfEquity
+
+        factor = FactorCostOfEquity(
+            model="ff3",
+            region="europe",
+            betas={"MKT_RF": Decimal("0.9"), "SMB": Decimal("0"), "HML": Decimal("0")},
+            premia={"MKT_RF": Decimal("0.05"), "SMB": Decimal("0.01"), "HML": Decimal("0.02")},
+            start=date(2021, 8, 31),
+            end=date(2026, 7, 31),
+            periods=60,
+            r_squared=0.7,
+        )
+        company = _company("EUR", "EUR", 80.0)
+        request = DCFRequest(
+            models=["fcf", "eps"], wacc_params=WACCInput(cost_of_equity_model="ff3")
+        )
+
+        capm = DCFService(company.database)._compute_dcf_sync(
+            "ACME", DCFRequest(models=["fcf", "eps"]), ECB_RATE
+        )
+        ff3 = DCFService(company.database)._compute_dcf_sync("ACME", request, ECB_RATE, factor)
+
+        # Rf 3.52 % + 0.9 × 5 % = 8.02 %, in place of Rf + beta 1 × 5.5 % (CAPM)
+        assert ff3.wacc.cost_of_equity == Decimal("0.0802")
+        assert ff3.wacc.cost_of_equity_model == "ff3"
+        assert ff3.wacc.risk_free_rate_source == "ecb_live"
+        assert ff3.wacc.cost_of_equity < capm.wacc.cost_of_equity
+        assert (
+            ff3.models["eps"].intrinsic_value_per_share
+            > capm.models["eps"].intrinsic_value_per_share
+        )

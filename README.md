@@ -208,7 +208,7 @@ GET /technical/AIR.PA/chart?indicators=sma_20,bbands_20
 ```
 
 ### DCF Valuation (3 models)
-Intrinsic value calculated using fundamentals and dynamic macro-economic data, with local cache: the cash flows are discounted with the risk-free rate of their currency (US Treasury from FRED for USD, AAA euro area rate from the ECB for EUR).
+Intrinsic value calculated using fundamentals and dynamic macro-economic data, with local cache: the cash flows are discounted with the risk-free rate of their currency (US Treasury from FRED for USD, AAA euro area rate from the ECB for EUR). The cost of equity is the CAPM by default; `POST /dcf/{ticker}` with `wacc_params.cost_of_equity_model` = `ff3`, `ff5` or `carhart` takes it from the Fama/French factors instead (betas of the listing, long-run premia of the factors).
 
 | Model | When used | Formula |
 |---|---|---|
@@ -349,6 +349,8 @@ Multi-currency is handled correctly: one row in `assets`, one row per listing in
 | GET | `/health/canary/history` | Historical canary results | — |
 | GET | `/health/stats` | Global validation quality statistics | — |
 | GET | `/macro/rates` | Current macro-economic rates: US 10Y Treasury (FRED); euro AAA 10Y, ECB deposit facility rate, CISS stress index (ECB). `currency=USD` or `EUR` keeps one source | 6h |
+| GET | `/factors/{dataset}` | Fama/French factor returns (`us_3`, `europe_5`, `us_mom`…), monthly or daily, from the Kenneth French Data Library | stored, refreshed after 7 days |
+| GET | `/factors/exposure/{ticker}` | Exposure of a listing to the Fama/French factors (`model=ff3`, `ff5` or `carhart`): betas, alpha, R², on returns in US dollars | — |
 
 ---
 
@@ -756,7 +758,7 @@ technical indicators and news directly inside OpenBB's dashboard environment.
 ![OpenBB Workspace Example](img/openBB-Workspace-example.png)
 
 👉 See [integrations/openbb/README.md](integrations/openbb/README.md) for
-setup instructions and the full list of 19 available widgets.
+setup instructions and the full list of 21 available widgets.
 
 ---
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from starlette.responses import JSONResponse
@@ -24,6 +24,8 @@ from integrations.openbb.adapters import (
     format_dcf_sensitivity_table,
     format_dcf_table,
     format_etf_details_table,
+    format_factor_exposure_table,
+    format_factor_returns_chart,
     format_fundamentals_deep_table,
     format_fundamentals_table,
     format_indicator_chart,
@@ -40,6 +42,12 @@ from routers.dependencies import (
     get_query_service,
     get_redis_client,
     get_technical_service,
+)
+from routers.factors import (
+    get_factor_exposure,
+    get_factor_exposure_of_listing,
+    get_factor_library,
+    get_factor_series,
 )
 from routers.fundamentals import (
     get_all_information,
@@ -385,6 +393,47 @@ async def get_openbb_quotes_batch(
     if not isinstance(quotes_map, dict):
         quotes_map = {}
     return format_batch_quotes_table(quotes_map)
+
+
+@router.get("/factors/exposure/{ticker}")
+async def get_openbb_factor_exposure(
+    ticker: str,
+    model: Literal["ff3", "ff5", "carhart"] = "ff3",
+    frequency: Literal["monthly", "daily"] = "monthly",
+    window: Optional[int] = Query(None, ge=24, le=10000),
+    exposure=Depends(get_factor_exposure),
+) -> List[Dict[str, Any]]:
+    """Return the factor exposure of a listing as an AgGrid table."""
+    res = await get_factor_exposure_of_listing(
+        ticker=ticker,
+        model=model,
+        frequency=frequency,
+        window=window,
+        end=None,
+        region=None,
+        currency=None,
+        exchange=None,
+        isin=None,
+        exposure=exposure,
+    )
+    return format_factor_exposure_table(res)
+
+
+@router.get("/factors/{dataset}/chart")
+async def get_openbb_factor_returns_chart(
+    dataset: str,
+    frequency: Literal["monthly", "daily"] = "monthly",
+    start: Optional[date] = None,
+    library=Depends(get_factor_library),
+) -> Dict[str, Any]:
+    """Return the cumulative returns of the factors of a dataset as a Plotly chart (10 years by default)."""
+    if start is None:
+        today = date.today()
+        start = today.replace(year=today.year - 10, day=1)
+    res = await get_factor_series(
+        dataset=dataset, frequency=frequency, start=start, end=None, library=library
+    )
+    return format_factor_returns_chart(res)
 
 
 @router.get("/dcf/{ticker}")

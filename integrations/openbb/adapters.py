@@ -152,6 +152,77 @@ def format_macro_rates_metric(macro_obj: Any) -> List[Dict[str, Any]]:
     return [_macro_tile(rate) for rate in rates]
 
 
+FACTOR_LABELS = {
+    "MKT_RF": "Market (MKT-RF)",
+    "SMB": "Size (SMB)",
+    "HML": "Value (HML)",
+    "RMW": "Profitability (RMW)",
+    "CMA": "Investment (CMA)",
+    "MOM": "Momentum (MOM)",
+}
+
+
+def _rounded(value: Any, digits: int = 4) -> Any:
+    value = _to_num(value)
+    return round(value, digits) if isinstance(value, (int, float)) else value
+
+
+def format_factor_exposure_table(exposure_obj: Any) -> List[Dict[str, Any]]:
+    """Factor exposure of a listing as AgGrid rows: alpha, one row per beta, then the fit."""
+    data = _to_dict(exposure_obj)
+    alpha = _to_dict(data.get("alpha"))
+    per_year = 252 if data.get("frequency") == "daily" else 12
+    alpha_error = _to_num(alpha.get("std_error"))
+    rows: List[Dict[str, Any]] = [
+        {
+            "Coefficient": "Alpha (annualised)",
+            "Value": _rounded(alpha.get("annualized")),
+            "Std error": _rounded(alpha_error * per_year)
+            if isinstance(alpha_error, (int, float))
+            else None,
+            "t-stat": _rounded(alpha.get("t_stat"), 2),
+        }
+    ]
+    for name, beta in (data.get("betas") or {}).items():
+        beta = _to_dict(beta)
+        rows.append(
+            {
+                "Coefficient": FACTOR_LABELS.get(name, name),
+                "Value": _rounded(beta.get("value")),
+                "Std error": _rounded(beta.get("std_error")),
+                "t-stat": _rounded(beta.get("t_stat"), 2),
+            }
+        )
+    for label, key in (
+        ("R²", "r_squared"),
+        ("Adjusted R²", "adj_r_squared"),
+        ("Residual volatility (annualised)", "residual_volatility"),
+    ):
+        rows.append({"Coefficient": label, "Value": _rounded(data.get(key)), "Std error": None, "t-stat": None})
+    rows.append(
+        {
+            "Coefficient": f"Periods ({data.get('frequency')}, {data.get('start')} → {data.get('end')})",
+            "Value": data.get("periods"),
+            "Std error": None,
+            "t-stat": None,
+        }
+    )
+    if data.get("converted_from"):
+        rows.append(
+            {
+                "Coefficient": "Prices converted to USD from",
+                "Value": data["converted_from"],
+                "Std error": None,
+                "t-stat": None,
+            }
+        )
+    rows += [
+        {"Coefficient": "Warning", "Value": warning, "Std error": None, "t-stat": None}
+        for warning in data.get("warnings") or []
+    ]
+    return rows
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Chart Adapters (type: "chart" -> Plotly Figure JSON)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -684,3 +755,32 @@ def format_etf_details_table(etf_data: Any) -> List[Dict[str, Any]]:
             rows.append({"metric": label, "value": _to_plain_value(val)})
 
     return rows
+
+
+def format_factor_returns_chart(series_obj: Any) -> Dict[str, Any]:
+    """Cumulative returns of the factors of a dataset (RF left out) as a Plotly figure."""
+    data = _to_dict(series_obj)
+    rows = data.get("data") or []
+    factors = [name for name in data.get("factors") or [] if name != "RF"]
+    traces = []
+    for name in factors:
+        growth, xs, ys = 1.0, [], []
+        for row in rows:
+            value = row.get(name)
+            if value is None:
+                continue
+            growth *= 1 + float(value)
+            xs.append(_to_plain_value(row.get("date")))
+            ys.append(round(growth - 1, 6))
+        traces.append(
+            {"type": "scatter", "mode": "lines", "name": FACTOR_LABELS.get(name, name), "x": xs, "y": ys}
+        )
+    return {
+        "data": traces,
+        "layout": {
+            "title": f"{data.get('label', data.get('dataset'))} — cumulative returns (USD)",
+            "xaxis": {"rangeslider": {"visible": False}},
+            "yaxis": {"title": "Cumulative return", "tickformat": ".0%"},
+            "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
+        },
+    }

@@ -14,6 +14,7 @@ from sqlalchemy import select
 from concurrency import run_sync
 from database.price_series import latest_daily_close_of_asset
 from database.ticker_suffix import listing_on, ticker_lookups
+from factors.cost_of_equity import FactorCostOfEquity, factor_cost_of_equity
 from financials.fiscal_years import FiscalYear, fiscal_years
 from models import (
     AnalystRatings,
@@ -28,6 +29,7 @@ from schemas.dcf import (
     DCFModelResult,
     DCFRequest,
     DCFResult,
+    FactorCostOfEquityResult,
     SensitivityCell,
     SensitivityResult,
     WACCInput,
@@ -52,11 +54,20 @@ DEFAULT_EQUITY_RISK_PREMIUM = env_decimal(
 class DCFService:
     """Financial valuation service using Discounted Cash Flow (DCF) methodology."""
 
-    def __init__(self, db_service, redis_client=None, fred_service=None, ecb_service=None):
+    def __init__(
+        self,
+        db_service,
+        redis_client=None,
+        fred_service=None,
+        ecb_service=None,
+        factor_exposure=None,
+    ):
         self.db_service = db_service
         self.redis = redis_client
         self.fred = fred_service
         self.ecb = ecb_service
+        # Betas on the Fama/French factors, for a cost of equity asked as ff3, ff5 or carhart.
+        self.factor_exposure = factor_exposure
 
     def _dec(self, val) -> Decimal:
         """Safely converts a value to Decimal, returning 0 if None."""
@@ -105,7 +116,13 @@ class DCFService:
         """Run the synchronous SQLAlchemy valuation workflow off the event loop."""
         currency = await run_sync(self._currency_of, ticker)
         rf = await self._risk_free_rate(currency)
-        return await run_sync(self._compute_dcf_sync, ticker, request, rf)
+        factor = None
+        model = request.wacc_params.cost_of_equity_model if request.wacc_params else "capm"
+        if model != "capm":
+            if self.factor_exposure is None:
+                raise ValueError("Factor cost of equity unavailable: the database is not configured")
+            factor = await factor_cost_of_equity(self.factor_exposure, ticker, model)
+        return await run_sync(self._compute_dcf_sync, ticker, request, rf, factor)
 
     async def _risk_free_rate(self, currency: Optional[str]) -> RiskFreeRate:
         """The risk-free rate of the currency of the cash flows.
@@ -180,7 +197,11 @@ class DCFService:
         return None
 
     def _compute_dcf_sync(
-        self, ticker: str, request: DCFRequest, rf: Optional[RiskFreeRate] = None
+        self,
+        ticker: str,
+        request: DCFRequest,
+        rf: Optional[RiskFreeRate] = None,
+        factor: Optional[FactorCostOfEquity] = None,
     ) -> DCFResult:
         """
         Computes the DCF valuation for a given ticker.
@@ -253,6 +274,12 @@ class DCFService:
             wacc_res.risk_free_rate_currency = (
                 currency.currency if rf_source.startswith(("fred_", "ecb_")) else None
             )
+            result_warnings = [currency.warning] if currency.warning else []
+            if factor is not None:
+                wacc_res, factor_warnings = self._with_factor_cost_of_equity(
+                    wacc_res, factor, request.wacc_params
+                )
+                result_warnings += factor_warnings
 
             # 5. Compute requested models
             model_results: Dict[str, DCFModelResult] = {}
@@ -339,7 +366,7 @@ class DCFService:
                 price_currency=(
                     currency.currency if currency.price_comparable else currency.price_currency
                 ),
-                warnings=[currency.warning] if currency.warning else [],
+                warnings=result_warnings,
                 shares_outstanding=shares,
                 wacc=wacc_res,
                 models=model_results,
@@ -456,6 +483,53 @@ class DCFService:
             risk_free_rate=risk_free,
             risk_free_rate_source=current_rf_source,
             risk_free_rate_date=rf_date,
+        )
+
+    @staticmethod
+    def _with_factor_cost_of_equity(
+        wacc_res: WACCResult, factor: FactorCostOfEquity, params: Optional[WACCInput]
+    ) -> tuple[WACCResult, List[str]]:
+        """The WACC again, with Ke = Rf + Σ beta × premium of the Fama/French factors."""
+        warnings = list(factor.warnings)
+        if params and (params.beta_override is not None or params.equity_risk_premium is not None):
+            warnings.append(
+                "beta_override and equity_risk_premium apply to the CAPM: they are not used "
+                f"with the {factor.model} cost of equity."
+            )
+        risk_free = wacc_res.risk_free_rate or Decimal(0)
+        cost_of_equity = risk_free + factor.premium
+        if cost_of_equity < risk_free:
+            warnings.append(
+                f"The {factor.model} cost of equity is below the risk-free rate: the factor "
+                "exposures lower it."
+            )
+        wacc = wacc_res.weight_equity * cost_of_equity + wacc_res.weight_debt * (
+            wacc_res.cost_of_debt * (Decimal("1.0") - wacc_res.tax_rate)
+        )
+        wacc = max(Decimal("0.05"), min(Decimal("0.20"), wacc))
+        quantum = Decimal("0.0001")
+        detail = FactorCostOfEquityResult(
+            model=factor.model,
+            region=factor.region,
+            betas=factor.betas,
+            premia=factor.premia,
+            premium=factor.premium.quantize(quantum, rounding=ROUND_HALF_UP),
+            start=factor.start,
+            end=factor.end,
+            periods=factor.periods,
+            r_squared=round(factor.r_squared, 4),
+        )
+        return (
+            wacc_res.model_copy(
+                update={
+                    "wacc": wacc.quantize(quantum, rounding=ROUND_HALF_UP),
+                    "cost_of_equity": cost_of_equity.quantize(quantum, rounding=ROUND_HALF_UP),
+                    "beta_used": factor.market_beta,
+                    "cost_of_equity_model": factor.model,
+                    "factor_cost_of_equity": detail,
+                }
+            ),
+            warnings,
         )
 
     def _dcf_fcf(

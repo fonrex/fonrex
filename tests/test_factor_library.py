@@ -131,6 +131,15 @@ class TestOddContent:
         assert table.rows[date(2026, 8, 4)]["MKT_RF"] == Decimal("-0.0031")
         assert table.rows[date(2026, 8, 4)]["RF"] == Decimal("0.00015")
 
+    def test_the_database_is_read_when_the_note_names_the_program_first(self):
+        text = (
+            "This file was created by CMPT_ME_BEME_RETS_DAILY using the 202608 CRSP database.\r\n"
+            + self.HEADER
+            + "20260803,  0.52, -0.10,  0.07,  0.015\r\n"
+        )
+
+        assert parse_factor_csv(text, "daily").note == "CRSP 202608"
+
     def test_a_monthly_reading_of_a_daily_file_finds_nothing(self):
         text = self.HEADER + "20260803,  0.52, -0.10,  0.07,  0.015\r\n"
 

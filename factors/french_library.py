@@ -202,7 +202,7 @@ def _cells(line: str) -> list[str]:
     return [cell.strip() for cell in line.split(",")]
 
 
-_NOTE = re.compile(r"created using the (\d{6}) (\w+) database", re.IGNORECASE)
+_NOTE = re.compile(r"using the (\d{6}) (\w+) database", re.IGNORECASE)
 
 
 def parse_factor_csv(text: str, frequency: Frequency) -> FactorTable:

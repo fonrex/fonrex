@@ -125,8 +125,9 @@ curl -H "$AUTH" "http://localhost:5000/technical/AIR.PA?indicator=rsi&period=14"
 # DCF valuation
 curl -H "$AUTH" "http://localhost:5000/dcf/AIR.PA"
 
-# Macro-economic rates
+# Macro-economic rates: USD (FRED) and EUR (ECB), or one currency
 curl -H "$AUTH" "http://localhost:5000/macro/rates"
+curl -H "$AUTH" "http://localhost:5000/macro/rates?currency=EUR"
 
 # Latest news
 curl -H "$AUTH" "http://localhost:5000/news/AIR.PA"
@@ -207,7 +208,7 @@ GET /technical/AIR.PA/chart?indicators=sma_20,bbands_20
 ```
 
 ### DCF Valuation (3 models)
-Intrinsic value calculated using fundamentals and dynamic macro-economic data (FRED API with local cache).
+Intrinsic value calculated using fundamentals and dynamic macro-economic data, with local cache: the cash flows are discounted with the risk-free rate of their currency (US Treasury from FRED for USD, AAA euro area rate from the ECB for EUR). The cost of equity is the CAPM by default; `POST /dcf/{ticker}` with `wacc_params.cost_of_equity_model` = `ff3`, `ff5` or `carhart` takes it from the Fama/French factors instead (betas of the listing, long-run premia of the factors).
 
 | Model | When used | Formula |
 |---|---|---|
@@ -222,12 +223,10 @@ GET /dcf/AIR.PA
 # Custom parameters
 POST /dcf/AIR.PA
 {
-  "assumptions": {
-    "projection_years": 10,
-    "terminal_growth": 0.02,
-    "risk_free_rate": 0.04,
-    "margin_of_safety": 0.15
-  }
+  "models": ["fcf", "eps", "ddm"],
+  "projection_years": 10,
+  "terminal_growth_rate": 0.02,
+  "wacc_params": {"risk_free_rate": 0.04}
 }
 
 # Compare all 3 models
@@ -349,7 +348,9 @@ Multi-currency is handled correctly: one row in `assets`, one row per listing in
 | POST | `/health/canary/run` | Trigger canary check (background) | — |
 | GET | `/health/canary/history` | Historical canary results | — |
 | GET | `/health/stats` | Global validation quality statistics | — |
-| GET | `/macro/rates` | Current macro-economic rates (FRED API) | 6h |
+| GET | `/macro/rates` | Current macro-economic rates: US 10Y Treasury (FRED); euro AAA 10Y, ECB deposit facility rate, CISS stress index (ECB). `currency=USD` or `EUR` keeps one source | 6h |
+| GET | `/factors/{dataset}` | Fama/French factor returns (`us_3`, `europe_5`, `us_mom`…), monthly or daily, from the Kenneth French Data Library | stored, refreshed after 7 days |
+| GET | `/factors/exposure/{ticker}` | Exposure of a listing to the Fama/French factors (`model=ff3`, `ff5` or `carhart`): betas, alpha, R², on returns in US dollars | — |
 
 ---
 
@@ -432,7 +433,7 @@ etf_holdings              — top holdings with weights
 outstanding_shares_history
 news_articles             — 90d retention, dedup on URL
 
-macro_rates_cache         — FRED macro-economic series cache
+macro_rates_cache         — FRED and ECB macro-economic series cache
 
 provider_health_log       — TimescaleDB hypertable (30d retention, canary + realtime checks)
 provider_health_daily     — daily aggregate per provider
@@ -757,7 +758,7 @@ technical indicators and news directly inside OpenBB's dashboard environment.
 ![OpenBB Workspace Example](img/openBB-Workspace-example.png)
 
 👉 See [integrations/openbb/README.md](integrations/openbb/README.md) for
-setup instructions and the full list of 19 available widgets.
+setup instructions and the full list of 21 available widgets.
 
 ---
 

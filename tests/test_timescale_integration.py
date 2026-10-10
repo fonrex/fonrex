@@ -505,6 +505,155 @@ class TestAdjustmentSchemeOnPostgres:
         assert self._schemes(engine) == []
 
 
+class TestMacroRatesFromSeveralSources:
+    """Revision 017: ECB series names fit, and each row says its source."""
+
+    def test_an_ecb_series_is_stored_next_to_fred(self, engine):
+        series_id = "YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y"
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO macro_rates_cache
+                        (series_id, source, label, value, unit, observation_date)
+                    VALUES (:series_id, 'ecb', 'AAA 10Y', -0.005215, 'ratio', DATE '2020-08-03')
+                """),
+                {"series_id": series_id},
+            )
+            stored = connection.execute(
+                text("SELECT source, value FROM macro_rates_cache WHERE series_id = :series_id"),
+                {"series_id": series_id},
+            ).one()
+        assert (stored.source, float(stored.value)) == ("ecb", -0.005215)
+
+    def test_downgrade_drops_the_long_names_then_upgrade_marks_fred_rows(
+        self, database_url, engine
+    ):
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO macro_rates_cache (series_id, label, value, unit, observation_date)
+                    VALUES ('DGS10', '10Y', 0.0412, 'percent', DATE '2026-10-08')
+                """)
+            )
+
+        _alembic(database_url, "downgrade", "016")
+        with engine.connect() as connection:
+            names = connection.execute(text("SELECT series_id FROM macro_rates_cache")).scalars()
+            assert list(names) == ["DGS10"]
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            sources = connection.execute(
+                text("SELECT DISTINCT source FROM macro_rates_cache")
+            ).scalars()
+            assert list(sources) == ["fred"]
+
+
+class TestStatementsCurrencyIsRecordedOrUnknown:
+    """Revision 018: the USD written by default on every statement becomes unknown."""
+
+    @staticmethod
+    def _currencies(engine) -> dict[str, str | None]:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT statement_type, currency FROM financial_statements
+                    WHERE period_end = DATE '2025-12-31'
+                """)
+            ).all()
+        return dict(rows)
+
+    @staticmethod
+    def _default(engine) -> str | None:
+        with engine.connect() as connection:
+            return connection.execute(
+                text("""
+                    SELECT column_default FROM information_schema.columns
+                    WHERE table_name = 'financial_statements' AND column_name = 'currency'
+                """)
+            ).scalar()
+
+    def test_default_usd_becomes_unknown_and_comes_back_on_downgrade(self, database_url, engine):
+        _alembic(database_url, "downgrade", "017")
+        with engine.begin() as connection:
+            asset_id = connection.execute(text("SELECT min(id) FROM assets")).scalar()
+            connection.execute(
+                text("""
+                    INSERT INTO financial_statements
+                        (asset_id, statement_type, period_type, period_end)
+                    VALUES (:asset, 'income', 'annual', DATE '2025-12-31')
+                """),
+                {"asset": asset_id},
+            )
+        assert self._currencies(engine) == {"income": "USD"}
+
+        _alembic(database_url, "upgrade", "head")
+        assert self._currencies(engine) == {"income": None}
+        assert self._default(engine) is None
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO financial_statements
+                        (asset_id, statement_type, period_type, period_end, currency)
+                    VALUES (:asset, 'balance', 'annual', DATE '2025-12-31', 'EUR')
+                """),
+                {"asset": asset_id},
+            )
+        _alembic(database_url, "downgrade", "017")
+        assert self._currencies(engine) == {"income": "USD", "balance": "EUR"}
+        assert "USD" in self._default(engine)
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM financial_statements WHERE period_end = DATE '2025-12-31'")
+            )
+
+
+class TestYahooEpochDatesBecomeUnknown:
+    """Revision 019: the 1970-01-01 dates written from Yahoo epoch seconds are dropped."""
+
+    def test_only_the_1970_dates_become_null(self, database_url, engine):
+        _alembic(database_url, "downgrade", "018")
+        with engine.begin() as connection:
+            asset_ids = connection.execute(
+                text("SELECT asset_id FROM fundamentals_highlights ORDER BY asset_id LIMIT 2")
+            ).scalars().all()
+            wrong, right = asset_ids
+            connection.execute(
+                text("""
+                    UPDATE fundamentals_highlights
+                    SET dividend_ex_date = DATE '1970-01-01', shares_short_date = DATE '1970-01-01'
+                    WHERE asset_id = :asset
+                """),
+                {"asset": wrong},
+            )
+            connection.execute(
+                text("""
+                    UPDATE fundamentals_highlights
+                    SET dividend_ex_date = DATE '2026-08-11', shares_short_date = DATE '2026-09-15'
+                    WHERE asset_id = :asset
+                """),
+                {"asset": right},
+            )
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT asset_id, dividend_ex_date, shares_short_date
+                    FROM fundamentals_highlights WHERE asset_id IN (:wrong, :right)
+                """),
+                {"wrong": wrong, "right": right},
+            ).all()
+        dates = {asset_id: (ex_date, short_date) for asset_id, ex_date, short_date in rows}
+        assert dates == {
+            wrong: (None, None),
+            right: (date(2026, 8, 11), date(2026, 9, 15)),
+        }
+
+
 # Price relations a migration must not hold while it waits: the tables, the
 # aggregates, their chunks and materialisation hypertables (named "_hyper_…",
 # "_materialized_hypertable_…", "_compressed_hypertable_…"). The catalog of the
@@ -644,3 +793,198 @@ class TestCleanupOnPostgres:
         with engine.connect() as connection:
             assert connection.execute(text("SELECT count(*) FROM prices_eod")).scalar() == before
 
+
+
+class TestFactorReturnsOnPostgres:
+    """Revision 020 and ``factors.store`` on the database of an installation."""
+
+    @pytest.fixture
+    async def library(self, database_url):
+        from factors.french_library import parse_factor_csv, read_zip
+        from factors.store import FactorLibrary
+
+        fixtures = PROJECT_ROOT / "tests" / "fixtures" / "factors"
+
+        def table(name):
+            return parse_factor_csv(read_zip((fixtures / f"{name}_CSV.zip").read_bytes()), "monthly")
+
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        downloader = MagicMock()
+        library = FactorLibrary(async_sessionmaker(async_engine), downloader=downloader)
+        yield library, downloader, table
+        await async_engine.dispose()
+
+    @staticmethod
+    def _stored(engine, dataset):
+        with engine.connect() as connection:
+            return connection.execute(
+                text("SELECT count(*) FROM factor_returns WHERE dataset = :dataset"),
+                {"dataset": dataset},
+            ).scalar()
+
+    async def test_a_file_is_stored_whole_and_replaced_by_the_next_one(self, library, engine):
+        library, downloader, table = library
+        full = table("F-F_Research_Data_Factors")
+
+        async def download(dataset, frequency):
+            return full
+
+        downloader.side_effect = download
+        load = await library.refresh("us_3", "monthly")
+        assert (load.status, load.periods) == ("fetched", 6)
+        assert self._stored(engine, "us_3") == 6 * 4
+
+        # The library revised its file: the next download replaces every row.
+        revised = type(full)(
+            factors=full.factors,
+            rows={p: v for p, v in full.rows.items() if p.year == 2026},
+            note=full.note,
+        )
+
+        async def download_revised(dataset, frequency):
+            return revised
+
+        downloader.side_effect = download_revised
+        await library.refresh("us_3", "monthly", force=True)
+        assert self._stored(engine, "us_3") == 3 * 4
+
+        series = await library.series("us_3", "monthly", start=date(2026, 7, 1))
+        assert list(series) == [date(2026, 7, 31), date(2026, 8, 31)]
+        assert float(series[date(2026, 8, 31)]["MKT_RF"]) == 0.0256
+        status = await library.status("us_3", "monthly")
+        assert (status.status, status.periods, status.source_note) == ("fresh", 3, "CRSP 202608")
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "019")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('factor_returns')")).scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('factor_returns')")).scalar()
+            assert connection.execute(text("SELECT to_regclass('factor_dataset_loads')")).scalar()
+
+
+class TestExchangeRatesOnPostgres:
+    """Revision 021 and ``macro.fx_rates`` on the database of an installation."""
+
+    @pytest.fixture
+    async def rates(self, database_url):
+        from macro.fx_rates import EcbExchangeRates
+
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        downloader = MagicMock()
+        yield EcbExchangeRates(async_sessionmaker(async_engine), downloader=downloader), downloader
+        await async_engine.dispose()
+
+    async def test_history_then_only_the_days_after_the_last_one(self, rates):
+        from decimal import Decimal
+
+        rates, downloader = rates
+        asked = []
+        answers = [
+            {date(2026, 10, 7): Decimal("1.0861"), date(2026, 10, 8): Decimal("1.0850")},
+            # A correction of the 8th and a new day.
+            {date(2026, 10, 8): Decimal("1.0851"), date(2026, 10, 9): Decimal("1.0790")},
+        ]
+
+        async def download(currency, start):
+            asked.append((currency, start))
+            return answers[len(asked) - 1]
+
+        downloader.side_effect = download
+
+        first = await rates.refresh("USD")
+        assert (first.status, first.first_day, first.last_day) == (
+            "fetched",
+            date(2026, 10, 7),
+            date(2026, 10, 8),
+        )
+        assert asked == [("USD", date(1999, 1, 4))]
+
+        assert (await rates.refresh("USD")).status == "fresh"  # read a moment ago
+
+        second = await rates.refresh("USD", force=True)
+        assert asked[1] == ("USD", date(2026, 10, 1))  # a week before the last day stored
+        assert (second.added, second.last_day) == (2, date(2026, 10, 9))
+        assert await rates.per_euro("USD") == {
+            date(2026, 10, 7): Decimal("1.08610000"),
+            date(2026, 10, 8): Decimal("1.08510000"),
+            date(2026, 10, 9): Decimal("1.07900000"),
+        }
+        euros = await rates.rates("USD", "EUR", start=date(2026, 10, 9))
+        assert euros == {date(2026, 10, 9): Decimal("0.92678406")}
+
+    async def test_a_failed_refresh_keeps_the_stored_days(self, rates):
+        from decimal import Decimal
+
+        rates, downloader = rates
+        async def download(currency, start):
+            return {date(2026, 10, 8): Decimal("0.8412")}
+
+        downloader.side_effect = download
+        await rates.refresh("GBP")
+        downloader.side_effect = RuntimeError("ECB down\nmore")
+
+        failed = await rates.refresh("GBP", force=True)
+
+        assert (failed.status, failed.last_day, failed.reason) == (
+            "failed",
+            date(2026, 10, 8),
+            "RuntimeError: ECB down",
+        )
+        assert await rates.per_euro("GBP") == {date(2026, 10, 8): Decimal("0.84120000")}
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "020")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('fx_rates')")).scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('fx_rates')")).scalar()
+
+
+class TestFactorExposureReadsTheListing:
+    """``FactorExposure`` reads the daily closes of one listing, by its session date."""
+
+    async def test_closes_of_the_listing_asked_in_its_currency(self, database_url, engine):
+        from factors.exposure import FactorExposure
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin)
+                    VALUES (77, 'FFX', 'Exposure test', 'EUR', true, 'FR0000000077');
+                    INSERT INTO asset_listings
+                        (id, asset_id, ticker, exchange, currency, source, is_primary, is_active,
+                         created_at, updated_at)
+                    VALUES (770, 77, 'FFX', 'XPAR', 'EUR', 'csv', true, true, now(), now());
+                    INSERT INTO prices_eod
+                        (time, asset_id, asset_listing_id, close, adj_close, resolution)
+                    VALUES
+                        ('2026-09-29 00:00+00', 77, 770, 10.0, 9.5, '1D'),
+                        ('2026-09-30 00:00+00', 77, 770, 11.0, NULL, '1D'),
+                        ('2026-09-30 00:00+00', 77, 770, 99.0, 99.0, '1W');
+                """)
+            )
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        exposure = FactorExposure(async_sessionmaker(async_engine), library=None, fx=None)
+        try:
+            _, listing, closes = await exposure._listing("FFX", None, None, None)
+            missing = await exposure._listing("NOPE", None, None, None)
+        finally:
+            await async_engine.dispose()
+
+        assert (listing["ticker"], listing["currency"], listing["isin"]) == (
+            "FFX",
+            "EUR",
+            "FR0000000077",
+        )
+        # Daily bars only; the dividend-adjusted close, else the close.
+        assert closes == {date(2026, 9, 29): 9.5, date(2026, 9, 30): 11.0}
+        assert missing == (None, None, {})

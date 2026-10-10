@@ -5,7 +5,7 @@ DCFService — Computes DCF valuations (FCF, EPS, DDM) and sensitivity analysis.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Literal, Optional
 
@@ -13,6 +13,8 @@ from sqlalchemy import select
 
 from concurrency import run_sync
 from database.price_series import latest_daily_close_of_asset
+from database.ticker_suffix import listing_on, ticker_lookups
+from factors.cost_of_equity import FactorCostOfEquity, factor_cost_of_equity
 from financials.fiscal_years import FiscalYear, fiscal_years
 from models import (
     AnalystRatings,
@@ -23,15 +25,19 @@ from models import (
     FundamentalsHighlights,
 )
 from schemas.dcf import (
+    DEFAULT_RISK_FREE_RATE,
     DCFModelResult,
     DCFRequest,
     DCFResult,
+    FactorCostOfEquityResult,
     SensitivityCell,
     SensitivityResult,
     WACCInput,
     WACCResult,
 )
+from schemas.macro import RiskFreeRate
 from settings import env_decimal
+from valuation.currency import valuation_currency
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +54,20 @@ DEFAULT_EQUITY_RISK_PREMIUM = env_decimal(
 class DCFService:
     """Financial valuation service using Discounted Cash Flow (DCF) methodology."""
 
-    def __init__(self, db_service, redis_client=None, fred_service=None):
+    def __init__(
+        self,
+        db_service,
+        redis_client=None,
+        fred_service=None,
+        ecb_service=None,
+        factor_exposure=None,
+    ):
         self.db_service = db_service
         self.redis = redis_client
         self.fred = fred_service
+        self.ecb = ecb_service
+        # Betas on the Fama/French factors, for a cost of equity asked as ff3, ff5 or carhart.
+        self.factor_exposure = factor_exposure
 
     def _dec(self, val) -> Decimal:
         """Safely converts a value to Decimal, returning 0 if None."""
@@ -60,6 +76,14 @@ class DCFService:
         if isinstance(val, Decimal):
             return val
         return Decimal(str(val))
+
+    def _upside(self, value: Decimal, price: Decimal, currency) -> Optional[Decimal]:
+        """Upside of ``value`` over the price, in percent; ``None`` when they cannot be compared."""
+        if not currency.price_comparable or price <= 0:
+            return None
+        return (self._safe_div(value - price, price) * Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
 
     def _safe_div(self, num: Decimal, denom: Decimal, fallback: Decimal = Decimal("0")) -> Decimal:
         """Safe division to avoid ZeroDivisionError."""
@@ -90,27 +114,55 @@ class DCFService:
 
     async def compute_dcf(self, ticker: str, request: DCFRequest) -> DCFResult:
         """Run the synchronous SQLAlchemy valuation workflow off the event loop."""
-        rf_fred, rf_source = None, None
-        if self.fred:
-            rf_fred, rf_source = await self.fred.get_risk_free_rate()
-        return await run_sync(self._compute_dcf_sync, ticker, request, rf_fred, rf_source)
+        currency = await run_sync(self._currency_of, ticker)
+        rf = await self._risk_free_rate(currency)
+        factor = None
+        model = request.wacc_params.cost_of_equity_model if request.wacc_params else "capm"
+        if model != "capm":
+            if self.factor_exposure is None:
+                raise ValueError("Factor cost of equity unavailable: the database is not configured")
+            factor = await factor_cost_of_equity(self.factor_exposure, ticker, model)
+        return await run_sync(self._compute_dcf_sync, ticker, request, rf, factor)
+
+    async def _risk_free_rate(self, currency: Optional[str]) -> RiskFreeRate:
+        """The risk-free rate of the currency of the cash flows.
+
+        EUR: the AAA 10-year rate of the ECB; USD: the 10-year Treasury rate of FRED.
+        Without a source for the currency (or when the source gives nothing),
+        ``DCF_RISK_FREE_RATE``: a rate of another currency would be wrong.
+        """
+        if currency == "EUR" and self.ecb:
+            rate = await self.ecb.get_euro_risk_free_rate()
+            if rate is not None:
+                return rate
+        elif currency in (None, "USD") and self.fred:
+            return await self.fred.get_risk_free_rate()
+        return RiskFreeRate(value=DEFAULT_RISK_FREE_RATE, source="env_fallback")
+
+    def _currency_of(self, ticker: str) -> Optional[str]:
+        """Currency of the valuation of a ticker; ``None`` when the ticker is unknown."""
+        session = self.db_service.get_session()
+        try:
+            asset = self._find_asset_by_ticker(session, ticker)
+            return valuation_currency(session, asset).currency if asset else None
+        finally:
+            session.close()
 
     def _find_asset_by_ticker(self, session, ticker: str) -> Optional[Asset]:
-        """Resolves an Asset from its ticker string, handling fallback for suffix tickers (e.g. AIR.PA -> AIR)."""
-        normalized = ticker.strip().upper()
-        tickers_to_try = [normalized]
-        if "." in normalized:
-            base_ticker = normalized.split(".")[0]
-            if base_ticker and base_ticker not in tickers_to_try:
-                tickers_to_try.append(base_ticker)
+        """Resolves an Asset from its ticker, then from its bare symbol on the place of its suffix.
 
-        for sym in tickers_to_try:
+        ``AIR.PA`` falls back on ``AIR`` only when that listing is in Paris
+        (:mod:`database.ticker_suffix`): the ``AIR`` of New York is AAR Corp.
+        """
+        for lookup in ticker_lookups(ticker):
+            sym = lookup.symbol
+            on_place = [listing_on(lookup.place)] if lookup.place is not None else []
             # Prioritize asset with populated FundamentalsHighlights
             stmt_hl = (
                 select(Asset)
                 .join(AssetListing, AssetListing.asset_id == Asset.id)
                 .join(FundamentalsHighlights, FundamentalsHighlights.asset_id == Asset.id)
-                .where(AssetListing.ticker == sym)
+                .where(AssetListing.ticker == sym, *on_place)
                 .where(AssetListing.is_active.is_(True))
                 .limit(1)
             )
@@ -122,7 +174,7 @@ class DCFService:
             stmt_asset = (
                 select(Asset)
                 .join(AssetListing, AssetListing.asset_id == Asset.id)
-                .where(AssetListing.ticker == sym)
+                .where(AssetListing.ticker == sym, *on_place)
                 .where(AssetListing.is_active.is_(True))
                 .order_by(AssetListing.is_primary.desc())
                 .limit(1)
@@ -135,6 +187,7 @@ class DCFService:
                 select(Asset)
                 .where(Asset.ticker == sym)
                 .where(Asset.is_active.is_(True))
+                .where(*(Asset.listings.any(condition) for condition in on_place))
                 .limit(1)
             )
             asset = session.execute(stmt_asset2).scalars().first()
@@ -143,9 +196,13 @@ class DCFService:
 
         return None
 
-    def _compute_dcf_sync(self, ticker: str, request: DCFRequest, 
-                          rf_fred: Optional[Decimal] = None, 
-                          rf_source: Optional[str] = None) -> DCFResult:
+    def _compute_dcf_sync(
+        self,
+        ticker: str,
+        request: DCFRequest,
+        rf: Optional[RiskFreeRate] = None,
+        factor: Optional[FactorCostOfEquity] = None,
+    ) -> DCFResult:
         """
         Computes the DCF valuation for a given ticker.
         """
@@ -190,6 +247,10 @@ class DCFService:
             latest_price_db = session.execute(latest_daily_close_of_asset(asset.id)).scalar()
             if latest_price_db:
                 current_price = self._dec(latest_price_db)
+            # In the currency of the statements when it can be (pence -> pounds).
+            currency = valuation_currency(session, asset)
+            if currency.price_comparable:
+                current_price = current_price * currency.price_factor
 
             shares = highlights.shares_outstanding or 0
             if not shares and statements:
@@ -199,7 +260,26 @@ class DCFService:
                 raise ValueError(f"Invalid or missing shares outstanding for {ticker}.")
 
             # 4. Compute WACC
-            wacc_res = self._compute_wacc(highlights, statements, request.wacc_params, rf_fred, rf_source)
+            wacc_res = self._compute_wacc(
+                highlights,
+                statements,
+                request.wacc_params,
+                rf.value if rf else None,
+                rf.source if rf else None,
+                rf.observation_date if rf else None,
+            )
+            # Only a rate read from the source of the currency names it: the
+            # configured rate and a rate given in the request name none.
+            rf_source = wacc_res.risk_free_rate_source or ""
+            wacc_res.risk_free_rate_currency = (
+                currency.currency if rf_source.startswith(("fred_", "ecb_")) else None
+            )
+            result_warnings = [currency.warning] if currency.warning else []
+            if factor is not None:
+                wacc_res, factor_warnings = self._with_factor_cost_of_equity(
+                    wacc_res, factor, request.wacc_params
+                )
+                result_warnings += factor_warnings
 
             # 5. Compute requested models
             model_results: Dict[str, DCFModelResult] = {}
@@ -256,11 +336,11 @@ class DCFService:
                         weighted_sum += val_res.intrinsic_value_per_share * weight
                     consensus_val = weighted_sum.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-                    if current_price > 0:
-                        consensus_upside = (
-                            self._safe_div(consensus_val - current_price, current_price)
-                            * Decimal("100")
-                        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    consensus_upside = self._upside(consensus_val, current_price, currency)
+                for result in model_results.values():
+                    result.upside_pct = self._upside(
+                        result.intrinsic_value_per_share, current_price, currency
+                    )
 
             # Analyst target price
             analyst_target = (
@@ -281,8 +361,12 @@ class DCFService:
             # Build the response
             return DCFResult(
                 ticker=ticker,
-                currency=asset.currency or "USD",
+                currency=currency.currency,
                 current_price=current_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                price_currency=(
+                    currency.currency if currency.price_comparable else currency.price_currency
+                ),
+                warnings=result_warnings,
                 shares_outstanding=shares,
                 wacc=wacc_res,
                 models=model_results,
@@ -303,11 +387,14 @@ class DCFService:
         params: Optional[WACCInput],
         rf_fred: Optional[Decimal] = None,
         rf_source: Optional[str] = None,
+        rf_date: Optional[date] = None,
     ) -> WACCResult:
         """Computes the Weighted Average Cost of Capital (WACC)."""
-        # Default base parameters
-        risk_free = rf_fred if rf_fred is not None else Decimal("0.04")
-        current_rf_source = rf_source if rf_source else "env_fallback"
+        # Default base parameters: the rate of a source, otherwise DCF_RISK_FREE_RATE.
+        if rf_fred is not None:
+            risk_free, current_rf_source = rf_fred, rf_source or "fred_cached"
+        else:
+            risk_free, current_rf_source, rf_date = DEFAULT_RISK_FREE_RATE, "env_fallback", None
         
         erp = DEFAULT_EQUITY_RISK_PREMIUM
         beta = self._dec(highlights.beta) if highlights.beta else Decimal("1.0")
@@ -316,7 +403,7 @@ class DCFService:
         if params:
             if params.risk_free_rate is not None:
                 risk_free = params.risk_free_rate
-                current_rf_source = "client_override"
+                current_rf_source, rf_date = "client_override", None
             if params.equity_risk_premium is not None:
                 erp = params.equity_risk_premium
             if params.beta_override is not None:
@@ -393,7 +480,56 @@ class DCFService:
             weight_debt=weight_debt.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
             beta_used=beta.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
             cost_of_debt_source=current_kd_source,
+            risk_free_rate=risk_free,
             risk_free_rate_source=current_rf_source,
+            risk_free_rate_date=rf_date,
+        )
+
+    @staticmethod
+    def _with_factor_cost_of_equity(
+        wacc_res: WACCResult, factor: FactorCostOfEquity, params: Optional[WACCInput]
+    ) -> tuple[WACCResult, List[str]]:
+        """The WACC again, with Ke = Rf + Σ beta × premium of the Fama/French factors."""
+        warnings = list(factor.warnings)
+        if params and (params.beta_override is not None or params.equity_risk_premium is not None):
+            warnings.append(
+                "beta_override and equity_risk_premium apply to the CAPM: they are not used "
+                f"with the {factor.model} cost of equity."
+            )
+        risk_free = wacc_res.risk_free_rate or Decimal(0)
+        cost_of_equity = risk_free + factor.premium
+        if cost_of_equity < risk_free:
+            warnings.append(
+                f"The {factor.model} cost of equity is below the risk-free rate: the factor "
+                "exposures lower it."
+            )
+        wacc = wacc_res.weight_equity * cost_of_equity + wacc_res.weight_debt * (
+            wacc_res.cost_of_debt * (Decimal("1.0") - wacc_res.tax_rate)
+        )
+        wacc = max(Decimal("0.05"), min(Decimal("0.20"), wacc))
+        quantum = Decimal("0.0001")
+        detail = FactorCostOfEquityResult(
+            model=factor.model,
+            region=factor.region,
+            betas=factor.betas,
+            premia=factor.premia,
+            premium=factor.premium.quantize(quantum, rounding=ROUND_HALF_UP),
+            start=factor.start,
+            end=factor.end,
+            periods=factor.periods,
+            r_squared=round(factor.r_squared, 4),
+        )
+        return (
+            wacc_res.model_copy(
+                update={
+                    "wacc": wacc.quantize(quantum, rounding=ROUND_HALF_UP),
+                    "cost_of_equity": cost_of_equity.quantize(quantum, rounding=ROUND_HALF_UP),
+                    "beta_used": factor.market_beta,
+                    "cost_of_equity_model": factor.model,
+                    "factor_cost_of_equity": detail,
+                }
+            ),
+            warnings,
         )
 
     def _dcf_fcf(
@@ -807,6 +943,10 @@ class DCFService:
             latest_price_db = session.execute(latest_daily_close_of_asset(asset.id)).scalar()
             if latest_price_db:
                 current_price = self._dec(latest_price_db)
+            # In the currency of the statements when it can be (pence -> pounds).
+            currency = valuation_currency(session, asset)
+            if currency.price_comparable:
+                current_price = current_price * currency.price_factor
 
             shares = highlights.shares_outstanding or 0
             if not shares and statements:
@@ -928,7 +1068,6 @@ class DCFService:
             float_base = float(base_val)
             float_growth_rate = float(growth_rate)
             float_shares = float(shares)
-            float_price = float(current_price)
 
             # Balance sheet values for FCF model
             float_debt = float(self._dec(statements[0].total_debt)) if statements else 0.0
@@ -995,11 +1134,7 @@ class DCFService:
                     dec_val = Decimal(str(intrinsic_value)).quantize(
                         Decimal("0.01"), rounding=ROUND_HALF_UP
                     )
-                    upside = Decimal("0")
-                    if float_price > 0:
-                        upside = (
-                            self._safe_div(dec_val - current_price, current_price) * Decimal("100")
-                        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    upside = self._upside(dec_val, current_price, currency)
 
                     row_cells.append(
                         SensitivityCell(

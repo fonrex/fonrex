@@ -9,6 +9,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -240,6 +241,17 @@ class TestUtilityFunctions(unittest.TestCase):
     def test_safe_date_none(self):
         self.assertIsNone(_safe_date(None))
 
+    def test_safe_date_reads_yahoo_epoch_seconds(self):
+        # Yahoo's info dates are seconds since 1970; they used to give 1970-01-01.
+        self.assertEqual(_safe_date(1786406400), date(2026, 8, 11))
+        self.assertEqual(_safe_date(1786406400.0), date(2026, 8, 11))
+        self.assertEqual(_safe_date(np.int64(1789430400)), date(2026, 9, 15))
+
+    def test_safe_date_odd_numbers_are_unknown(self):
+        for value in (0, -1, float("nan"), float("inf"), 10**20, True):
+            with self.subTest(value=value):
+                self.assertIsNone(_safe_date(value))
+
 
 # ---------------------------------------------------------------------------
 # Test _fetch_highlights
@@ -269,6 +281,18 @@ class TestFetchHighlights(_DatabaseTestCase):
         self.assertEqual(float(highlight.roe), 0.421)
         self.assertEqual(highlight.shares_outstanding, 777000000)
         session.close()
+
+    def test_highlight_dates_are_read_from_epoch_seconds(self):
+        mock_ticker = _make_mock_ticker()
+        mock_ticker.info.update(
+            exDividendDate=1786406400, dividendDate=1786665600, dateShortInterest=1789430400
+        )
+        self.enricher._fetch_highlights(1, mock_ticker)
+
+        highlight = self.Session().query(FundamentalsHighlights).filter_by(asset_id=1).one()
+        self.assertEqual(highlight.dividend_ex_date, date(2026, 8, 11))
+        self.assertEqual(highlight.dividend_pay_date, date(2026, 8, 14))
+        self.assertEqual(highlight.shares_short_date, date(2026, 9, 15))
 
     def test_highlights_upsert(self):
         """L'upsert doit mettre à jour, pas dupliquer."""

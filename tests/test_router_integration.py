@@ -224,3 +224,30 @@ def test_refresh_ticker_news(client):
     response = client.post("/news/AAPL/refresh")
     assert response.status_code == 200
     assert response.json() == {"status": "queued", "ticker": "AAPL"}
+
+
+def test_dcf_across_currencies_answers_its_currencies_and_no_upside(client):
+    """Euro statements, a price in dollars: the answer says so instead of a wrong upside."""
+    warning = (
+        "The share price is quoted in USD and the statements are in EUR: no upside is computed."
+    )
+    app.state.dcf_service.compute_dcf.return_value = MOCK_DCF_RESULT.model_copy(
+        update={
+            "currency": "EUR",
+            "price_currency": "USD",
+            "consensus_upside_pct": None,
+            "warnings": [warning],
+            "models": {"fcf": MOCK_MODEL_RESULT.model_copy(update={"upside_pct": None})},
+            "wacc": MOCK_WACC.model_copy(
+                update={"risk_free_rate_source": "ecb_live", "risk_free_rate_currency": "EUR"}
+            ),
+        }
+    )
+
+    data = client.get("/dcf/ACME?force_refresh=true").json()
+
+    assert (data["currency"], data["price_currency"]) == ("EUR", "USD")
+    assert data["consensus_upside_pct"] is None
+    assert data["models"]["fcf"]["upside_pct"] is None
+    assert data["warnings"] == [warning]
+    assert data["wacc"]["risk_free_rate_currency"] == "EUR"

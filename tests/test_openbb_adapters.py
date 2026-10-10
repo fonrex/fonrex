@@ -10,6 +10,8 @@ from integrations.openbb.adapters import (
     format_dcf_sensitivity_table,
     format_dcf_table,
     format_etf_details_table,
+    format_factor_exposure_table,
+    format_factor_returns_chart,
     format_fundamentals_deep_table,
     format_fundamentals_table,
     format_indicator_chart,
@@ -54,8 +56,9 @@ def test_format_macro_rates_metric():
         "risk_free_rate": {
             "series_id": "DGS10",
             "label": "10-Year Treasury Constant Maturity Rate",
-            "value": Decimal("4.25"),
-            "unit": "percent",
+            # /macro/rates gives the rate as a ratio: 0.0425 for 4.25 %.
+            "value": Decimal("0.0425"),
+            "unit": "ratio",
             "observation_date": date(2026, 9, 25),
         }
     }
@@ -63,7 +66,7 @@ def test_format_macro_rates_metric():
     assert isinstance(metrics, list)
     assert len(metrics) == 1
     item = metrics[0]
-    assert "DGS10" in item["label"] or "10-Year" in item["label"]
+    assert item["label"] == "US 10Y Treasury (2026-09-25)"
     assert item["value"] == "4.25%"
     assert item["delta"] is None
 
@@ -343,3 +346,96 @@ def test_format_etf_details_table():
     metrics = {r["metric"]: r["value"] for r in rows}
     assert metrics["ISIN"] == "IE00B4L5Y983"
     assert metrics["Domicile"] == "Ireland"
+
+
+def test_a_series_without_value_shows_not_available():
+    (card,) = format_macro_rates_metric({"rates": [{"series_id": "DGS10", "value": None}]})
+    assert card == {"label": "US 10Y Treasury", "value": "N/A", "delta": None}
+
+
+def _exposure(frequency="monthly", **extra):
+    return {
+        "frequency": frequency,
+        "start": "2021-09-30",
+        "end": "2026-08-31",
+        "periods": 60,
+        "alpha": {"value": 0.001, "std_error": 0.002, "t_stat": 0.5, "annualized": 0.012},
+        "betas": {
+            "MKT_RF": {"value": 1.23456, "std_error": 0.1, "t_stat": 12.3456},
+            "XYZ": {"value": 0.5, "std_error": 0.25, "t_stat": None},
+        },
+        "r_squared": 0.61234,
+        "adj_r_squared": 0.6,
+        "residual_volatility": 0.2,
+        **extra,
+    }
+
+
+def test_format_factor_exposure_table():
+    rows = format_factor_exposure_table(_exposure())
+
+    assert rows[0] == {
+        "Coefficient": "Alpha (annualised)",
+        "Value": 0.012,
+        "Std error": 0.024,  # 0.002 × 12
+        "t-stat": 0.5,
+    }
+    assert rows[1] == {
+        "Coefficient": "Market (MKT-RF)",
+        "Value": 1.2346,
+        "Std error": 0.1,
+        "t-stat": 12.35,
+    }
+    assert rows[2]["Coefficient"] == "XYZ"  # a factor without label keeps its name
+    assert rows[2]["t-stat"] is None
+    assert [row["Coefficient"] for row in rows[3:6]] == [
+        "R²",
+        "Adjusted R²",
+        "Residual volatility (annualised)",
+    ]
+    assert rows[3]["Value"] == 0.6123
+    assert rows[6] == {
+        "Coefficient": "Periods (monthly, 2021-09-30 → 2026-08-31)",
+        "Value": 60,
+        "Std error": None,
+        "t-stat": None,
+    }
+    assert len(rows) == 7  # no conversion, no warning
+
+
+def test_format_factor_exposure_table_daily_with_conversion_and_warnings():
+    alpha = {"value": 0.0001, "std_error": None, "t_stat": None, "annualized": 0.0252}
+    rows = format_factor_exposure_table(
+        _exposure("daily", alpha=alpha, converted_from="EUR", warnings=["short", "noisy"])
+    )
+
+    assert rows[0]["Std error"] is None
+    assert rows[-3]["Value"] == "EUR"
+    assert [(row["Coefficient"], row["Value"]) for row in rows[-2:]] == [
+        ("Warning", "short"),
+        ("Warning", "noisy"),
+    ]
+    daily = format_factor_exposure_table(_exposure("daily"))
+    assert daily[0]["Std error"] == 0.504  # 0.002 × 252
+
+
+def test_format_factor_returns_chart():
+    series = {
+        "dataset": "europe_3",
+        "label": "Europe 3 factors",
+        "factors": ["MKT_RF", "SMB", "RF"],
+        "data": [
+            {"date": date(2026, 7, 31), "MKT_RF": 0.1, "SMB": 0.02, "RF": 0.003},
+            {"date": date(2026, 8, 31), "MKT_RF": -0.1, "RF": 0.003},
+        ],
+    }
+
+    figure = format_factor_returns_chart(series)
+
+    market, size = figure["data"]
+    assert market["name"] == "Market (MKT-RF)"
+    assert market["x"] == ["2026-07-31", "2026-08-31"]
+    assert market["y"] == [0.1, -0.01]  # 1.1 × 0.9 − 1
+    assert (size["x"], size["y"]) == (["2026-07-31"], [0.02])  # a missing value is skipped
+    assert figure["layout"]["title"] == "Europe 3 factors — cumulative returns (USD)"
+    assert format_factor_returns_chart({"dataset": "us_3"})["data"] == []

@@ -429,7 +429,9 @@ class GetDeepFundamentals:
         # receives the ones it asked for. Cached as asked, an answer limited to
         # some sections was served to the requests for the others.
         cache_hit = False
-        cache_key_prefix = f"deep:{resolved_ticker}"
+        # Keyed by instrument: a ticker is not an identity (AIR is AAR Corp in New
+        # York and Airbus in Paris), and both answers were stored under deep:AIR.
+        cache_key_prefix = f"deep:{asset_id}"
 
         if cache_service and cache_service.enabled and not refresh:
             cached = await run_sync(cache_service.get, cache_key_prefix)

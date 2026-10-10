@@ -97,29 +97,22 @@ async def test_fetch_fred_series_holiday_fallback(mock_get, fred_service):
 
 
 @pytest.mark.asyncio
-@patch("os.environ.get")
-async def test_get_risk_free_rate_fallback(mock_env, fred_service):
-    """Test that when API and cache fail, it falls back to the .env variable."""
-    # Ensure Redis returns None
-    fred_service.redis_client.get.return_value = None
-    
-    # Ensure DB returns None
-    fred_service.db_service.get_session.return_value.query.return_value.filter_by.return_value.order_by.return_value.first.return_value = None
-    
-    # Disable API fetch by removing key
-    fred_service.api_key = None
-    
-    # Set env var
-    def env_side_effect(key, default=None):
-        if key == "DCF_RISK_FREE_RATE":
-            return "0.038"
-        return default
-    mock_env.side_effect = env_side_effect
+async def test_get_risk_free_rate_fallback(fred_service, monkeypatch):
+    """Without FRED and without a stored rate, DCF_RISK_FREE_RATE is used."""
+    import macro.fred_service as module
 
-    val, source = await fred_service.get_risk_free_rate()
-    
-    assert val == Decimal("0.038")
-    assert source == "env_fallback"
+    monkeypatch.setattr(module, "DEFAULT_RISK_FREE_RATE", Decimal("0.038"))
+    fred_service.redis_client.get.return_value = None
+    fred_service.db_service.get_session.return_value.query.return_value.filter_by.return_value.order_by.return_value.first.return_value = None
+    fred_service.api_key = None
+
+    rate = await fred_service.get_risk_free_rate()
+
+    assert (rate.value, rate.source, rate.observation_date) == (
+        Decimal("0.038"),
+        "env_fallback",
+        None,
+    )
 
 
 # ── The stored rate is refreshed ──────────────────────────────────────────────
@@ -240,3 +233,96 @@ async def test_same_observation_confirms_the_row_instead_of_adding_one(mock_get,
     assert row.value == Decimal("0.0410")
     assert again.value == Decimal("0.0410")
     assert mock_get.call_count == 1
+
+
+# ── Rates are ratios of any sign, and say how fresh they are ──────────────────
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_rate_read_from_fred_now_is_live_and_a_ratio(mock_get, stored_rates):
+    mock_get.return_value = _fred_answers("2026-10-02", "4.12")
+
+    rate = await stored_rates.service._get_series("DGS10", "10Y")
+
+    assert (rate.value, rate.unit, rate.freshness) == (Decimal("0.0412"), "ratio", "live")
+    assert stored_rates.rows()[0].unit == "ratio"
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_recent_stored_rate_is_cached_and_a_ratio_even_if_stored_as_percent(
+    mock_get, stored_rates
+):
+    stored_rates.store("0.0400", date(2026, 10, 2), stored_rates.timedelta(hours=1))
+
+    rate = await stored_rates.service._get_series("DGS10", "10Y")
+
+    assert (rate.unit, rate.freshness) == ("ratio", "cached")
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_old_stored_rate_used_when_fred_fails_is_stale(mock_get, stored_rates):
+    stored_rates.store("0.0400", date(2026, 9, 1), stored_rates.timedelta(days=30))
+    mock_get.side_effect = RuntimeError("FRED is down")
+
+    rate = await stored_rates.service.get_risk_free_rate()
+
+    assert (rate.value, rate.source, rate.observation_date) == (
+        Decimal("0.0400"),
+        "fred_stale",
+        date(2026, 9, 1),
+    )
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_negative_rate_is_a_rate_not_a_missing_one(mock_get, stored_rates):
+    # German 10-year yields were negative in 2019-2021.
+    mock_get.return_value = _fred_answers("2020-08-03", "-0.52")
+
+    rate = await stored_rates.service.get_risk_free_rate()
+
+    assert (rate.value, rate.source) == (Decimal("-0.0052"), "fred_live")
+
+
+@pytest.mark.asyncio
+async def test_rate_from_redis_is_cached(fred_service, mock_redis):
+    live = MacroRate(
+        series_id="DGS10", value=Decimal("0.045"), observation_date=date(2026, 9, 8), freshness="live"
+    )
+    mock_redis.get.return_value = live.model_dump_json()
+
+    rate = await fred_service.get_risk_free_rate()
+
+    assert (rate.value, rate.source) == (Decimal("0.045"), "fred_cached")
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_rates_of_fred_are_the_us_rates(mock_get, stored_rates):
+    mock_get.return_value = _fred_answers("2026-10-08", "4.12")
+
+    answer = await stored_rates.service.get_rates()
+
+    assert answer.currency == "USD"
+    (rate,) = answer.rates
+    assert rate == answer.risk_free_rate
+    assert (rate.series_id, rate.value, rate.source, rate.currency) == (
+        "DGS10",
+        Decimal("0.0412"),
+        "fred",
+        "USD",
+    )
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_no_us_rate_gives_an_empty_list(mock_get, stored_rates):
+    stored_rates.service.api_key = None
+
+    answer = await stored_rates.service.get_rates()
+
+    assert (answer.risk_free_rate, answer.rates) == (None, [])
+    mock_get.assert_not_called()

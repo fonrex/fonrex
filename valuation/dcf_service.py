@@ -247,8 +247,11 @@ class DCFService:
                 rf.source if rf else None,
                 rf.observation_date if rf else None,
             )
+            # Only a rate read from the source of the currency names it: the
+            # configured rate and a rate given in the request name none.
+            rf_source = wacc_res.risk_free_rate_source or ""
             wacc_res.risk_free_rate_currency = (
-                currency.currency if rf and rf.source != "env_fallback" else None
+                currency.currency if rf_source.startswith(("fred_", "ecb_")) else None
             )
 
             # 5. Compute requested models

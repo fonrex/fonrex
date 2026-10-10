@@ -18,7 +18,7 @@ from sqlalchemy.pool import StaticPool
 
 from financials.enrichment.yfinance_enricher import YFinanceEnricher, _statements_currency
 from models import Asset, AssetListing, Base, FinancialStatement, FundamentalsHighlights, PriceEOD
-from schemas.dcf import DCFRequest
+from schemas.dcf import DCFRequest, WACCInput
 from schemas.macro import RiskFreeRate
 from valuation.currency import resolve_currency
 from valuation.dcf_service import DCFService
@@ -43,6 +43,10 @@ class TestCurrencyRule:
         assert currency.currency == "EUR"
         assert not currency.price_comparable
         assert "USD" in currency.warning and "EUR" in currency.warning
+
+    def test_johannesburg_cents_are_turned_into_rand(self):
+        currency = resolve_currency("ZAR", "ZAc")
+        assert (currency.currency, currency.price_factor) == ("ZAR", Decimal("0.01"))
 
     def test_unknown_statements_take_the_currency_of_the_price(self):
         assert resolve_currency(None, "GBX").currency == "GBP"
@@ -227,6 +231,16 @@ class TestValuationCurrency:
         result = self._value(_company("EUR", "EUR", 80.0), rf=rf)
 
         assert result.wacc.risk_free_rate_source == "env_fallback"
+        assert result.wacc.risk_free_rate_currency is None
+
+    def test_a_rate_given_in_the_request_names_no_currency(self):
+        request = DCFRequest(wacc_params=WACCInput(risk_free_rate=Decimal("0.03")))
+        result = DCFService(_company("EUR", "EUR", 80.0).database)._compute_dcf_sync(
+            "ACME", request, ECB_RATE
+        )
+
+        assert result.wacc.risk_free_rate == Decimal("0.03")
+        assert result.wacc.risk_free_rate_source == "client_override"
         assert result.wacc.risk_free_rate_currency is None
 
     async def test_compute_dcf_asks_the_source_of_the_currency_of_the_statements(self):

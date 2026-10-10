@@ -154,6 +154,7 @@ How far each feature follows this split today:
 | Valuation | `routers/valuation.py` | `valuation/dcf_service.py` | No — the service reads the ORM models directly |
 | News | `routers/news.py` | `news/news_service.py` | No — the service holds SQL, cache and provider calls |
 | Macro | `routers/macro.py` | `macro/fred_service.py`, `macro/ecb_service.py` | No — each service has its own HTTP client |
+| Factors | `routers/factors.py` | `factors/store.py`, `factors/french_library.py` | No — the router calls the factor library directly |
 | Operations | `routers/admin.py` | `database/maintenance.py`, `cache/service.py` | No |
 | OpenBB | `routers/openbb.py` | calls the route functions of the other routers | — |
 
@@ -260,6 +261,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `scripts/load_fx_rates.py` | Command line download of the ECB reference rates of the euro into the database. |
 | `schemas/news.py` | Pydantic v2 schemas for the news system: `RawNewsItem`, `NewsArticleSchema`, `NewsResponse`, `NewsFeedResponse`, `NewsLanguage` / `NewsSentiment` enums. |
 | `schemas/macro.py` | Pydantic v2 schemas for macroeconomic rates response. |
+| `schemas/factors.py` | Pydantic v2 schemas of the factor routes: datasets, what is stored of a file, series of factor returns. |
 | `monitoring/__init__.py` | Monitoring package exposing `ValidationLayer` and `CanaryMonitor`. |
 | `monitoring/models.py` | Pydantic-independent business models for canary results and statuses. |
 | `monitoring/ports.py` | Persistence contracts required by validation and canary controls. |
@@ -271,6 +273,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `database/monitoring.py` | SQLAlchemy monitoring adapter: price history, logs, aggregates, and alerts. |
 | `routers/monitoring.py` | REST monitoring endpoints (`/health/*`) whose dependencies are resolved from `app.state`. |
 | `routers/macro.py` | HTTP routes for macro-economic data: the rates of FRED (USD) and of the ECB (EUR), by currency. |
+| `routers/factors.py` | HTTP routes of the factor returns: the datasets, the series of one dataset, the refresh of the files. |
 | `historical/providers.py` | yfinance and TradingView connectors for retrieving historical bars, and the choice between them (`fetch`): yfinance with the verified symbol, TradingView only for a line quoted in the currency of the listing. |
 | `historical/normalization.py` | Pure OHLCV validation, deduplication, and normalization rules. |
 | `schemas/monitoring.py` | Pydantic v2 schemas for monitoring: `ProviderStatus`, `ProviderHealthSummary`, `ValidationResult`, `AlertSchema`, `DailyStatSchema`, `ProviderDetailResponse`, `HealthStatsResponse`, `AlertSeverity` / `AlertType` enums; re-exports `CanaryCheckResult` and `HealthStatus` from `monitoring/models.py`. |
@@ -735,6 +738,9 @@ Every route of the application is listed here, and `tests/test_docs_consistency.
 | GET | `/health/canary/history` | Canary results history (filterable by provider, ticker, period) |
 | GET | `/health/stats` | Global data quality statistics (7 days, validity rate, reliable providers) |
 | GET | `/macro/rates` | Current macro-economic rates of FRED (USD) and of the ECB (EUR); `currency=USD` or `EUR` keeps one source |
+| GET | `/factors` | Factor datasets of the Kenneth French library and what is stored of each file |
+| GET | `/factors/{dataset}` | Factor returns of one dataset (`frequency`, `start`, `end`), as ratios in US dollars; a file missing or older than `FACTORS_REFRESH_DAYS` is downloaded first |
+| POST | `/factors/refresh` | Download files of the library (`dataset`, `frequency`, `force`) |
 
 OpenBB Workspace routes (`routers/openbb.py`). Each one calls the route function of the Fonrex route it adapts, with the same parameters, and reshapes the answer (see [Integrations](#integrations)):
 
@@ -1263,7 +1269,7 @@ The daily files add `_daily` (US) or `_Daily` to the name. A file is a zipped CS
 
 Every return of the library is **in US dollars**, the European and developed datasets included, and `RF` is the US one-month Treasury bill rate for every region: a listing quoted in another currency must be compared in dollars.
 
-`FactorLibrary.refresh()` downloads a file and stores it whole in place of the previous one (the library revises past values), with its date in `factor_dataset_loads`; a file read less than `FACTORS_REFRESH_DAYS` days ago is not downloaded again unless forced, and a failed download leaves the stored values as they were. `scripts/load_factors.py` runs it from the command line:
+`FactorLibrary.refresh()` downloads a file and stores it whole in place of the previous one (the library revises past values), with its date in `factor_dataset_loads`; a file read less than `FACTORS_REFRESH_DAYS` days ago is not downloaded again unless forced, and a failed download leaves the stored values as they were. `POST /factors/refresh` (`dataset`, `frequency`, `force`) and `scripts/load_factors.py` run it; `GET /factors/{dataset}` downloads a file first when it was never downloaded or is older than `FACTORS_REFRESH_DAYS`, and answers what is stored when the download fails (`load.status` = `failed`, `503` when nothing is stored). `GET /factors` lists the datasets and what is stored of each file, downloading nothing. From the command line:
 
 ```bash
 docker compose exec fonrex-api python scripts/load_factors.py --dataset us_3 europe_3 --frequency monthly daily
@@ -1596,6 +1602,7 @@ Test coverage, by theme:
 - `tests/test_macro_rate_cache.py`: the shared cache of the macro sources when a layer fails — Redis down for reading or writing, a database that refuses reads and writes, a source that cannot be asked — and odd ECB answers (a value that is not a number, rows out of order, an unknown series).
 - `tests/test_factor_library.py`: the files of the Kenneth French library (US and Europe, 3 and 5 factors, momentum) read from reduced real files, odd content (missing values, daily rows, unreadable files), the catalogue, the download, the refresh delay and what a failed download keeps, and the command line script.
 - `tests/test_fx_rates.py`: ECB answers of exchange rates (days without value, currency read from the key, unreadable answers), addresses, conversions between two currencies through the euro, and the command line script.
+- `tests/test_factors_routes.py`: the factor routes — datasets and what is stored, series as ratios, a file downloaded first when missing or stale, a failed download, the refresh of chosen files, unknown datasets and frequencies.
 - `tests/test_realtime.py`: complete behavior of realtime streaming (subscribe, unsubscribe, restore, process_tick), WebSocket connection manager, a tick delivered once to each client of a ticker, REST quote endpoints, and fallback policies.
 - `tests/test_monitoring.py`: unit tests covering the `ValidationLayer` (range checks on exact bounds, outlier consensus, filtered median, `validate_results` integration with outlier/out-of-range rejection, never-raises, dict/Pydantic field extraction), the `CanaryMonitor` (EU-only compatibility, canary checks ok/out-of-range/null/boundary, daily stats aggregation, Redis update via `fakeredis`), Pydantic schemas (`ProviderStatus`, `ProviderHealthSummary`, `DailyStatSchema`, `HealthStatsResponse`), and router endpoints (`TestClient`: 503 without config, canary trigger, Redis read via `httpx.AsyncClient`).
 - `tests/test_cache_service.py`: readable keys and duration per category, purge of a ticker, a pickled or unreadable entry is a miss and runs nothing, no application module imports `pickle`.

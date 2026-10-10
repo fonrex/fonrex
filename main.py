@@ -36,6 +36,7 @@ from database.query import QueryService
 from database.service import DatabaseService
 from database.technical import SqlAlchemyTechnicalRepository
 from documentation import get_api_documentation
+from factors.store import FactorLibrary
 from financials.router import router as financials_router
 from financials.service import FinancialsAggregator
 from historical.ingestion_service import HistoricalIngestionService
@@ -48,6 +49,7 @@ from realtime.connection_manager import ConnectionManager
 from realtime.worker import RealtimePriceWorker
 from routers.admin import router as admin_router
 from routers.assets import router as assets_router
+from routers.factors import router as factors_router
 from routers.fundamentals import router as fundamentals_router
 from routers.historical import router as historical_router
 from routers.macro import router as macro_router
@@ -107,6 +109,7 @@ app.include_router(fundamentals_router)
 app.include_router(specialized_router)
 app.include_router(realtime_router)
 app.include_router(macro_router)
+app.include_router(factors_router)
 
 app.include_router(monitoring_router)
 app.include_router(openbb_router)
@@ -293,6 +296,7 @@ def configure_application_state(application: FastAPI):
         "canary_scheduler",
         "fred_service",
         "ecb_service",
+        "factor_library",
         "validation_layer",
         "usage_recorder",
     ):
@@ -408,6 +412,16 @@ async def startup_event(application: FastAPI):
         logger.warning("⚠️ ECBService not started: %s", exc)
 
     try:
+        if async_resources:
+            state.factor_library = FactorLibrary(async_resources.session_factory)
+            logger.info("📐 FactorLibrary started")
+        else:
+            logger.warning("⚠️ DATABASE_URL not set — FactorLibrary disabled")
+    except Exception as exc:
+        state.factor_library = None
+        logger.warning("⚠️ FactorLibrary not started: %s", exc)
+
+    try:
         state.dcf_service = DCFService(
             state.db_service, state.redis_client, state.fred_service, state.ecb_service
         )
@@ -517,6 +531,7 @@ async def shutdown_event(application: FastAPI):
         "async_db_resources",
         "fred_service",
         "ecb_service",
+        "factor_library",
         "usage_recorder",
     ):
         setattr(state, state_name, None)

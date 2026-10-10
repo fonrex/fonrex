@@ -349,6 +349,7 @@ Multi-currency is handled correctly: one row in `assets`, one row per listing in
 | GET | `/health/canary/history` | Historical canary results | — |
 | GET | `/health/stats` | Global validation quality statistics | — |
 | GET | `/macro/rates` | Current macro-economic rates: US 10Y Treasury (FRED); euro AAA 10Y, ECB deposit facility rate, CISS stress index (ECB). `currency=USD` or `EUR` keeps one source | 6h |
+| GET | `/factors/{dataset}` | Fama/French factor returns (`us_3`, `europe_5`, `us_mom`…), monthly or daily, from the Kenneth French Data Library | stored, refreshed after 7 days |
 
 ---
 

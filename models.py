@@ -886,3 +886,32 @@ class MacroRateCache(Base):
     unit             = Column(String(10))
     observation_date = Column(Date, nullable=False)
     fetched_at       = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class FactorReturn(Base):
+    """One factor return of the Kenneth French library, as a ratio, for one period.
+
+    A monthly period is dated by the last day of its month. Every return is in
+    US dollars and ``RF`` is the US one-month T-bill rate, whatever the region.
+    """
+
+    __tablename__ = "factor_returns"
+    dataset = Column(String(20), primary_key=True)  # "us_3", "europe_5", ...
+    frequency = Column(String(10), primary_key=True)  # "monthly" | "daily"
+    period_end = Column(Date, primary_key=True)
+    factor = Column(String(10), primary_key=True)  # "MKT_RF", "SMB", ..., "RF", "MOM"
+    value = Column(Numeric(12, 8), nullable=False)
+
+
+class FactorDatasetLoad(Base):
+    """The last download of one file of the library: when, and what it held."""
+
+    __tablename__ = "factor_dataset_loads"
+    dataset = Column(String(20), primary_key=True)
+    frequency = Column(String(10), primary_key=True)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    first_period = Column(Date)
+    last_period = Column(Date)
+    periods = Column(Integer, nullable=False, default=0)
+    # "CRSP 202608": the database the library built the file from.
+    source_note = Column(String(40))

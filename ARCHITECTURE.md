@@ -253,6 +253,9 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `macro/rate_cache.py` | Cache shared by the macro sources: Redis, then the stored value when it is recent, then the source, the stored value being the fallback (`stale`). |
 | `macro/fred_service.py` | Reads FRED series (the US risk-free rate `DGS10`) through `macro/rate_cache.py`. |
 | `macro/ecb_service.py` | Reads ECB Data Portal series in CSV (euro AAA 10-year spot rate, deposit facility rate, CISS) through `macro/rate_cache.py`; rates published in percent are stored as ratios. |
+| `factors/french_library.py` | Catalogue of the Kenneth French Data Library datasets (US, Europe, developed markets; 3 factors, 5 factors, momentum; monthly and daily), download of a zipped file and parsing of its CSV into ratios. |
+| `factors/store.py` | Factor returns stored in `factor_returns` (asynchronous session): a file is stored whole, replacing the previous one, and not downloaded again before `FACTORS_REFRESH_DAYS`. |
+| `scripts/load_factors.py` | Command line download of the factor files into the database. |
 | `schemas/news.py` | Pydantic v2 schemas for the news system: `RawNewsItem`, `NewsArticleSchema`, `NewsResponse`, `NewsFeedResponse`, `NewsLanguage` / `NewsSentiment` enums. |
 | `schemas/macro.py` | Pydantic v2 schemas for macroeconomic rates response. |
 | `monitoring/__init__.py` | Monitoring package exposing `ValidationLayer` and `CanaryMonitor`. |
@@ -1244,6 +1247,31 @@ All providers — news, fundamentals scrapers and specialised providers — inhe
 | `NEWS_MAX_LIMIT` | `100` | Maximum accepted limit |
 | `NEWS_DEDUP_SIMILARITY` | `0.85` | Title similarity threshold for deduplication |
 
+## Factor Returns (Kenneth French Data Library)
+
+Fonrex keeps the factor returns of the [Kenneth R. French Data Library](https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html) in `factor_returns`, to measure the factor exposure of a listing. Nine datasets are known (`factors/french_library.py`), each monthly and daily:
+
+| Dataset | Factors | Library files |
+| --- | --- | --- |
+| `us_3`, `europe_3`, `developed_3` | `MKT_RF`, `SMB`, `HML`, `RF` | `F-F_Research_Data_Factors`, `Europe_3_Factors`, `Developed_3_Factors` |
+| `us_5`, `europe_5`, `developed_5` | `MKT_RF`, `SMB`, `HML`, `RMW`, `CMA`, `RF` | `F-F_Research_Data_5_Factors_2x3`, `Europe_5_Factors`, `Developed_5_Factors` |
+| `us_mom`, `europe_mom`, `developed_mom` | `MOM` (`Mom` or `WML` in the files) | `F-F_Momentum_Factor`, `Europe_Mom_Factor`, `Developed_Mom_Factor` |
+
+The daily files add `_daily` (US) or `_Daily` to the name. A file is a zipped CSV: notes, a header (`,Mkt-RF,SMB,HML,RF`), one row per period (`192607` for a month, `19260701` for a day), then annual factors, which are not read. Values are published in percent and stored as ratios (`2.89` → `0.0289`); `-99.99` and `-999` mark a missing value, which is not stored. A month is dated by its last day.
+
+Every return of the library is **in US dollars**, the European and developed datasets included, and `RF` is the US one-month Treasury bill rate for every region: a listing quoted in another currency must be compared in dollars.
+
+`FactorLibrary.refresh()` downloads a file and stores it whole in place of the previous one (the library revises past values), with its date in `factor_dataset_loads`; a file read less than `FACTORS_REFRESH_DAYS` days ago is not downloaded again unless forced, and a failed download leaves the stored values as they were. `scripts/load_factors.py` runs it from the command line:
+
+```bash
+docker compose exec fonrex-api python scripts/load_factors.py --dataset us_3 europe_3 --frequency monthly daily
+```
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `FACTORS_REFRESH_DAYS` | `7` | Days before a factor file is downloaded again (1 to 90); the library is updated about once a month |
+| `FRENCH_LIBRARY_URL` | `https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp` | Address of the library files; set only to use a mirror |
+
 ## Financial Valuation and DCF Models
 
 The financial valuation module calculates the theoretical intrinsic value of an asset by crossing three classic Discounted Cash Flow (DCF) methodologies, supplemented by dynamic Weighted Average Cost of Capital (WACC) calculation and sensitivity analysis.
@@ -1557,6 +1585,7 @@ Test coverage, by theme:
 - `tests/test_ecb_service.py`: ECB answers read in CSV (percent stored as ratios, the CISS as published, the latest observation with a value), through the shared cache (live, cached, stale), and the euro area rates listed with their source and currency.
 - `tests/test_macro_rates_route.py`: `GET /macro/rates` with and without `currency` (both sources, one source, a currency without source, a source not started) and the OpenBB cards, one per series.
 - `tests/test_macro_rate_cache.py`: the shared cache of the macro sources when a layer fails — Redis down for reading or writing, a database that refuses reads and writes, a source that cannot be asked — and odd ECB answers (a value that is not a number, rows out of order, an unknown series).
+- `tests/test_factor_library.py`: the files of the Kenneth French library (US and Europe, 3 and 5 factors, momentum) read from reduced real files, odd content (missing values, daily rows, unreadable files), the catalogue, the download, the refresh delay and what a failed download keeps, and the command line script.
 - `tests/test_realtime.py`: complete behavior of realtime streaming (subscribe, unsubscribe, restore, process_tick), WebSocket connection manager, a tick delivered once to each client of a ticker, REST quote endpoints, and fallback policies.
 - `tests/test_monitoring.py`: unit tests covering the `ValidationLayer` (range checks on exact bounds, outlier consensus, filtered median, `validate_results` integration with outlier/out-of-range rejection, never-raises, dict/Pydantic field extraction), the `CanaryMonitor` (EU-only compatibility, canary checks ok/out-of-range/null/boundary, daily stats aggregation, Redis update via `fakeredis`), Pydantic schemas (`ProviderStatus`, `ProviderHealthSummary`, `DailyStatSchema`, `HealthStatsResponse`), and router endpoints (`TestClient`: 503 without config, canary trigger, Redis read via `httpx.AsyncClient`).
 - `tests/test_cache_service.py`: readable keys and duration per category, purge of a ticker, a pickled or unreadable entry is a miss and runs nothing, no application module imports `pickle`.
@@ -1597,6 +1626,7 @@ Every file of `alembic/versions/` is listed here (`tests/test_docs_consistency.p
 | 017 | `017_macro_rates_source.py` | `macro_rates_cache` holds several sources: `series_id` widened from 30 to 60 characters (ECB series are named `flow.key`, e.g. `YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y`), new `source` column (`fred`, `ecb`), set to `fred` for the rows already stored. The downgrade drops the rows whose name exceeds 30 characters. |
 | 018 | `018_statements_currency_unknown.py` | `financial_statements.currency` loses its `USD` default and the stored rows become NULL (unknown): the enrichment never wrote it. The enrichment now stores Yahoo's `financialCurrency`; until an instrument is enriched again, the valuation takes the currency of the listing of the share price. The downgrade sets the unknown currencies back to USD. |
 | 019 | `019_yahoo_epoch_dates.py` | `fundamentals_highlights.dividend_ex_date` and `shares_short_date` equal to 1970-01-01 become NULL: Yahoo gives these dates in seconds since 1970 and the enrichment read them as nanoseconds. The enrichment now reads seconds (and also stores `dividend_pay_date` from `dividendDate`); the dates come back at the next refresh. The downgrade leaves the data alone. |
+| 020 | `020_factor_returns.py` | `factor_returns` (dataset, frequency, period end, factor → value as a ratio) and `factor_dataset_loads` (last download of each file of the Kenneth French library). The downgrade drops both tables. |
 
 ## Zipline Bundle (Backtesting Integration)
 

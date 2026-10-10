@@ -793,3 +793,74 @@ class TestCleanupOnPostgres:
         with engine.connect() as connection:
             assert connection.execute(text("SELECT count(*) FROM prices_eod")).scalar() == before
 
+
+
+class TestFactorReturnsOnPostgres:
+    """Revision 020 and ``factors.store`` on the database of an installation."""
+
+    @pytest.fixture
+    async def library(self, database_url):
+        from factors.french_library import parse_factor_csv, read_zip
+        from factors.store import FactorLibrary
+
+        fixtures = PROJECT_ROOT / "tests" / "fixtures" / "factors"
+
+        def table(name):
+            return parse_factor_csv(read_zip((fixtures / f"{name}_CSV.zip").read_bytes()), "monthly")
+
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        downloader = MagicMock()
+        library = FactorLibrary(async_sessionmaker(async_engine), downloader=downloader)
+        yield library, downloader, table
+        await async_engine.dispose()
+
+    @staticmethod
+    def _stored(engine, dataset):
+        with engine.connect() as connection:
+            return connection.execute(
+                text("SELECT count(*) FROM factor_returns WHERE dataset = :dataset"),
+                {"dataset": dataset},
+            ).scalar()
+
+    async def test_a_file_is_stored_whole_and_replaced_by_the_next_one(self, library, engine):
+        library, downloader, table = library
+        full = table("F-F_Research_Data_Factors")
+
+        async def download(dataset, frequency):
+            return full
+
+        downloader.side_effect = download
+        load = await library.refresh("us_3", "monthly")
+        assert (load.status, load.periods) == ("fetched", 6)
+        assert self._stored(engine, "us_3") == 6 * 4
+
+        # The library revised its file: the next download replaces every row.
+        revised = type(full)(
+            factors=full.factors,
+            rows={p: v for p, v in full.rows.items() if p.year == 2026},
+            note=full.note,
+        )
+
+        async def download_revised(dataset, frequency):
+            return revised
+
+        downloader.side_effect = download_revised
+        await library.refresh("us_3", "monthly", force=True)
+        assert self._stored(engine, "us_3") == 3 * 4
+
+        series = await library.series("us_3", "monthly", start=date(2026, 7, 1))
+        assert list(series) == [date(2026, 7, 31), date(2026, 8, 31)]
+        assert float(series[date(2026, 8, 31)]["MKT_RF"]) == 0.0256
+        status = await library.status("us_3", "monthly")
+        assert (status.status, status.periods, status.source_note) == ("fresh", 3, "CRSP 202608")
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "019")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('factor_returns')")).scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('factor_returns')")).scalar()
+            assert connection.execute(text("SELECT to_regclass('factor_dataset_loads')")).scalar()

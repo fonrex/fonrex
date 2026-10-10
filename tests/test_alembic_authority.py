@@ -29,7 +29,7 @@ def test_migration_inspection_does_not_create_version_table():
     inspector = MigrationInspector(engine, None)
     status = inspector.get_status()
     assert status.current_heads == ()
-    assert status.expected_heads == ("019",)
+    assert status.expected_heads == ("020",)
     assert inspect(engine).get_table_names() == []
     engine.dispose()
 
@@ -41,7 +41,7 @@ def test_database_service_accepts_only_current_alembic_revision():
             connection.exec_driver_sql(
                 "CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"
             )
-            connection.exec_driver_sql("INSERT INTO alembic_version (version_num) VALUES ('019')")
+            connection.exec_driver_sql("INSERT INTO alembic_version (version_num) VALUES ('020')")
         assert service.check_migrations() is True
     finally:
         service.close()

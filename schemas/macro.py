@@ -1,19 +1,45 @@
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# A rate is always given as a ratio: 0.0412 for 4.12 %. Rows stored before this
+# rule say "percent" while holding the same ratio.
+RATE_UNIT = "ratio"
+
+Freshness = Literal["live", "cached", "stale"]
 
 
 class MacroRate(BaseModel):
     """Une observation d'un taux macro-économique (ex: taux sans risque)."""
     series_id: str = Field(..., description="L'identifiant de la série FRED (ex: DGS10).")
     label: Optional[str] = Field(None, description="Libellé de la série.")
-    value: Decimal = Field(..., description="La valeur brute observée.")
-    unit: Optional[str] = Field(None, description="Unité, ex: 'percent'.")
+    value: Decimal = Field(
+        ..., description="The rate as a ratio: 0.0412 for 4.12 %. It may be zero or negative."
+    )
+    unit: Optional[str] = Field(RATE_UNIT, description="Always 'ratio'.")
     observation_date: date = Field(..., description="Date d'observation par FRED.")
+    freshness: Optional[Freshness] = Field(
+        None,
+        description=(
+            "live: read from the source for this answer; cached: read from it less than "
+            "one cache lifetime ago; stale: an older stored value, the source could not "
+            "be read (no API key, or no answer)"
+        ),
+    )
     
     model_config = ConfigDict(from_attributes=True)
+
+
+@dataclass(frozen=True)
+class RiskFreeRate:
+    """The risk-free rate a valuation uses, and where it comes from."""
+
+    value: Decimal
+    source: str  # fred_live, fred_cached, fred_stale or env_fallback
+    observation_date: Optional[date] = None
 
 
 class MacroRatesResponse(BaseModel):

@@ -54,8 +54,9 @@ def test_format_macro_rates_metric():
         "risk_free_rate": {
             "series_id": "DGS10",
             "label": "10-Year Treasury Constant Maturity Rate",
-            "value": Decimal("4.25"),
-            "unit": "percent",
+            # /macro/rates gives the rate as a ratio: 0.0425 for 4.25 %.
+            "value": Decimal("0.0425"),
+            "unit": "ratio",
             "observation_date": date(2026, 9, 25),
         }
     }

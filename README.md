@@ -222,12 +222,10 @@ GET /dcf/AIR.PA
 # Custom parameters
 POST /dcf/AIR.PA
 {
-  "assumptions": {
-    "projection_years": 10,
-    "terminal_growth": 0.02,
-    "risk_free_rate": 0.04,
-    "margin_of_safety": 0.15
-  }
+  "models": ["fcf", "eps", "ddm"],
+  "projection_years": 10,
+  "terminal_growth_rate": 0.02,
+  "wacc_params": {"risk_free_rate": 0.04}
 }
 
 # Compare all 3 models

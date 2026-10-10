@@ -4,7 +4,7 @@
 Schémas Pydantic pour le module DCF Valuation.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Literal, Optional
 
@@ -19,6 +19,9 @@ DEFAULT_PROJECTION_YEARS = env_int("DCF_DEFAULT_PROJECTION_YEARS", 5, minimum=3,
 DEFAULT_TERMINAL_GROWTH_RATE = env_decimal(
     "DCF_TERMINAL_GROWTH_RATE", "0.025", minimum="-1", maximum="1"
 )
+# Risk-free rate used when no source answers and none was ever stored. A ratio:
+# 0.04 for 4 %; it may be negative (euro government rates were, in 2019-2021).
+DEFAULT_RISK_FREE_RATE = env_decimal("DCF_RISK_FREE_RATE", "0.04", minimum="-0.1", maximum="0.5")
 
 
 class WACCInput(BaseModel):
@@ -78,8 +81,17 @@ class WACCResult(BaseModel):
     cost_of_debt_source: Optional[str] = Field(
         None, description="Source du Kd (client_override, calculated, sector_estimate)"
     )
+    risk_free_rate: Optional[Decimal] = Field(None, description="Rf used, as a ratio")
     risk_free_rate_source: Optional[str] = Field(
-        None, description="Source du Rf (client_override, fred_live, fred_cached, env_fallback)"
+        None,
+        description=(
+            "Source of Rf: client_override, fred_live (read from FRED now), fred_cached "
+            "(read less than one cache lifetime ago), fred_stale (older stored value, FRED "
+            "could not be read), env_fallback (DCF_RISK_FREE_RATE)"
+        ),
+    )
+    risk_free_rate_date: Optional[date] = Field(
+        None, description="Observation date of Rf, when it comes from a source"
     )
 
 

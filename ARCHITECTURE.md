@@ -1292,7 +1292,7 @@ The statements are read as **fiscal years**: the three rows of a year (income st
 
 ### FRED Macro-Economic Service
 
-The `FREDService` provides the 10-Year Treasury Constant Maturity Rate (`DGS10`), used as the risk-free rate in WACC calculations. It looks, in this order, at Redis (6 hours, `MACRO_RATES_CACHE_TTL`), at the value stored in `macro_rates_cache` when it was read from FRED less than that lifetime ago, then at the FRED API (`FRED_API_KEY`). A stored value that is older is only what is left when FRED cannot be asked (no key) or does not answer. An observation FRED already gave is confirmed in place — value and date of reading — instead of adding a row. Without any value, the risk-free rate is `DCF_RISK_FREE_RATE` (4 % by default); the answer reports which one was used (`risk_free_rate_source`).
+The `FREDService` provides the 10-Year Treasury Constant Maturity Rate (`DGS10`), used as the risk-free rate in WACC calculations. It looks, in this order, at Redis (6 hours, `MACRO_RATES_CACHE_TTL`), at the value stored in `macro_rates_cache` when it was read from FRED less than that lifetime ago, then at the FRED API (`FRED_API_KEY`). A stored value that is older is only what is left when FRED cannot be asked (no key) or does not answer. An observation FRED already gave is confirmed in place — value and date of reading — instead of adding a row. Rates are ratios (`0.0412` for 4.12 %, `unit` = `ratio`; rows stored before say `percent` and are read as ratios) and may be zero or negative. Each rate says how fresh it is (`freshness`): `live` (read from FRED for this answer), `cached` (Redis, or stored and read from FRED less than one cache lifetime ago) or `stale` (an older stored value: no key, or no answer; it is not put in Redis, so FRED is asked again next time). Without any value, the risk-free rate is `DCF_RISK_FREE_RATE` (4 % by default, read once at start-up). The WACC reports the rate used (`risk_free_rate`), its source (`risk_free_rate_source`: `fred_live`, `fred_cached`, `fred_stale`, `env_fallback` or `client_override`) and its observation date (`risk_free_rate_date`).
 
 ### Weighting and Consensus
 
@@ -1320,7 +1320,7 @@ The engine incorporates safeguards against mathematical anomalies:
 | --- | --- | --- |
 | `DCF_CACHE_TTL` | `21600` | Redis cache TTL in seconds (6 h) |
 | `DCF_DEFAULT_PROJECTION_YEARS` | `5` | Default number of projection years |
-| `DCF_RISK_FREE_RATE` | `0.04` | Risk-free rate used when FRED gives none (e.g. 4%) |
+| `DCF_RISK_FREE_RATE` | `0.04` | Risk-free rate used when FRED gives none and none is stored, as a ratio (`0.04` = 4 %; between -0.1 and 0.5) |
 | `DCF_EQUITY_RISK_PREMIUM` | `0.055` | Default equity risk premium (e.g. 5.5%) |
 | `DCF_TERMINAL_GROWTH_RATE` | `0.025` | Perpetual terminal growth rate (e.g. 2.5%) |
 

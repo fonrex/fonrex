@@ -109,15 +109,20 @@ def format_quote_metric(quote_obj: Any) -> List[Dict[str, Any]]:
     return metrics
 
 
+def _percent(ratio: Any) -> str:
+    """A ratio shown as a percentage with two decimals: 0.0412 -> '4.12%'."""
+    return f"{Decimal(str(ratio)) * 100:.2f}%"
+
+
 def format_macro_rates_metric(macro_obj: Any) -> List[Dict[str, Any]]:
     """Format FRED macro rates into OpenBB metric cards."""
     data = _to_dict(macro_obj)
     rf_data = data.get("risk_free_rate") or {}
     val = rf_data.get("value")
-    unit = rf_data.get("unit") or "%"
     obs_date = rf_data.get("observation_date")
 
-    display_val = f"{val}{'%' if unit == 'percent' else ''}" if val is not None else "N/A"
+    # The rate is a ratio (0.0412): it is shown as a percentage (4.12%).
+    display_val = _percent(val) if val is not None else "N/A"
     label = rf_data.get("label") or "US 10Y Risk-Free Rate (DGS10)"
     if obs_date:
         label = f"{label} ({obs_date})"

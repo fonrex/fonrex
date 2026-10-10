@@ -112,3 +112,35 @@ def test_compute_wacc_sources_fallback(dcf_service):
     assert res.cost_of_debt == Decimal("0.0500")
     assert res.cost_of_debt_source == "sector_estimate"
     assert res.risk_free_rate_source == "env_fallback"
+
+
+def test_compute_wacc_reports_the_rate_its_source_and_its_date(dcf_service):
+    from datetime import date
+
+    highlights = FundamentalsHighlights(beta=Decimal("1.0"), market_cap=Decimal("1000000"))
+    res = dcf_service._compute_wacc(
+        highlights,
+        [],
+        None,
+        rf_fred=Decimal("-0.0052"),
+        rf_source="fred_stale",
+        rf_date=date(2020, 8, 3),
+    )
+
+    # A negative rate is used as it is.
+    assert res.risk_free_rate == Decimal("-0.0052")
+    assert res.risk_free_rate_source == "fred_stale"
+    assert res.risk_free_rate_date == date(2020, 8, 3)
+
+
+def test_compute_wacc_without_a_source_uses_the_configured_rate(dcf_service, monkeypatch):
+    import valuation.dcf_service as module
+
+    monkeypatch.setattr(module, "DEFAULT_RISK_FREE_RATE", Decimal("0.031"))
+    highlights = FundamentalsHighlights(beta=Decimal("1.0"), market_cap=Decimal("1000000"))
+
+    res = dcf_service._compute_wacc(highlights, [], None)
+
+    # DCF_RISK_FREE_RATE, not a rate written in the code.
+    assert (res.risk_free_rate, res.risk_free_rate_source) == (Decimal("0.031"), "env_fallback")
+    assert res.risk_free_rate_date is None

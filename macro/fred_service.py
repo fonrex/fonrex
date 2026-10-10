@@ -8,7 +8,8 @@ import httpx
 
 from concurrency import run_sync
 from models import MacroRateCache
-from schemas.macro import MacroRate, MacroRatesResponse
+from schemas.dcf import DEFAULT_RISK_FREE_RATE
+from schemas.macro import RATE_UNIT, MacroRate, MacroRatesResponse, RiskFreeRate
 
 logger = logging.getLogger(__name__)
 
@@ -35,23 +36,22 @@ class FREDService:
         risk_free = await self._get_series("DGS10", "10-Year Treasury Constant Maturity Rate")
         return MacroRatesResponse(risk_free_rate=risk_free)
 
-    async def get_risk_free_rate(self) -> tuple[Decimal, str]:
-        """
-        Returns the risk-free rate and its source.
-        Used by DCFService.
+    async def get_risk_free_rate(self) -> RiskFreeRate:
+        """The risk-free rate for DCFService, and where it comes from.
+
+        A rate read from FRED is used whatever its sign: a zero or negative rate is
+        a rate. Without any (no key and nothing stored, or no answer), the rate of
+        ``DCF_RISK_FREE_RATE`` is used.
         """
         rates = await self.get_current_rates()
-        if rates.risk_free_rate is not None and rates.risk_free_rate.value > 0:
-            # Check source based on fetched_at or just report fred_cached
-            return rates.risk_free_rate.value, "fred_cached"
-        
-        # Fallback to .env
-        env_rf = os.environ.get("DCF_RISK_FREE_RATE", "0.04")
-        try:
-            val = Decimal(env_rf)
-            return val, "env_fallback"
-        except (ValueError, TypeError):
-            return Decimal("0.04"), "env_fallback"
+        rate = rates.risk_free_rate
+        if rate is not None:
+            return RiskFreeRate(
+                value=rate.value,
+                source=f"fred_{rate.freshness or 'cached'}",
+                observation_date=rate.observation_date,
+            )
+        return RiskFreeRate(value=DEFAULT_RISK_FREE_RATE, source="env_fallback")
 
     async def _get_series(self, series_id: str, label: str) -> MacroRate | None:
         """Fetch series from Redis, then PostgreSQL, then FRED."""
@@ -62,13 +62,15 @@ class FREDService:
                 cached_data = await self.redis_client.get(redis_key)
                 if cached_data:
                     data = json.loads(cached_data)
-                    return MacroRate(**data)
+                    return MacroRate(**{**data, "unit": RATE_UNIT, "freshness": "cached"})
             except Exception as e:
                 logger.warning("Erreur lecture cache Redis %s: %s", redis_key, e)
 
         # 2. The value stored in PostgreSQL, when it was read from FRED recently.
         stored, fetched_at = await run_sync(self._get_latest_from_db, series_id)
-        rate = stored if self._is_recent(fetched_at) else None
+        rate = stored.model_copy(update={"freshness": "cached"}) if (
+            stored and self._is_recent(fetched_at)
+        ) else None
 
         # 3. Otherwise FRED. The stored value is what is left when FRED cannot be
         # asked or does not answer — it used to be returned first, whatever its
@@ -81,11 +83,12 @@ class FREDService:
                     "FRED_API_KEY manquante, impossible de mettre à jour %s depuis l'API.",
                     series_id,
                 )
-            if rate is None:
-                rate = stored
+            if rate is None and stored is not None:
+                rate = stored.model_copy(update={"freshness": "stale"})
 
-        # Cache in Redis for the next requests
-        if rate and self.redis_client:
+        # Cache in Redis for the next requests. A stale value is not cached: FRED
+        # is asked again at the next request.
+        if rate and rate.freshness != "stale" and self.redis_client:
             try:
                 await self.redis_client.setex(
                     redis_key, 
@@ -154,8 +157,9 @@ class FREDService:
                     series_id=series_id,
                     label=label,
                     value=val_dec,
-                    unit="percent",
+                    unit=RATE_UNIT,
                     observation_date=obs_date,
+                    freshness="live",
                 )
                 
                 # Save to DB
@@ -213,7 +217,8 @@ class FREDService:
                         series_id=latest.series_id,
                         label=latest.label,
                         value=latest.value,
-                        unit=latest.unit,
+                        # Rows stored before say "percent": the value is a ratio all the same.
+                        unit=RATE_UNIT,
                         observation_date=latest.observation_date,
                     ),
                     latest.fetched_at,

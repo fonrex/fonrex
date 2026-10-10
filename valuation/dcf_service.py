@@ -5,7 +5,7 @@ DCFService — Computes DCF valuations (FCF, EPS, DDM) and sensitivity analysis.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Literal, Optional
 
@@ -23,6 +23,7 @@ from models import (
     FundamentalsHighlights,
 )
 from schemas.dcf import (
+    DEFAULT_RISK_FREE_RATE,
     DCFModelResult,
     DCFRequest,
     DCFResult,
@@ -31,6 +32,7 @@ from schemas.dcf import (
     WACCInput,
     WACCResult,
 )
+from schemas.macro import RiskFreeRate
 from settings import env_decimal
 
 logger = logging.getLogger(__name__)
@@ -90,10 +92,8 @@ class DCFService:
 
     async def compute_dcf(self, ticker: str, request: DCFRequest) -> DCFResult:
         """Run the synchronous SQLAlchemy valuation workflow off the event loop."""
-        rf_fred, rf_source = None, None
-        if self.fred:
-            rf_fred, rf_source = await self.fred.get_risk_free_rate()
-        return await run_sync(self._compute_dcf_sync, ticker, request, rf_fred, rf_source)
+        rf = await self.fred.get_risk_free_rate() if self.fred else None
+        return await run_sync(self._compute_dcf_sync, ticker, request, rf)
 
     def _find_asset_by_ticker(self, session, ticker: str) -> Optional[Asset]:
         """Resolves an Asset from its ticker string, handling fallback for suffix tickers (e.g. AIR.PA -> AIR)."""
@@ -143,9 +143,9 @@ class DCFService:
 
         return None
 
-    def _compute_dcf_sync(self, ticker: str, request: DCFRequest, 
-                          rf_fred: Optional[Decimal] = None, 
-                          rf_source: Optional[str] = None) -> DCFResult:
+    def _compute_dcf_sync(
+        self, ticker: str, request: DCFRequest, rf: Optional[RiskFreeRate] = None
+    ) -> DCFResult:
         """
         Computes the DCF valuation for a given ticker.
         """
@@ -199,7 +199,14 @@ class DCFService:
                 raise ValueError(f"Invalid or missing shares outstanding for {ticker}.")
 
             # 4. Compute WACC
-            wacc_res = self._compute_wacc(highlights, statements, request.wacc_params, rf_fred, rf_source)
+            wacc_res = self._compute_wacc(
+                highlights,
+                statements,
+                request.wacc_params,
+                rf.value if rf else None,
+                rf.source if rf else None,
+                rf.observation_date if rf else None,
+            )
 
             # 5. Compute requested models
             model_results: Dict[str, DCFModelResult] = {}
@@ -303,11 +310,14 @@ class DCFService:
         params: Optional[WACCInput],
         rf_fred: Optional[Decimal] = None,
         rf_source: Optional[str] = None,
+        rf_date: Optional[date] = None,
     ) -> WACCResult:
         """Computes the Weighted Average Cost of Capital (WACC)."""
-        # Default base parameters
-        risk_free = rf_fred if rf_fred is not None else Decimal("0.04")
-        current_rf_source = rf_source if rf_source else "env_fallback"
+        # Default base parameters: the rate of a source, otherwise DCF_RISK_FREE_RATE.
+        if rf_fred is not None:
+            risk_free, current_rf_source = rf_fred, rf_source or "fred_cached"
+        else:
+            risk_free, current_rf_source, rf_date = DEFAULT_RISK_FREE_RATE, "env_fallback", None
         
         erp = DEFAULT_EQUITY_RISK_PREMIUM
         beta = self._dec(highlights.beta) if highlights.beta else Decimal("1.0")
@@ -316,7 +326,7 @@ class DCFService:
         if params:
             if params.risk_free_rate is not None:
                 risk_free = params.risk_free_rate
-                current_rf_source = "client_override"
+                current_rf_source, rf_date = "client_override", None
             if params.equity_risk_premium is not None:
                 erp = params.equity_risk_premium
             if params.beta_override is not None:
@@ -393,7 +403,9 @@ class DCFService:
             weight_debt=weight_debt.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
             beta_used=beta.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
             cost_of_debt_source=current_kd_source,
+            risk_free_rate=risk_free,
             risk_free_rate_source=current_rf_source,
+            risk_free_rate_date=rf_date,
         )
 
     def _dcf_fcf(

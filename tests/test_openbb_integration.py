@@ -130,6 +130,18 @@ def test_openbb_macro_rates_endpoint_contract(client):
     assert "delta" in data[0]
 
 
+def test_openbb_macro_tile_shows_the_ratio_as_a_percentage():
+    from integrations.openbb.adapters import format_macro_rates_metric
+
+    tile = format_macro_rates_metric(
+        {"risk_free_rate": {"value": "0.0412", "unit": "ratio", "observation_date": "2026-10-08"}}
+    )
+
+    # It used to show "0.0412%".
+    assert tile[0]["value"] == "4.12%"
+    assert format_macro_rates_metric({"risk_free_rate": None})[0]["value"] == "N/A"
+
+
 def test_openbb_dcf_endpoints_contract(client):
     """GET /openbb/dcf/* returns flat AgGrid table rows."""
     from decimal import Decimal

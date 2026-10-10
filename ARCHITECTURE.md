@@ -122,6 +122,7 @@ At application startup, `main.py` initializes:
 - `RealtimePriceWorker` which restores all active subscriptions from `realtime_subscriptions`.
 - `NewsService` for `/news` routes, initialized with the shared async SQLAlchemy session factory and async Redis client.
 - `FREDService` for macro-economic series extraction (e.g. risk-free rate).
+- `ECBService` for euro area rates from the ECB Data Portal (euro risk-free rate, deposit facility rate, systemic stress).
 - `DCFService` for the valuation routes.
 - `ValidationLayer` for real-time validation of values returned by providers, and `CanaryMonitor` for daily provider health checks, both over the same `SqlAlchemyMonitoringRepository`.
 - `AsyncIOScheduler` (APScheduler) to schedule the daily canary check execution (default 06:00 UTC, configurable via `CANARY_RUN_HOUR`).
@@ -248,7 +249,9 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `news/providers/marketwatch_news.py` | MarketWatch news: `countrycode` query param for EU tickers, `<time dateTime>`. |
 | `news/providers/msn_finance_news.py` | MSN Finance news: internal JSON endpoint + HTML fallback. |
 | `macro/__init__.py` | Macro package marker (the service is imported from `macro.fred_service`). |
-| `macro/fred_service.py` | Reads macroeconomic series (the risk-free rate): Redis, then the stored value when it is recent, then the FRED API, the stored value being the fallback. |
+| `macro/rate_cache.py` | Cache shared by the macro sources: Redis, then the stored value when it is recent, then the source, the stored value being the fallback (`stale`). |
+| `macro/fred_service.py` | Reads FRED series (the US risk-free rate `DGS10`) through `macro/rate_cache.py`. |
+| `macro/ecb_service.py` | Reads ECB Data Portal series in CSV (euro AAA 10-year spot rate, deposit facility rate, CISS) through `macro/rate_cache.py`; rates published in percent are stored as ratios. |
 | `schemas/news.py` | Pydantic v2 schemas for the news system: `RawNewsItem`, `NewsArticleSchema`, `NewsResponse`, `NewsFeedResponse`, `NewsLanguage` / `NewsSentiment` enums. |
 | `schemas/macro.py` | Pydantic v2 schemas for macroeconomic rates response. |
 | `monitoring/__init__.py` | Monitoring package exposing `ValidationLayer` and `CanaryMonitor`. |
@@ -1294,6 +1297,8 @@ The statements are read as **fiscal years**: the three rows of a year (income st
 
 The `FREDService` provides the 10-Year Treasury Constant Maturity Rate (`DGS10`), used as the risk-free rate in WACC calculations. It looks, in this order, at Redis (6 hours, `MACRO_RATES_CACHE_TTL`), at the value stored in `macro_rates_cache` when it was read from FRED less than that lifetime ago, then at the FRED API (`FRED_API_KEY`). A stored value that is older is only what is left when FRED cannot be asked (no key) or does not answer. An observation FRED already gave is confirmed in place — value and date of reading — instead of adding a row. Rates are ratios (`0.0412` for 4.12 %, `unit` = `ratio`; rows stored before say `percent` and are read as ratios) and may be zero or negative. Each rate says how fresh it is (`freshness`): `live` (read from FRED for this answer), `cached` (Redis, or stored and read from FRED less than one cache lifetime ago) or `stale` (an older stored value: no key, or no answer; it is not put in Redis, so FRED is asked again next time). Without any value, the risk-free rate is `DCF_RISK_FREE_RATE` (4 % by default, read once at start-up). The WACC reports the rate used (`risk_free_rate`), its source (`risk_free_rate_source`: `fred_live`, `fred_cached`, `fred_stale`, `env_fallback` or `client_override`) and its observation date (`risk_free_rate_date`).
 
+The `ECBService` reads the series of the European Central Bank Data Portal (`https://data-api.ecb.europa.eu/service/data/{flow}/{key}?lastNObservations=5&format=csvdata`, free and without key; `ECB_API_URL` replaces the address) through the same cache as FRED (Redis key `macro:ecb:{flow.key}`, `macro_rates_cache` with `source = 'ecb'`). It keeps the latest observation with a value: the 10-year spot rate of the AAA euro area government yield curve (`YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y`, the euro risk-free rate), the deposit facility rate (`FM.D.U2.EUR.4F.KR.DFR.LEV`) and the Composite Indicator of Systemic Stress (`CISS.D.U2.Z0Z.4F.EC.SS_CIN.IDX`, an index stored as published). `get_euro_risk_free_rate()` reports `ecb_live`, `ecb_cached` or `ecb_stale`, or nothing when no value is known: the caller chooses the fallback.
+
 ### Weighting and Consensus
 
 The final intrinsic value (consensus) is calculated by combining active models according to default or custom weights in the request:
@@ -1571,6 +1576,7 @@ Every file of `alembic/versions/` is listed here (`tests/test_docs_consistency.p
 | 014 | `014_prices_per_listing.py` | Rebuild of `prices_eod` with the key `(asset_listing_id, resolution, time)`: existing rows are attached to their listing (a listing is created for an instrument that has prices and none), re-dated to their session (midnight UTC) and merged; compression re-enabled, segmented by listing and resolution; `prices_weekly` / `prices_monthly` recreated per listing from the daily bars, with real-time aggregation and a daily refresh policy. Before touching the tables, both directions delete the compression and refresh jobs of the price tables (waiting for a running one) and lock `prices_eod`: a TimescaleDB job running during the migration deadlocked with it. |
 | 015 | `015_dividend_yield_as_ratio.py` | Data correction: `fundamentals_highlights.dividend_yield` values stored as percentages (as Yahoo publishes them) are divided by 100, the rows already stored as ratios are left alone; no schema change. |
 | 016 | `016_price_series_adjustments.py` | `price_series_adjustments` table: the adjustment scheme of each stored price series (listing and resolution) and when it was last fetched in one piece. No row is written: the series stored before have none and are fetched again in full at their next ingestion; prices are not touched. |
+| 017 | `017_macro_rates_source.py` | `macro_rates_cache` holds several sources: `series_id` widened from 30 to 60 characters (ECB series are named `flow.key`, e.g. `YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y`), new `source` column (`fred`, `ecb`), set to `fred` for the rows already stored. The downgrade drops the rows whose name exceeds 30 characters. |
 
 ## Zipline Bundle (Backtesting Integration)
 

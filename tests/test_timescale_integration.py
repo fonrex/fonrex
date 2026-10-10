@@ -505,6 +505,50 @@ class TestAdjustmentSchemeOnPostgres:
         assert self._schemes(engine) == []
 
 
+class TestMacroRatesFromSeveralSources:
+    """Revision 017: ECB series names fit, and each row says its source."""
+
+    def test_an_ecb_series_is_stored_next_to_fred(self, engine):
+        series_id = "YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y"
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO macro_rates_cache
+                        (series_id, source, label, value, unit, observation_date)
+                    VALUES (:series_id, 'ecb', 'AAA 10Y', -0.005215, 'ratio', DATE '2020-08-03')
+                """),
+                {"series_id": series_id},
+            )
+            stored = connection.execute(
+                text("SELECT source, value FROM macro_rates_cache WHERE series_id = :series_id"),
+                {"series_id": series_id},
+            ).one()
+        assert (stored.source, float(stored.value)) == ("ecb", -0.005215)
+
+    def test_downgrade_drops_the_long_names_then_upgrade_marks_fred_rows(
+        self, database_url, engine
+    ):
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO macro_rates_cache (series_id, label, value, unit, observation_date)
+                    VALUES ('DGS10', '10Y', 0.0412, 'percent', DATE '2026-10-08')
+                """)
+            )
+
+        _alembic(database_url, "downgrade", "016")
+        with engine.connect() as connection:
+            names = connection.execute(text("SELECT series_id FROM macro_rates_cache")).scalars()
+            assert list(names) == ["DGS10"]
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            sources = connection.execute(
+                text("SELECT DISTINCT source FROM macro_rates_cache")
+            ).scalars()
+            assert list(sources) == ["fred"]
+
+
 # Price relations a migration must not hold while it waits: the tables, the
 # aggregates, their chunks and materialisation hypertables (named "_hyper_…",
 # "_materialized_hypertable_…", "_compressed_hypertable_…"). The catalog of the

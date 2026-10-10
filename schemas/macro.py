@@ -14,13 +14,18 @@ Freshness = Literal["live", "cached", "stale"]
 
 class MacroRate(BaseModel):
     """Une observation d'un taux macro-économique (ex: taux sans risque)."""
-    series_id: str = Field(..., description="L'identifiant de la série FRED (ex: DGS10).")
+    series_id: str = Field(
+        ...,
+        description="Series name: FRED id (DGS10) or ECB flow.key (YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y).",
+    )
     label: Optional[str] = Field(None, description="Libellé de la série.")
     value: Decimal = Field(
         ..., description="The rate as a ratio: 0.0412 for 4.12 %. It may be zero or negative."
     )
-    unit: Optional[str] = Field(RATE_UNIT, description="Always 'ratio'.")
-    observation_date: date = Field(..., description="Date d'observation par FRED.")
+    unit: Optional[str] = Field(
+        RATE_UNIT, description="'ratio' for a rate; 'index' for an index such as the CISS."
+    )
+    observation_date: date = Field(..., description="Date of the observation at the source.")
     freshness: Optional[Freshness] = Field(
         None,
         description=(
@@ -38,7 +43,7 @@ class RiskFreeRate:
     """The risk-free rate a valuation uses, and where it comes from."""
 
     value: Decimal
-    source: str  # fred_live, fred_cached, fred_stale or env_fallback
+    source: str  # fred_live, fred_cached, fred_stale, ecb_live, ..., or env_fallback
     observation_date: Optional[date] = None
 
 

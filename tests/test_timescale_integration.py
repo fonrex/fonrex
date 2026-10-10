@@ -864,3 +864,84 @@ class TestFactorReturnsOnPostgres:
         with engine.connect() as connection:
             assert connection.execute(text("SELECT to_regclass('factor_returns')")).scalar()
             assert connection.execute(text("SELECT to_regclass('factor_dataset_loads')")).scalar()
+
+
+class TestExchangeRatesOnPostgres:
+    """Revision 021 and ``macro.fx_rates`` on the database of an installation."""
+
+    @pytest.fixture
+    async def rates(self, database_url):
+        from macro.fx_rates import EcbExchangeRates
+
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        downloader = MagicMock()
+        yield EcbExchangeRates(async_sessionmaker(async_engine), downloader=downloader), downloader
+        await async_engine.dispose()
+
+    async def test_history_then_only_the_days_after_the_last_one(self, rates):
+        from decimal import Decimal
+
+        rates, downloader = rates
+        asked = []
+        answers = [
+            {date(2026, 10, 7): Decimal("1.0861"), date(2026, 10, 8): Decimal("1.0850")},
+            # A correction of the 8th and a new day.
+            {date(2026, 10, 8): Decimal("1.0851"), date(2026, 10, 9): Decimal("1.0790")},
+        ]
+
+        async def download(currency, start):
+            asked.append((currency, start))
+            return answers[len(asked) - 1]
+
+        downloader.side_effect = download
+
+        first = await rates.refresh("USD")
+        assert (first.status, first.first_day, first.last_day) == (
+            "fetched",
+            date(2026, 10, 7),
+            date(2026, 10, 8),
+        )
+        assert asked == [("USD", date(1999, 1, 4))]
+
+        assert (await rates.refresh("USD")).status == "fresh"  # read a moment ago
+
+        second = await rates.refresh("USD", force=True)
+        assert asked[1] == ("USD", date(2026, 10, 1))  # a week before the last day stored
+        assert (second.added, second.last_day) == (2, date(2026, 10, 9))
+        assert await rates.per_euro("USD") == {
+            date(2026, 10, 7): Decimal("1.08610000"),
+            date(2026, 10, 8): Decimal("1.08510000"),
+            date(2026, 10, 9): Decimal("1.07900000"),
+        }
+        euros = await rates.rates("USD", "EUR", start=date(2026, 10, 9))
+        assert euros == {date(2026, 10, 9): Decimal("0.92678406")}
+
+    async def test_a_failed_refresh_keeps_the_stored_days(self, rates):
+        from decimal import Decimal
+
+        rates, downloader = rates
+        async def download(currency, start):
+            return {date(2026, 10, 8): Decimal("0.8412")}
+
+        downloader.side_effect = download
+        await rates.refresh("GBP")
+        downloader.side_effect = RuntimeError("ECB down\nmore")
+
+        failed = await rates.refresh("GBP", force=True)
+
+        assert (failed.status, failed.last_day, failed.reason) == (
+            "failed",
+            date(2026, 10, 8),
+            "RuntimeError: ECB down",
+        )
+        assert await rates.per_euro("GBP") == {date(2026, 10, 8): Decimal("0.84120000")}
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "020")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('fx_rates')")).scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT to_regclass('fx_rates')")).scalar()

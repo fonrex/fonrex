@@ -915,3 +915,22 @@ class FactorDatasetLoad(Base):
     periods = Column(Integer, nullable=False, default=0)
     # "CRSP 202608": the database the library built the file from.
     source_note = Column(String(40))
+
+
+class FxRate(Base):
+    """ECB reference rate of the euro on one day: units of ``currency`` for one euro."""
+
+    __tablename__ = "fx_rates"
+    currency = Column(String(3), primary_key=True)
+    rate_date = Column(Date, primary_key=True)
+    per_eur = Column(Numeric(18, 8), nullable=False)
+
+
+class FxRateLoad(Base):
+    """The last refresh of the rates of one currency from the ECB."""
+
+    __tablename__ = "fx_rate_loads"
+    currency = Column(String(3), primary_key=True)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    first_day = Column(Date)
+    last_day = Column(Date)

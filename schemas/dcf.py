@@ -36,6 +36,14 @@ class WACCInput(BaseModel):
     beta_override: Optional[Decimal] = Field(None, description="Valeur de Beta forcée")
     cost_of_debt_override: Optional[Decimal] = Field(None, description="Coût de la dette forcé")
     tax_rate_override: Optional[Decimal] = Field(None, description="Taux d'imposition forcé")
+    cost_of_equity_model: Literal["capm", "ff3", "ff5", "carhart"] = Field(
+        "capm",
+        description=(
+            "capm: Rf + beta × equity risk premium. ff3, ff5, carhart: Rf + Σ beta × premium "
+            "of the Fama/French factors, betas measured on 60 months of returns of the "
+            "listing, premia the long-run means of the factors of its region"
+        ),
+    )
 
 
 class DCFRequest(BaseModel):
@@ -66,6 +74,22 @@ class DCFRequest(BaseModel):
         None,
         description="Pondérations personnalisées pour le calcul du consensus. Ex: {'fcf': 0.5, 'eps': 0.3, 'ddm': 0.2}",
     )
+
+
+class FactorCostOfEquityResult(BaseModel):
+    """How a Fama/French cost of equity was measured."""
+
+    model: Literal["ff3", "ff5", "carhart"]
+    region: Literal["us", "europe", "developed"]
+    betas: Dict[str, Decimal] = Field(..., description="Exposure of the listing to each factor")
+    premia: Dict[str, Decimal] = Field(
+        ..., description="Annual long-run premium of each factor (mean monthly return × 12)"
+    )
+    premium: Decimal = Field(..., description="Σ beta × premium, added to Rf")
+    start: date = Field(..., description="First month of the regression")
+    end: date = Field(..., description="Last month of the regression")
+    periods: int
+    r_squared: float
 
 
 class WACCResult(BaseModel):
@@ -102,6 +126,10 @@ class WACCResult(BaseModel):
             "Currency of the rate read from a source (EUR from the ECB, USD from FRED); "
             "null for DCF_RISK_FREE_RATE or a rate set in the request"
         ),
+    )
+    cost_of_equity_model: Literal["capm", "ff3", "ff5", "carhart"] = "capm"
+    factor_cost_of_equity: Optional[FactorCostOfEquityResult] = Field(
+        None, description="Betas and premia of a Fama/French cost of equity"
     )
 
 

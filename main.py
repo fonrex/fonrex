@@ -432,7 +432,11 @@ async def startup_event(application: FastAPI):
 
     try:
         state.dcf_service = DCFService(
-            state.db_service, state.redis_client, state.fred_service, state.ecb_service
+            state.db_service,
+            state.redis_client,
+            state.fred_service,
+            state.ecb_service,
+            factor_exposure=state.factor_exposure,
         )
         logger.info("📈 DCFService started")
     except Exception as exc:

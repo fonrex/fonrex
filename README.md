@@ -208,7 +208,7 @@ GET /technical/AIR.PA/chart?indicators=sma_20,bbands_20
 ```
 
 ### DCF Valuation (3 models)
-Intrinsic value calculated using fundamentals and dynamic macro-economic data, with local cache: the cash flows are discounted with the risk-free rate of their currency (US Treasury from FRED for USD, AAA euro area rate from the ECB for EUR).
+Intrinsic value calculated using fundamentals and dynamic macro-economic data, with local cache: the cash flows are discounted with the risk-free rate of their currency (US Treasury from FRED for USD, AAA euro area rate from the ECB for EUR). The cost of equity is the CAPM by default; `POST /dcf/{ticker}` with `wacc_params.cost_of_equity_model` = `ff3`, `ff5` or `carhart` takes it from the Fama/French factors instead (betas of the listing, long-run premia of the factors).
 
 | Model | When used | Formula |
 |---|---|---|

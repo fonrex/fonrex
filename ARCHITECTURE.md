@@ -258,6 +258,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `factors/french_library.py` | Catalogue of the Kenneth French Data Library datasets (US, Europe, developed markets; 3 factors, 5 factors, momentum; monthly and daily), download of a zipped file and parsing of its CSV into ratios. |
 | `factors/store.py` | Factor returns stored in `factor_returns` (asynchronous session): a file is stored whole, replacing the previous one, and not downloaded again before `FACTORS_REFRESH_DAYS`. |
 | `factors/exposure.py` | Factor exposure of a listing: daily closes of the listing (`adj_close`), converted in US dollars with the ECB rates, monthly or daily returns, alignment with the factors and ordinary least squares (numpy). |
+| `factors/cost_of_equity.py` | Cost of equity from the Fama/French factors for the valuation: betas of the listing and long-run premia of the factors of its region. |
 | `scripts/load_factors.py` | Command line download of the factor files into the database. |
 | `scripts/load_fx_rates.py` | Command line download of the ECB reference rates of the euro into the database. |
 | `schemas/news.py` | Pydantic v2 schemas for the news system: `RawNewsItem`, `NewsArticleSchema`, `NewsResponse`, `NewsFeedResponse`, `NewsLanguage` / `NewsSentiment` enums. |
@@ -1341,6 +1342,18 @@ A valuation is made in the **currency of the statements** (`valuation/currency.p
 - **Price in the same currency.** A price quoted in a minor unit is turned into its major one (`GBX`/`GBp` pence into GBP, `ZAC` into ZAR, `ILA` into ILS) before it is compared with the intrinsic value. A price in another currency (a US listing of a European company) is not converted: `consensus_upside_pct`, the `upside_pct` of each model and of each sensitivity cell are then empty, and `warnings` says why.
 - **Upside of each model.** `models.{fcf,eps,ddm}.upside_pct` is the upside of that model's value over the price (it used to be 0).
 
+### Cost of equity from the Fama/French factors
+
+`POST /dcf/{ticker}` accepts `wacc_params.cost_of_equity_model`: `capm` (the default, Rf + beta × equity risk premium), or `ff3`, `ff5`, `carhart`, which replace the cost of equity by Rf + Σ βₖ × premiumₖ (`factors/cost_of_equity.py`):
+
+- the betas are the exposure of the listing measured by `GET /factors/exposure/{ticker}` on 60 months of returns in US dollars (`factors/exposure.py`): the valuation needs the daily prices of the listing and the factor files, downloaded when missing;
+- the premia are the long-run premia of the factors of its region: the mean of all the stored monthly returns of each factor, times twelve (US since 1926 or 1963, Europe since 1990);
+- Rf stays the risk-free rate of the currency of the cash flows. The premia are excess returns in dollars over the US T-bill: for a valuation in another currency they are an approximation, said in `warnings`;
+- the WACC is computed again with this cost of equity (within 5–20 %), `beta_used` is the market beta, and `wacc.factor_cost_of_equity` gives the betas, the premia, Σ β × premium, the months of the regression and its R². `beta_override` and `equity_risk_premium` belong to the CAPM and are not used (a warning says so); a cost of equity below Rf is said too;
+- an exposure that cannot be measured (no prices, too short a history, no factor file) answers `404` with the reason, like a missing input of the valuation.
+
+The GET routes of the DCF keep the CAPM. Factor premia are estimated with a large error and change with the period: this cost of equity is a second opinion asked for, not the default.
+
 ### Supported Models Detail
 
 1. **Free Cash Flow (FCF) Model**: 
@@ -1614,6 +1627,7 @@ Test coverage, by theme:
 - `tests/test_fx_rates.py`: ECB answers of exchange rates (days without value, currency read from the key, unreadable answers), addresses, conversions between two currencies through the euro, and the command line script.
 - `tests/test_factors_routes.py`: the factor routes — datasets and what is stored, series as ratios, a file downloaded first when missing or stale, a failed download, the refresh of chosen files, unknown datasets and frequencies.
 - `tests/test_factor_exposure.py`: the factor exposure — region and currency of a listing, conversion in dollars (ECB holidays, stale rates), monthly and daily returns, alignment and window, a regression that finds known betas again, what cannot be measured and the route.
+- `tests/test_factor_cost_of_equity.py`: the Fama/French cost of equity — premia of the region, Σ beta × premium, the WACC computed again, the warnings (other currency, CAPM overrides, below Rf), the CAPM measuring nothing, and a model without database.
 - `tests/test_realtime.py`: complete behavior of realtime streaming (subscribe, unsubscribe, restore, process_tick), WebSocket connection manager, a tick delivered once to each client of a ticker, REST quote endpoints, and fallback policies.
 - `tests/test_monitoring.py`: unit tests covering the `ValidationLayer` (range checks on exact bounds, outlier consensus, filtered median, `validate_results` integration with outlier/out-of-range rejection, never-raises, dict/Pydantic field extraction), the `CanaryMonitor` (EU-only compatibility, canary checks ok/out-of-range/null/boundary, daily stats aggregation, Redis update via `fakeredis`), Pydantic schemas (`ProviderStatus`, `ProviderHealthSummary`, `DailyStatSchema`, `HealthStatsResponse`), and router endpoints (`TestClient`: 503 without config, canary trigger, Redis read via `httpx.AsyncClient`).
 - `tests/test_cache_service.py`: readable keys and duration per category, purge of a ticker, a pickled or unreadable entry is a miss and runs nothing, no application module imports `pickle`.

@@ -279,6 +279,12 @@ def test_division_by_zero_protection(dcf_service):
     assert wacc_res.wacc == Decimal("0.0950")
 
 
+def _currency_result(code):
+    result = MagicMock()
+    result.scalar.return_value = code
+    return result
+
+
 def test_sensitivity_matrix_shape(mock_session):
     """Verifies the shape of the generated sensitivity matrix."""
     db_service = MockDBService(mock_session)
@@ -318,6 +324,9 @@ def test_sensitivity_matrix_shape(mock_session):
         mock_result_hl,
         mock_result_stmt,
         mock_result_price,
+        # Currency of the statements, then of the listing of the price.
+        _currency_result("USD"),
+        _currency_result("USD"),
     ]
 
     wacc_range = [Decimal("0.08"), Decimal("0.10"), Decimal("0.12")]
@@ -681,18 +690,17 @@ def test_sensitivity_matrix_models(mock_session):
     mock_result_price = MagicMock()
     mock_result_price.scalar.return_value = Decimal("150.0")
 
-    mock_session.execute.side_effect = [
-        # For EPS test
+    one_run = [
         mock_result_asset,
         mock_result_hl,
         mock_result_stmt,
         mock_result_price,
-        # For DDM test
-        mock_result_asset,
-        mock_result_hl,
-        mock_result_stmt,
-        mock_result_price,
+        # Currency of the statements, then of the listing of the price.
+        _currency_result("USD"),
+        _currency_result("USD"),
     ]
+    # One run for the EPS model, one for the DDM model.
+    mock_session.execute.side_effect = one_run + one_run
 
     wacc_range = [Decimal("0.08"), Decimal("0.10")]
     growth_range = [Decimal("0.02")]

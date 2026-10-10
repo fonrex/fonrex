@@ -47,9 +47,11 @@ def client():
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.setex = AsyncMock()
     mock_fred = MagicMock()
-    mock_fred.get_current_rates = AsyncMock(return_value={"risk_free_rate": None})
+    mock_fred.get_rates = AsyncMock(return_value={"risk_free_rate": None})
+    mock_ecb = MagicMock()
+    mock_ecb.get_rates = AsyncMock(return_value={"risk_free_rate": None})
 
-    names = ("redis_client", "db_service", "db_available", "fred_service")
+    names = ("redis_client", "db_service", "db_available", "fred_service", "ecb_service")
     originals = {name: getattr(app.state, name, None) for name in names}
 
     with TestClient(app) as test_client:
@@ -57,6 +59,7 @@ def client():
         app.state.db_service = MagicMock()
         app.state.db_available = True
         app.state.fred_service = mock_fred
+        app.state.ecb_service = mock_ecb
         yield test_client
 
     for name, value in originals.items():

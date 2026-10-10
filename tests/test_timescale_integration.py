@@ -505,6 +505,155 @@ class TestAdjustmentSchemeOnPostgres:
         assert self._schemes(engine) == []
 
 
+class TestMacroRatesFromSeveralSources:
+    """Revision 017: ECB series names fit, and each row says its source."""
+
+    def test_an_ecb_series_is_stored_next_to_fred(self, engine):
+        series_id = "YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y"
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO macro_rates_cache
+                        (series_id, source, label, value, unit, observation_date)
+                    VALUES (:series_id, 'ecb', 'AAA 10Y', -0.005215, 'ratio', DATE '2020-08-03')
+                """),
+                {"series_id": series_id},
+            )
+            stored = connection.execute(
+                text("SELECT source, value FROM macro_rates_cache WHERE series_id = :series_id"),
+                {"series_id": series_id},
+            ).one()
+        assert (stored.source, float(stored.value)) == ("ecb", -0.005215)
+
+    def test_downgrade_drops_the_long_names_then_upgrade_marks_fred_rows(
+        self, database_url, engine
+    ):
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO macro_rates_cache (series_id, label, value, unit, observation_date)
+                    VALUES ('DGS10', '10Y', 0.0412, 'percent', DATE '2026-10-08')
+                """)
+            )
+
+        _alembic(database_url, "downgrade", "016")
+        with engine.connect() as connection:
+            names = connection.execute(text("SELECT series_id FROM macro_rates_cache")).scalars()
+            assert list(names) == ["DGS10"]
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            sources = connection.execute(
+                text("SELECT DISTINCT source FROM macro_rates_cache")
+            ).scalars()
+            assert list(sources) == ["fred"]
+
+
+class TestStatementsCurrencyIsRecordedOrUnknown:
+    """Revision 018: the USD written by default on every statement becomes unknown."""
+
+    @staticmethod
+    def _currencies(engine) -> dict[str, str | None]:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT statement_type, currency FROM financial_statements
+                    WHERE period_end = DATE '2025-12-31'
+                """)
+            ).all()
+        return dict(rows)
+
+    @staticmethod
+    def _default(engine) -> str | None:
+        with engine.connect() as connection:
+            return connection.execute(
+                text("""
+                    SELECT column_default FROM information_schema.columns
+                    WHERE table_name = 'financial_statements' AND column_name = 'currency'
+                """)
+            ).scalar()
+
+    def test_default_usd_becomes_unknown_and_comes_back_on_downgrade(self, database_url, engine):
+        _alembic(database_url, "downgrade", "017")
+        with engine.begin() as connection:
+            asset_id = connection.execute(text("SELECT min(id) FROM assets")).scalar()
+            connection.execute(
+                text("""
+                    INSERT INTO financial_statements
+                        (asset_id, statement_type, period_type, period_end)
+                    VALUES (:asset, 'income', 'annual', DATE '2025-12-31')
+                """),
+                {"asset": asset_id},
+            )
+        assert self._currencies(engine) == {"income": "USD"}
+
+        _alembic(database_url, "upgrade", "head")
+        assert self._currencies(engine) == {"income": None}
+        assert self._default(engine) is None
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO financial_statements
+                        (asset_id, statement_type, period_type, period_end, currency)
+                    VALUES (:asset, 'balance', 'annual', DATE '2025-12-31', 'EUR')
+                """),
+                {"asset": asset_id},
+            )
+        _alembic(database_url, "downgrade", "017")
+        assert self._currencies(engine) == {"income": "USD", "balance": "EUR"}
+        assert "USD" in self._default(engine)
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM financial_statements WHERE period_end = DATE '2025-12-31'")
+            )
+
+
+class TestYahooEpochDatesBecomeUnknown:
+    """Revision 019: the 1970-01-01 dates written from Yahoo epoch seconds are dropped."""
+
+    def test_only_the_1970_dates_become_null(self, database_url, engine):
+        _alembic(database_url, "downgrade", "018")
+        with engine.begin() as connection:
+            asset_ids = connection.execute(
+                text("SELECT asset_id FROM fundamentals_highlights ORDER BY asset_id LIMIT 2")
+            ).scalars().all()
+            wrong, right = asset_ids
+            connection.execute(
+                text("""
+                    UPDATE fundamentals_highlights
+                    SET dividend_ex_date = DATE '1970-01-01', shares_short_date = DATE '1970-01-01'
+                    WHERE asset_id = :asset
+                """),
+                {"asset": wrong},
+            )
+            connection.execute(
+                text("""
+                    UPDATE fundamentals_highlights
+                    SET dividend_ex_date = DATE '2026-08-11', shares_short_date = DATE '2026-09-15'
+                    WHERE asset_id = :asset
+                """),
+                {"asset": right},
+            )
+
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT asset_id, dividend_ex_date, shares_short_date
+                    FROM fundamentals_highlights WHERE asset_id IN (:wrong, :right)
+                """),
+                {"wrong": wrong, "right": right},
+            ).all()
+        dates = {asset_id: (ex_date, short_date) for asset_id, ex_date, short_date in rows}
+        assert dates == {
+            wrong: (None, None),
+            right: (date(2026, 8, 11), date(2026, 9, 15)),
+        }
+
+
 # Price relations a migration must not hold while it waits: the tables, the
 # aggregates, their chunks and materialisation hypertables (named "_hyper_…",
 # "_materialized_hypertable_…", "_compressed_hypertable_…"). The catalog of the

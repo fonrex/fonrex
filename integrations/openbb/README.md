@@ -47,7 +47,7 @@ directly inside OpenBB.
 | `fonrex_insider_transactions` | Fonrex Insider Transactions | Fundamentals | table | SEC Form 4 insider trading data (US only) |
 | `fonrex_etf_details` | Fonrex ETF Details | Fundamentals | table | UCITS ETF details from JustETF |
 | `fonrex_index_constituents` | Fonrex Index Constituents | Market Data | table | Index constituents (S&P 500, CAC 40, NASDAQ 100, DAX) |
-| `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates (FRED API) |
+| `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates, one card per series: US 10Y Treasury (FRED); euro AAA 10Y, ECB deposit rate, CISS (ECB). Parameter `currency`: USD, EUR or both |
 
 ## Pre-assembled Apps
 
@@ -61,7 +61,7 @@ A comprehensive dashboard for analyzing a single ticker:
 ### Fonrex — Screener & Macro
 An idea-generation dashboard:
 - **Screener** tab: Technical screener (e.g. RSI < 30 for oversold stocks)
-- **Macro Context** tab: Current FRED macro rates + index constituents
+- **Macro Context** tab: Current macro rates (FRED and ECB) + index constituents
 
 ## Authentication
 

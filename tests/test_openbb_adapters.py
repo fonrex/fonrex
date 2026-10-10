@@ -54,8 +54,9 @@ def test_format_macro_rates_metric():
         "risk_free_rate": {
             "series_id": "DGS10",
             "label": "10-Year Treasury Constant Maturity Rate",
-            "value": Decimal("4.25"),
-            "unit": "percent",
+            # /macro/rates gives the rate as a ratio: 0.0425 for 4.25 %.
+            "value": Decimal("0.0425"),
+            "unit": "ratio",
             "observation_date": date(2026, 9, 25),
         }
     }
@@ -63,7 +64,7 @@ def test_format_macro_rates_metric():
     assert isinstance(metrics, list)
     assert len(metrics) == 1
     item = metrics[0]
-    assert "DGS10" in item["label"] or "10-Year" in item["label"]
+    assert item["label"] == "US 10Y Treasury (2026-09-25)"
     assert item["value"] == "4.25%"
     assert item["delta"] is None
 
@@ -343,3 +344,8 @@ def test_format_etf_details_table():
     metrics = {r["metric"]: r["value"] for r in rows}
     assert metrics["ISIN"] == "IE00B4L5Y983"
     assert metrics["Domicile"] == "Ireland"
+
+
+def test_a_series_without_value_shows_not_available():
+    (card,) = format_macro_rates_metric({"rates": [{"series_id": "DGS10", "value": None}]})
+    assert card == {"label": "US 10Y Treasury", "value": "N/A", "delta": None}

@@ -8,6 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from database.component import DatabaseComponent
 from database.price_series import session_date
+from database.ticker_suffix import listing_on, ticker_lookups
 from models import Asset, AssetListing, IngestLog, PriceEOD, UsageLog
 
 logger = logging.getLogger(__name__)
@@ -416,15 +417,14 @@ class AssetRepository(DatabaseComponent):
                 if exact_results:
                     return exact_results
 
-                if "." in normalized_ticker:
-                    base_symbol = normalized_ticker.split(".")[0]
-                    if base_symbol:
-                        query = query.filter(
-                            (AssetListing.ticker == base_symbol)
-                            | (Asset.ticker == base_symbol)
-                        )
-                else:
+                # AIR.PA: the bare AIR, only on the place the suffix names.
+                bare = ticker_lookups(normalized_ticker)[1:]
+                if not bare:
                     return []
+                query = query.filter(
+                    (AssetListing.ticker == bare[0].symbol) | (Asset.ticker == bare[0].symbol),
+                    listing_on(bare[0].place),
+                )
             if normalized_isin:
                 query = query.filter(Asset.isin == normalized_isin)
             if normalized_exchange is not None:
@@ -543,19 +543,17 @@ class AssetRepository(DatabaseComponent):
                 ).first()
 
             if normalized_ticker:
-                tickers_to_try = [normalized_ticker]
-                if "." in normalized_ticker:
-                    base_symbol = normalized_ticker.split(".")[0]
-                    if base_symbol and base_symbol not in tickers_to_try:
-                        tickers_to_try.append(base_symbol)
-                return (
-                    query.filter(
-                        (Asset.ticker.in_(tickers_to_try))
-                        | (Asset.official_symbol.in_(tickers_to_try))
+                for lookup in ticker_lookups(normalized_ticker):
+                    by_symbol = query.filter(
+                        (Asset.ticker == lookup.symbol) | (Asset.official_symbol == lookup.symbol)
                     )
-                    .order_by(Asset.isin.desc(), Asset.exchange.asc())
-                    .first()
-                )
+                    if lookup.place is not None:
+                        # AIR.PA: the bare AIR, only when it is listed on that place.
+                        by_symbol = by_symbol.filter(Asset.listings.any(listing_on(lookup.place)))
+                    asset = by_symbol.order_by(Asset.isin.desc(), Asset.exchange.asc()).first()
+                    if asset:
+                        return asset
+                return None
 
             return None
         except SQLAlchemyError as e:

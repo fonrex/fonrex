@@ -39,6 +39,7 @@ from documentation import get_api_documentation
 from financials.router import router as financials_router
 from financials.service import FinancialsAggregator
 from historical.ingestion_service import HistoricalIngestionService
+from macro.ecb_service import ECBService
 from macro.fred_service import FREDService
 from monitoring.canary_monitor import CanaryMonitor
 from monitoring.validation_layer import ValidationLayer
@@ -291,6 +292,7 @@ def configure_application_state(application: FastAPI):
         "canary_monitor",
         "canary_scheduler",
         "fred_service",
+        "ecb_service",
         "validation_layer",
         "usage_recorder",
     ):
@@ -399,7 +401,16 @@ async def startup_event(application: FastAPI):
         logger.warning("⚠️ FREDService not started: %s", exc)
 
     try:
-        state.dcf_service = DCFService(state.db_service, state.redis_client, state.fred_service)
+        state.ecb_service = ECBService(state.db_service, state.redis_client)
+        logger.info("🇪🇺 ECBService started")
+    except Exception as exc:
+        state.ecb_service = None
+        logger.warning("⚠️ ECBService not started: %s", exc)
+
+    try:
+        state.dcf_service = DCFService(
+            state.db_service, state.redis_client, state.fred_service, state.ecb_service
+        )
         logger.info("📈 DCFService started")
     except Exception as exc:
         state.dcf_service = None
@@ -505,6 +516,7 @@ async def shutdown_event(application: FastAPI):
         "async_session_factory",
         "async_db_resources",
         "fred_service",
+        "ecb_service",
         "usage_recorder",
     ):
         setattr(state, state_name, None)

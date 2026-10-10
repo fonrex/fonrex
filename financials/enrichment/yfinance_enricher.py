@@ -13,6 +13,7 @@ import math
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -74,9 +75,21 @@ def _safe_get(source, key, converter=_to_decimal):
 
 
 def _safe_date(value):
-    """Convertit un timestamp pandas/datetime en date Python."""
-    if value is None:
+    """A date from a pandas timestamp, a datetime, a text, or Yahoo epoch seconds.
+
+    Yahoo gives the dates of ``info`` (``exDividendDate``, ``dateShortInterest``,
+    ``dividendDate``) as seconds since 1970. Read by ``pd.Timestamp`` as they are,
+    they were nanoseconds: every such date became 1970-01-01.
+    """
+    if value is None or isinstance(value, bool):
         return None
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        if not math.isfinite(value) or value <= 0:
+            return None
+        try:
+            return pd.Timestamp(value, unit="s", tz="UTC").date()
+        except (ValueError, OverflowError):  # OutOfBoundsDatetime is a ValueError
+            return None
     if isinstance(value, pd.Timestamp):
         return value.date()
     if isinstance(value, datetime):
@@ -85,6 +98,22 @@ def _safe_date(value):
         return pd.Timestamp(value).date()
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def _statements_currency(t) -> str | None:
+    """Currency of the financial statements of a Yahoo ticker (``financialCurrency``).
+
+    It is not always the currency of the share price: Airbus reports in EUR,
+    a London line is quoted in pence. ``None`` when Yahoo does not give it.
+    """
+    try:
+        value = (t.info or {}).get("financialCurrency")
+    except Exception as exc:  # the statements are stored without it
+        logger.debug("financialCurrency unavailable: %s", exc)
+        return None
+    if isinstance(value, str) and len(value.strip()) == 3 and value.strip().isalpha():
+        return value.strip().upper()
+    return None
 
 
 class YFinanceEnricher:
@@ -221,6 +250,7 @@ class YFinanceEnricher:
                 "dividend_yield": _percent_to_ratio(info.get("dividendYield")),
                 "dividend_rate": _to_decimal(info.get("dividendRate")),
                 "dividend_ex_date": _safe_date(info.get("exDividendDate")),
+                "dividend_pay_date": _safe_date(info.get("dividendDate")),
                 "payout_ratio": _to_decimal(info.get("payoutRatio")),
                 # Technique
                 "beta": _to_decimal(info.get("beta")),
@@ -338,12 +368,13 @@ class YFinanceEnricher:
                 ("cashflow", "quarterly", t.quarterly_cashflow, self.CASHFLOW_MAPPING),
             ]
 
+            currency = _statements_currency(t)
             count = 0
             for statement_type, period_type, df, mapping in statement_configs:
                 if df is None or df.empty:
                     continue
                 count += self._process_statement_df(
-                    asset_id, statement_type, period_type, df, mapping
+                    asset_id, statement_type, period_type, df, mapping, currency
                 )
 
             logger.debug("Statements upserted pour asset_id=%s: %d périodes", asset_id, count)
@@ -359,6 +390,7 @@ class YFinanceEnricher:
         period_type: str,
         df: pd.DataFrame,
         mapping: dict,
+        currency: str | None = None,
     ) -> int:
         """Traite un DataFrame de financial statement et upsert les données."""
         from models import FinancialStatement
@@ -378,6 +410,8 @@ class YFinanceEnricher:
                     "period_type": period_type,
                     "period_end": period_end,
                     "fetched_at": datetime.now(timezone.utc),
+                    # Currency of the figures (Yahoo's financialCurrency); None when unknown.
+                    "currency": currency,
                 }
 
                 # Extraire les métriques depuis les index du DataFrame

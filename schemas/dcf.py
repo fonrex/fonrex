@@ -4,7 +4,7 @@
 Schémas Pydantic pour le module DCF Valuation.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Literal, Optional
 
@@ -19,6 +19,9 @@ DEFAULT_PROJECTION_YEARS = env_int("DCF_DEFAULT_PROJECTION_YEARS", 5, minimum=3,
 DEFAULT_TERMINAL_GROWTH_RATE = env_decimal(
     "DCF_TERMINAL_GROWTH_RATE", "0.025", minimum="-1", maximum="1"
 )
+# Risk-free rate used when no source answers and none was ever stored. A ratio:
+# 0.04 for 4 %; it may be negative (euro government rates were, in 2019-2021).
+DEFAULT_RISK_FREE_RATE = env_decimal("DCF_RISK_FREE_RATE", "0.04", minimum="-0.1", maximum="0.5")
 
 
 class WACCInput(BaseModel):
@@ -78,8 +81,27 @@ class WACCResult(BaseModel):
     cost_of_debt_source: Optional[str] = Field(
         None, description="Source du Kd (client_override, calculated, sector_estimate)"
     )
+    risk_free_rate: Optional[Decimal] = Field(None, description="Rf used, as a ratio")
     risk_free_rate_source: Optional[str] = Field(
-        None, description="Source du Rf (client_override, fred_live, fred_cached, env_fallback)"
+        None,
+        description=(
+            "Source of Rf: client_override; ecb_live, ecb_cached, ecb_stale (euro AAA "
+            "10-year rate, for cash flows in EUR); fred_live, fred_cached, fred_stale (US "
+            "10-year Treasury rate, for cash flows in USD) — live: read now, cached: read "
+            "less than one cache lifetime ago, stale: older stored value, the source could "
+            "not be read; env_fallback (DCF_RISK_FREE_RATE: no source for the currency, or "
+            "nothing read)"
+        ),
+    )
+    risk_free_rate_date: Optional[date] = Field(
+        None, description="Observation date of Rf, when it comes from a source"
+    )
+    risk_free_rate_currency: Optional[str] = Field(
+        None,
+        description=(
+            "Currency of the rate read from a source (EUR from the ECB, USD from FRED); "
+            "null for DCF_RISK_FREE_RATE or a rate set in the request"
+        ),
     )
 
 
@@ -88,7 +110,11 @@ class DCFModelResult(BaseModel):
 
     model_name: str
     intrinsic_value_per_share: Decimal
-    upside_pct: Decimal
+    upside_pct: Optional[Decimal] = Field(
+        None,
+        description="Upside over the share price, in percent; null when the price is in "
+        "another currency than the statements",
+    )
     projected_values: List[Decimal]
     terminal_value: Decimal
     present_values: List[Decimal]
@@ -100,8 +126,12 @@ class DCFResult(BaseModel):
     """Réponse finale de l'API pour une valorisation DCF."""
 
     ticker: str
-    currency: str
+    currency: str = Field(..., description="Currency of the statements and of the values")
     current_price: Optional[Decimal] = None
+    price_currency: Optional[str] = Field(
+        None, description="Currency of current_price (converted from a minor unit such as GBX)"
+    )
+    warnings: List[str] = Field(default_factory=list)
     shares_outstanding: Optional[int] = None
     wacc: WACCResult
     models: Dict[str, DCFModelResult]
@@ -120,7 +150,7 @@ class SensitivityCell(BaseModel):
     wacc: Decimal
     terminal_growth: Decimal
     intrinsic_value: Decimal
-    upside_pct: Decimal
+    upside_pct: Optional[Decimal] = None
 
 
 class SensitivityResult(BaseModel):

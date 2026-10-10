@@ -126,6 +126,31 @@ async def test_deep_answer_cached_for_some_sections_serves_the_others_too():
     assert second["asset_profile"]["ticker"] == "AAPL"
 
 
+
+@pytest.mark.asyncio
+async def test_deep_answers_of_two_instruments_sharing_a_ticker_are_kept_apart():
+    """``AIR.PA`` (Airbus) and ``AIR`` (AAR Corp) both resolve to the catalogue ticker AIR."""
+    cache = SyncCache()
+    enricher = SimpleNamespace(enrich=AsyncMock(return_value={}))
+    instruments = {
+        "AIR": {"asset_id": 1, "ticker": "AIR", "isin": "US0003611052", "name": "AAR Corp"},
+        "AIR.PA": {"asset_id": 2, "ticker": "AIR", "isin": "NL0000235190", "name": "Airbus SE"},
+    }
+
+    def deep(ticker):
+        database = SimpleNamespace(
+            get_asset_context=MagicMock(return_value={"details": dict(instruments[ticker])}),
+            get_deep_sections=MagicMock(return_value=dict(EVERY_SECTION)),
+        )
+        return GetDeepFundamentals(database, cache, enricher=enricher).execute(ticker=ticker)
+
+    await deep("AIR.PA")
+    aar = await deep("AIR")
+
+    assert aar["asset_profile"]["name"] == "AAR Corp"
+    assert aar["meta"]["cache_hit"] is False
+    assert enricher.enrich.await_count == 2
+
 # ── /insider-transactions ────────────────────────────────────────────────────
 
 

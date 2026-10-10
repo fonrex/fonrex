@@ -402,12 +402,25 @@
   },
   "fonrex_macro_rates": {
     "name": "Fonrex Macro Rates",
-    "description": "Current macro-economic rates: risk-free rate (US 10Y), Fed funds rate, credit spread (FRED API)",
+    "description": "Current macro-economic rates: US 10Y Treasury (FRED); euro AAA 10Y spot rate, ECB deposit facility rate and euro area stress index CISS (ECB)",
     "category": "Macro",
     "type": "metric",
     "endpoint": "openbb/macro/rates",
-    "gridData": { "w": 10, "h": 6 },
+    "gridData": { "w": 20, "h": 6 },
     "source": ["Fonrex"],
-    "params": []
+    "params": [
+      {
+        "paramName": "currency",
+        "value": "",
+        "label": "Currency",
+        "type": "text",
+        "description": "USD (FRED) or EUR (ECB); empty for both",
+        "options": [
+          { "label": "USD and EUR", "value": "" },
+          { "label": "USD", "value": "USD" },
+          { "label": "EUR", "value": "EUR" }
+        ]
+      }
+    ]
   }
 }

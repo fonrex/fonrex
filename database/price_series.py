@@ -19,6 +19,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from database.ticker_suffix import listing_on, ticker_lookups
 from models import Asset, AssetListing, PriceEOD
 
 
@@ -52,14 +53,12 @@ def session_date(value: datetime | date) -> date:
 
 
 def ticker_candidates(ticker: str) -> list[str]:
-    """Symbols to look up for a requested ticker: itself, then without its suffix."""
-    normalized = ticker.strip().upper()
-    candidates = [normalized]
-    if "." in normalized:
-        base_symbol = normalized.split(".")[0]
-        if base_symbol and base_symbol not in candidates:
-            candidates.append(base_symbol)
-    return candidates
+    """Symbols to look up for a requested ticker: itself, then without its exchange suffix.
+
+    The symbol without suffix only designates a listing on the place the suffix
+    names (:mod:`database.ticker_suffix`).
+    """
+    return [lookup.symbol for lookup in ticker_lookups(ticker)]
 
 
 @dataclass(frozen=True)
@@ -162,9 +161,15 @@ def latest_daily_close_of_asset(asset_id: int) -> Select:
 
 def _statements(ticker: str, choice: ListingChoice) -> list[Select]:
     statements = []
-    for symbol in ticker_candidates(ticker):
-        statements.append(_listing_by_ticker(symbol, choice))
-        statements.append(_listing_of_asset_ticker(symbol, choice))
+    for lookup in ticker_lookups(ticker):
+        for statement in (
+            _listing_by_ticker(lookup.symbol, choice),
+            _listing_of_asset_ticker(lookup.symbol, choice),
+        ):
+            if lookup.place is not None:
+                # AIR.PA is Airbus in Paris: the bare AIR of another exchange is not it.
+                statement = statement.where(listing_on(lookup.place))
+            statements.append(statement)
     return statements
 
 

@@ -34,21 +34,26 @@ def client():
     orig_db = getattr(app.state, "db_service", None)
     orig_db_available = getattr(app.state, "db_available", None)
     orig_fred = getattr(app.state, "fred_service", None)
+    orig_ecb = getattr(app.state, "ecb_service", None)
 
     mock_fred = MagicMock()
-    mock_fred.get_current_rates = AsyncMock(return_value={"risk_free_rate": None})
+    mock_fred.get_rates = AsyncMock(return_value={"risk_free_rate": None})
+    mock_ecb = MagicMock()
+    mock_ecb.get_rates = AsyncMock(return_value={"risk_free_rate": None})
 
     with TestClient(app) as test_client:
         app.state.redis_client = mock_redis
         app.state.db_service = MagicMock()
         app.state.db_available = True
         app.state.fred_service = mock_fred
+        app.state.ecb_service = mock_ecb
         yield test_client
 
     app.state.redis_client = orig_redis
     app.state.db_service = orig_db
     app.state.db_available = orig_db_available
     app.state.fred_service = orig_fred
+    app.state.ecb_service = orig_ecb
 
 
 @pytest.fixture
@@ -128,6 +133,18 @@ def test_openbb_macro_rates_endpoint_contract(client):
     assert "label" in data[0]
     assert "value" in data[0]
     assert "delta" in data[0]
+
+
+def test_openbb_macro_tile_shows_the_ratio_as_a_percentage():
+    from integrations.openbb.adapters import format_macro_rates_metric
+
+    tile = format_macro_rates_metric(
+        {"risk_free_rate": {"value": "0.0412", "unit": "ratio", "observation_date": "2026-10-08"}}
+    )
+
+    # It used to show "0.0412%".
+    assert tile[0]["value"] == "4.12%"
+    assert format_macro_rates_metric({"risk_free_rate": None})[0]["value"] == "N/A"
 
 
 def test_openbb_dcf_endpoints_contract(client):

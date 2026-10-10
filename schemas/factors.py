@@ -78,3 +78,44 @@ class FactorSeriesResponse(BaseModel):
 class FactorRefreshResponse(BaseModel):
     source: str = SOURCE
     loads: List[FactorLoadInfo]
+
+
+class Coefficient(BaseModel):
+    value: float
+    std_error: float
+    t_stat: Optional[float] = Field(None, description="value / std_error")
+
+
+class ExposureAlpha(Coefficient):
+    annualized: float = Field(
+        ..., description="Alpha per period times the periods of a year (12 or 252)"
+    )
+
+
+class FactorExposureResponse(BaseModel):
+    """Regression of the excess returns of a listing on the Fama/French factors."""
+
+    ticker: str
+    listing: Dict[str, Optional[str]]
+    model: Literal["ff3", "ff5", "carhart"]
+    region: Literal["us", "europe", "developed"]
+    frequency: Literal["monthly", "daily"]
+    datasets: List[str]
+    return_currency: Literal["USD"] = Field(
+        "USD", description="Returns are in US dollars, as the factors"
+    )
+    converted_from: Optional[str] = Field(
+        None, description="Currency of the prices converted with the ECB reference rates"
+    )
+    start: date = Field(..., description="First period of the regression")
+    end: date = Field(..., description="Last period of the regression")
+    periods: int
+    alpha: ExposureAlpha
+    betas: Dict[str, Coefficient]
+    r_squared: float
+    adj_r_squared: float
+    residual_volatility: float = Field(
+        ..., description="Annualised standard deviation of the residuals (idiosyncratic risk)"
+    )
+    warnings: List[str]
+    source: str = SOURCE

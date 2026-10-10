@@ -36,12 +36,14 @@ from database.query import QueryService
 from database.service import DatabaseService
 from database.technical import SqlAlchemyTechnicalRepository
 from documentation import get_api_documentation
+from factors.exposure import FactorExposure
 from factors.store import FactorLibrary
 from financials.router import router as financials_router
 from financials.service import FinancialsAggregator
 from historical.ingestion_service import HistoricalIngestionService
 from macro.ecb_service import ECBService
 from macro.fred_service import FREDService
+from macro.fx_rates import EcbExchangeRates
 from monitoring.canary_monitor import CanaryMonitor
 from monitoring.validation_layer import ValidationLayer
 from news.news_service import NewsService
@@ -297,6 +299,7 @@ def configure_application_state(application: FastAPI):
         "fred_service",
         "ecb_service",
         "factor_library",
+        "factor_exposure",
         "validation_layer",
         "usage_recorder",
     ):
@@ -414,11 +417,17 @@ async def startup_event(application: FastAPI):
     try:
         if async_resources:
             state.factor_library = FactorLibrary(async_resources.session_factory)
+            state.factor_exposure = FactorExposure(
+                async_resources.session_factory,
+                state.factor_library,
+                EcbExchangeRates(async_resources.session_factory),
+            )
             logger.info("📐 FactorLibrary started")
         else:
             logger.warning("⚠️ DATABASE_URL not set — FactorLibrary disabled")
     except Exception as exc:
         state.factor_library = None
+        state.factor_exposure = None
         logger.warning("⚠️ FactorLibrary not started: %s", exc)
 
     try:
@@ -532,6 +541,7 @@ async def shutdown_event(application: FastAPI):
         "fred_service",
         "ecb_service",
         "factor_library",
+        "factor_exposure",
         "usage_recorder",
     ):
         setattr(state, state_name, None)

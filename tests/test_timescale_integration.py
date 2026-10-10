@@ -945,3 +945,46 @@ class TestExchangeRatesOnPostgres:
         _alembic(database_url, "upgrade", "head")
         with engine.connect() as connection:
             assert connection.execute(text("SELECT to_regclass('fx_rates')")).scalar()
+
+
+class TestFactorExposureReadsTheListing:
+    """``FactorExposure`` reads the daily closes of one listing, by its session date."""
+
+    async def test_closes_of_the_listing_asked_in_its_currency(self, database_url, engine):
+        from factors.exposure import FactorExposure
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin)
+                    VALUES (77, 'FFX', 'Exposure test', 'EUR', true, 'FR0000000077');
+                    INSERT INTO asset_listings
+                        (id, asset_id, ticker, exchange, currency, source, is_primary, is_active,
+                         created_at, updated_at)
+                    VALUES (770, 77, 'FFX', 'XPAR', 'EUR', 'csv', true, true, now(), now());
+                    INSERT INTO prices_eod
+                        (time, asset_id, asset_listing_id, close, adj_close, resolution)
+                    VALUES
+                        ('2026-09-29 00:00+00', 77, 770, 10.0, 9.5, '1D'),
+                        ('2026-09-30 00:00+00', 77, 770, 11.0, NULL, '1D'),
+                        ('2026-09-30 00:00+00', 77, 770, 99.0, 99.0, '1W');
+                """)
+            )
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        exposure = FactorExposure(async_sessionmaker(async_engine), library=None, fx=None)
+        try:
+            _, listing, closes = await exposure._listing("FFX", None, None, None)
+            missing = await exposure._listing("NOPE", None, None, None)
+        finally:
+            await async_engine.dispose()
+
+        assert (listing["ticker"], listing["currency"], listing["isin"]) == (
+            "FFX",
+            "EUR",
+            "FR0000000077",
+        )
+        # Daily bars only; the dividend-adjusted close, else the close.
+        assert closes == {date(2026, 9, 29): 9.5, date(2026, 9, 30): 11.0}
+        assert missing == (None, None, {})

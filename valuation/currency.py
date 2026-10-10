@@ -41,6 +41,11 @@ def _code(value: Optional[str]) -> Optional[str]:
     return value.upper() or None
 
 
+def currency_code(value: Optional[str]) -> Optional[str]:
+    """A currency code in upper case, ``GBp`` as ``GBX``; ``None`` if empty."""
+    return _code(value)
+
+
 @dataclass(frozen=True)
 class ValuationCurrency:
     """The currency of a valuation and how the share price relates to it."""

@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict
 from datetime import date
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from factors.exposure import PERIODS_PER_YEAR, ExposureError, FactorExposure
 from factors.french_library import DATASETS
 from factors.store import FactorLibrary, FactorLoad
 from schemas.factors import (
     FactorDatasetInfo,
     FactorDatasetsResponse,
+    FactorExposureResponse,
     FactorLoadInfo,
     FactorRefreshResponse,
     FactorSeriesResponse,
@@ -28,6 +31,13 @@ def get_factor_library(request: Request) -> FactorLibrary:
     if library is None:
         raise HTTPException(status_code=503, detail="Factor returns unavailable (no database)")
     return library
+
+
+def get_factor_exposure(request: Request) -> FactorExposure:
+    exposure = getattr(request.app.state, "factor_exposure", None)
+    if exposure is None:
+        raise HTTPException(status_code=503, detail="Factor exposure unavailable (no database)")
+    return exposure
 
 
 def _known_dataset(dataset: str) -> str:
@@ -90,6 +100,74 @@ async def refresh_factor_datasets(
         for period in dict.fromkeys(frequency)
     ]
     return FactorRefreshResponse(loads=loads)
+
+
+def _finite(value: float) -> float | None:
+    return value if math.isfinite(value) else None
+
+
+@router.get("/exposure/{ticker}", response_model=FactorExposureResponse)
+async def get_factor_exposure_of_listing(
+    ticker: str,
+    model: Literal["ff3", "ff5", "carhart"] = "ff3",
+    frequency: FrequencyParameter = "monthly",
+    window: Optional[int] = Query(
+        None, ge=24, le=10000, description="Periods regressed (60 months or 252 days by default)"
+    ),
+    end: Optional[date] = Query(None, description="Last period of the regression"),
+    region: Optional[Literal["us", "europe", "developed"]] = Query(
+        None, description="Factors of this region (from the currency of the listing by default)"
+    ),
+    currency: Optional[str] = Query(None, description="Currency of the listing to read"),
+    exchange: Optional[str] = Query(None, description="Exchange of the listing to read"),
+    isin: Optional[str] = Query(None, description="Instrument of the listing to read"),
+    exposure: FactorExposure = Depends(get_factor_exposure),
+):
+    """Exposure of a listing to the Fama/French factors (betas, alpha, R²).
+
+    The excess returns of the listing, in US dollars, are regressed on the
+    factors of its region: ``ff3`` (market, size, value), ``ff5`` (plus
+    profitability and investment) or ``carhart`` (``ff3`` plus momentum).
+    """
+    try:
+        result = await exposure.measure(
+            ticker,
+            model=model,
+            frequency=frequency,
+            window=window,
+            end=end,
+            region=region,
+            currency=currency,
+            exchange=exchange,
+            isin=isin,
+        )
+    except ExposureError as error:
+        raise HTTPException(status_code=error.status, detail=str(error)) from error
+
+    regression = result.regression
+    per_year = PERIODS_PER_YEAR[result.frequency]
+
+    def coefficient(item):
+        return {"value": item.value, "std_error": item.std_error, "t_stat": _finite(item.t_stat)}
+
+    return FactorExposureResponse(
+        ticker=result.ticker,
+        listing=result.listing,
+        model=result.model,
+        region=result.region,
+        frequency=result.frequency,
+        datasets=result.datasets,
+        converted_from=result.converted_from,
+        start=result.start,
+        end=result.end,
+        periods=regression.periods,
+        alpha={**coefficient(regression.alpha), "annualized": regression.alpha.value * per_year},
+        betas={name: coefficient(beta) for name, beta in regression.betas.items()},
+        r_squared=regression.r_squared,
+        adj_r_squared=regression.adj_r_squared,
+        residual_volatility=regression.residual_std * math.sqrt(per_year),
+        warnings=result.warnings,
+    )
 
 
 @router.get("/{dataset}", response_model=FactorSeriesResponse)

@@ -22,7 +22,7 @@
   <a href="#what-you-get">What you get</a> ·
   <a href="#works-with-your-tools">Integrations</a> ·
   <a href="#endpoints">Endpoints</a> ·
-  <a href="https://docs.fonrex.io/docs/intro">Documentation</a>
+  <a href="https://fonrex.io/docs/intro">Documentation</a>
 </p>
 
 <p align="center">

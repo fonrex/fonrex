@@ -756,6 +756,8 @@ OpenBB Workspace routes (`routers/openbb.py`). Each one calls the route function
 | --- | --- | --- | --- |
 | GET | `/openbb/quote/{ticker}` | `/quote/{ticker}` | metric |
 | GET | `/openbb/macro/rates` | `/macro/rates` | metric |
+| GET | `/openbb/macro/indicators` | `/macro/indicators` | metric |
+| GET | `/openbb/macro/indicators/{indicator}/chart` | `/macro/indicators/{indicator}` | chart |
 | GET | `/openbb/factors/exposure/{ticker}` | `/factors/exposure/{ticker}` | table |
 | GET | `/openbb/factors/{dataset}/chart` | `/factors/{dataset}` | chart |
 | GET | `/openbb/eod/{ticker}` | `/eod/{ticker}` | chart |

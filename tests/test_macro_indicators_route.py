@@ -242,3 +242,95 @@ def test_without_database_the_indicators_are_unavailable():
                 assert "Eurostat" in response.json()["detail"]
         finally:
             app.state.eurostat_service = original
+
+
+class TestOpenBB:
+    def test_one_tile_per_indicator_with_its_change(self, client):
+        response = client.get("/openbb/macro/indicators")
+
+        assert response.status_code == 200
+        tiles = response.json()
+        assert len(tiles) == len(INDICATORS)
+        assert tiles[0] == {
+            "label": "Inflation (HICP) (Sep 2026, estimate)",
+            "value": "3.80%",
+            "delta": 0.6,  # percentage points
+        }
+        by_label = {tile["label"].split(" (")[0]: tile for tile in tiles}
+        assert by_label["Core inflation"] == {
+            "label": "Core inflation (not refreshed)",
+            "value": "N/A",
+            "delta": None,
+        }
+        assert by_label["Unemployment"]["value"] == "6.40%"
+        assert by_label["Unemployment"]["delta"] is None
+        assert by_label["Economic sentiment"]["value"] == "97.9"
+        assert by_label["Economic sentiment"]["delta"] == -0.5
+
+    def test_a_country_is_passed_on(self, client, eurostat):
+        assert client.get("/openbb/macro/indicators", params={"geo": "FR"}).status_code == 200
+        assert eurostat.refresh.await_args.args[1] == "FR"
+
+    def test_one_line_per_country(self, client, eurostat):
+        response = client.get(
+            "/openbb/macro/indicators/hicp/chart", params={"geo": "EA,FR", "start": "2026-08-01"}
+        )
+
+        assert response.status_code == 200
+        figure = response.json()
+        assert [trace["name"] for trace in figure["data"]] == ["EA21", "FR"]
+        assert figure["data"][0]["x"] == ["2026-08-01", "2026-09-01"]
+        assert figure["data"][0]["y"] == [0.032, 0.038]
+        assert figure["layout"]["yaxis"]["tickformat"] == ".1%"
+        assert figure["layout"]["title"] == "Inflation (HICP) — Eurostat"
+
+    def test_the_chart_covers_ten_years_by_default(self, client, eurostat):
+        client.get("/openbb/macro/indicators/economic_sentiment/chart")
+
+        start = eurostat.observations.await_args.args[2]
+        assert (start.year, start.month, start.day) == (date.today().year - 10, 1, 1)
+        assert [call.args[1] for call in eurostat.observations.await_args_list] == [
+            "EA21",
+            "DE",
+            "FR",
+            "IT",
+            "ES",
+        ]
+
+    def test_an_index_is_not_shown_as_a_percentage(self):
+        from integrations.openbb.adapters import format_macro_indicator_chart
+
+        figure = format_macro_indicator_chart(
+            {"indicator": "consumer_confidence", "unit": "balance", "series": []}
+        )
+        assert figure["layout"]["yaxis"] == {"title": "Balance", "tickformat": ".1f"}
+
+    def test_a_quarter_is_named_as_such(self):
+        from integrations.openbb.adapters import format_macro_indicators_metric
+
+        tiles = format_macro_indicators_metric(
+            {
+                "indicators": [
+                    {
+                        "indicator": "gdp_qoq",
+                        "frequency": "quarterly",
+                        "unit": "ratio",
+                        "period": "2026-04-01",
+                        "value": 0.006,
+                        "change": 0.006,
+                        "load": {"status": "fresh"},
+                    }
+                ]
+            }
+        )
+        assert tiles == [{"label": "GDP q/q (2026-Q2)", "value": "0.60%", "delta": 0.6}]
+
+    def test_nothing_to_show(self):
+        from integrations.openbb.adapters import format_macro_indicators_metric
+
+        assert format_macro_indicators_metric({"indicators": []}) == [
+            {"label": "Eurostat indicators", "value": "N/A", "delta": None}
+        ]
+
+    def test_an_unknown_indicator_is_refused(self, client):
+        assert client.get("/openbb/macro/indicators/gdp/chart").status_code == 404

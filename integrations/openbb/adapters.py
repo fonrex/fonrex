@@ -784,3 +784,93 @@ def format_factor_returns_chart(series_obj: Any) -> Dict[str, Any]:
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         },
     }
+
+
+# Short names of the Eurostat indicators, for the tiles and the charts.
+INDICATOR_NAMES = {
+    "hicp": "Inflation (HICP)",
+    "hicp_core": "Core inflation",
+    "unemployment": "Unemployment",
+    "gdp_qoq": "GDP q/q",
+    "gdp_yoy": "GDP y/y",
+    "economic_sentiment": "Economic sentiment",
+    "consumer_confidence": "Consumer confidence",
+}
+
+
+def _period_label(period: Any, frequency: Optional[str]) -> str:
+    """``2026-09-01`` -> ``Sep 2026``; a quarter -> ``2026-Q2``."""
+    day = period if isinstance(period, date) else date.fromisoformat(str(period))
+    if frequency == "quarterly":
+        return f"{day.year}-Q{(day.month - 1) // 3 + 1}"
+    return day.strftime("%b %Y")
+
+
+def _indicator_tile(item: Dict[str, Any]) -> Dict[str, Any]:
+    name = INDICATOR_NAMES.get(item.get("indicator") or "") or item.get("label") or "Indicator"
+    load = _to_dict(item.get("load") or {})
+    value = item.get("value")
+    details = []
+    if item.get("period"):
+        details.append(_period_label(item["period"], item.get("frequency")))
+    if item.get("status") == "e":
+        details.append("estimate")
+    if load.get("status") == "failed":
+        details.append("not refreshed")
+    label = f"{name} ({', '.join(details)})" if details else name
+    if value is None:
+        return {"label": label, "value": "N/A", "delta": None}
+    change = item.get("change")
+    if item.get("unit") == "ratio":
+        # A ratio (0.038) is shown as a percentage (3.80%), its change in points.
+        shown = _percent(value)
+        delta = None if change is None else round(float(change) * 100, 2)
+    else:
+        shown = f"{float(value):.1f}"
+        delta = None if change is None else round(float(change), 1)
+    return {"label": label, "value": shown, "delta": delta}
+
+
+def format_macro_indicators_metric(indicators_obj: Any) -> List[Dict[str, Any]]:
+    """Latest Eurostat indicators of a country as OpenBB metric cards, one per indicator.
+
+    ``delta`` is the change on the previous period: in percentage points for a
+    rate, in points for an index or a balance.
+    """
+    data = _to_dict(indicators_obj)
+    items = [_to_dict(item) for item in data.get("indicators") or []]
+    if not items:
+        return [{"label": "Eurostat indicators", "value": "N/A", "delta": None}]
+    return [_indicator_tile(item) for item in items]
+
+
+def format_macro_indicator_chart(series_obj: Any) -> Dict[str, Any]:
+    """One Eurostat indicator over time as a Plotly figure, one line per country."""
+    data = _to_dict(series_obj)
+    is_rate = data.get("unit") == "ratio"
+    traces = []
+    for series in data.get("series") or []:
+        series = _to_dict(series)
+        observations = [_to_dict(o) for o in series.get("observations") or []]
+        traces.append(
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": series.get("geo"),
+                "x": [_to_plain_value(o.get("period")) for o in observations],
+                "y": [o.get("value") for o in observations],
+            }
+        )
+    name = INDICATOR_NAMES.get(data.get("indicator") or "") or data.get("label") or "Indicator"
+    return {
+        "data": traces,
+        "layout": {
+            "title": f"{name} — Eurostat",
+            "xaxis": {"rangeslider": {"visible": False}},
+            "yaxis": {
+                "title": "Rate" if is_rate else ("Index" if data.get("unit") == "index" else "Balance"),
+                "tickformat": ".1%" if is_rate else ".1f",
+            },
+            "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
+        },
+    }

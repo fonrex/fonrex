@@ -108,6 +108,8 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/etf/{isin}/details",
     "openbb/index/{index_name}/constituents",
     "openbb/macro/rates",
+    "openbb/macro/indicators",
+    "openbb/macro/indicators/{indicator}/chart",
     "openbb/factors/exposure/{ticker}",
     "openbb/factors/{dataset}/chart",
 ]

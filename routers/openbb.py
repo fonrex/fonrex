@@ -29,6 +29,8 @@ from integrations.openbb.adapters import (
     format_fundamentals_deep_table,
     format_fundamentals_table,
     format_indicator_chart,
+    format_macro_indicator_chart,
+    format_macro_indicators_metric,
     format_macro_rates_metric,
     format_quote_metric,
     format_technical_chart_overlay,
@@ -58,7 +60,12 @@ from routers.fundamentals import (
     get_validation_layer,
 )
 from routers.historical import ISIN_QUERY_PATTERN, get_ticker_history
-from routers.macro import get_macro_rates
+from routers.macro import (
+    get_eurostat_service,
+    get_macro_indicator_series,
+    get_macro_indicators,
+    get_macro_rates,
+)
 from routers.news import (
     NEWS_DEFAULT_LIMIT,
     NEWS_MAX_LIMIT,
@@ -126,6 +133,16 @@ async def get_openbb_macro_rates(
     """Return current macro rates (USD and EUR by default) formatted as OpenBB metric tiles."""
     rates_res = await get_macro_rates(request=request, currency=currency)
     return format_macro_rates_metric(rates_res)
+
+
+@router.get("/macro/indicators")
+async def get_openbb_macro_indicators(
+    geo: str = Query("EA", description="Country or area: EA (euro area), DE, FR..."),
+    service=Depends(get_eurostat_service),
+) -> List[Dict[str, Any]]:
+    """Return the latest Eurostat indicators of a country as OpenBB metric tiles."""
+    res = await get_macro_indicators(geo=geo, indicator=None, service=service)
+    return format_macro_indicators_metric(res)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -434,6 +451,23 @@ async def get_openbb_factor_returns_chart(
         dataset=dataset, frequency=frequency, start=start, end=None, library=library
     )
     return format_factor_returns_chart(res)
+
+
+@router.get("/macro/indicators/{indicator}/chart")
+async def get_openbb_macro_indicator_chart(
+    indicator: str,
+    geo: str = Query("EA,DE,FR,IT,ES", description="Countries or areas, separated by commas"),
+    start: Optional[date] = None,
+    service=Depends(get_eurostat_service),
+) -> Dict[str, Any]:
+    """Return one Eurostat indicator of several countries as a Plotly chart (10 years by default)."""
+    if start is None:
+        today = date.today()
+        start = today.replace(year=today.year - 10, month=1, day=1)
+    res = await get_macro_indicator_series(
+        indicator=indicator, geo=geo, start=start, end=None, service=service
+    )
+    return format_macro_indicator_chart(res)
 
 
 @router.get("/dcf/{ticker}")

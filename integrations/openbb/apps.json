@@ -276,6 +276,22 @@
             "w": 14,
             "h": 12,
             "state": { "params": { "index_name": "cac40" } }
+          },
+          {
+            "i": "fonrex_macro_indicators",
+            "x": 0,
+            "y": 6,
+            "w": 10,
+            "h": 8,
+            "state": { "params": { "geo": "EA" } }
+          },
+          {
+            "i": "fonrex_macro_indicator_chart",
+            "x": 0,
+            "y": 14,
+            "w": 24,
+            "h": 12,
+            "state": { "params": { "indicator": "hicp", "geo": "EA,DE,FR,IT,ES" } }
           }
         ]
       }

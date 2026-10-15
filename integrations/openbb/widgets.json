@@ -423,6 +423,79 @@
       }
     ]
   },
+  "fonrex_macro_indicators": {
+    "name": "Fonrex Macro Indicators",
+    "description": "Latest Eurostat indicators of a country or of the euro area: inflation (HICP) and core inflation, unemployment rate, GDP growth, economic sentiment and consumer confidence, with the change on the previous period",
+    "category": "Macro",
+    "type": "metric",
+    "endpoint": "openbb/macro/indicators",
+    "gridData": { "w": 20, "h": 8 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "geo",
+        "value": "EA",
+        "label": "Country",
+        "type": "text",
+        "description": "Country or area (Eurostat code)",
+        "options": [
+          { "label": "Euro area", "value": "EA" },
+          { "label": "European Union", "value": "EU27_2020" },
+          { "label": "Germany", "value": "DE" },
+          { "label": "France", "value": "FR" },
+          { "label": "Italy", "value": "IT" },
+          { "label": "Spain", "value": "ES" },
+          { "label": "Netherlands", "value": "NL" },
+          { "label": "Belgium", "value": "BE" },
+          { "label": "Austria", "value": "AT" },
+          { "label": "Portugal", "value": "PT" },
+          { "label": "Ireland", "value": "IE" },
+          { "label": "Finland", "value": "FI" }
+        ]
+      }
+    ]
+  },
+  "fonrex_macro_indicator_chart": {
+    "name": "Fonrex Macro Indicator Chart",
+    "description": "One Eurostat indicator over time, one line per country (inflation, unemployment, GDP growth, sentiment), last 10 years by default",
+    "category": "Macro",
+    "type": "chart",
+    "endpoint": "openbb/macro/indicators/{indicator}/chart",
+    "gridData": { "w": 20, "h": 12 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "indicator",
+        "value": "hicp",
+        "label": "Indicator",
+        "type": "text",
+        "description": "Eurostat indicator",
+        "options": [
+          { "label": "Inflation (HICP)", "value": "hicp" },
+          { "label": "Core inflation", "value": "hicp_core" },
+          { "label": "Unemployment rate", "value": "unemployment" },
+          { "label": "GDP growth, quarter on quarter", "value": "gdp_qoq" },
+          { "label": "GDP growth, year on year", "value": "gdp_yoy" },
+          { "label": "Economic sentiment", "value": "economic_sentiment" },
+          { "label": "Consumer confidence", "value": "consumer_confidence" }
+        ]
+      },
+      {
+        "paramName": "geo",
+        "value": "EA,DE,FR,IT,ES",
+        "label": "Countries",
+        "type": "text",
+        "description": "Up to 10 countries or areas separated by commas (EA for the euro area)"
+      },
+      {
+        "paramName": "start",
+        "value": "",
+        "label": "Start",
+        "type": "date",
+        "description": "First period (10 years ago when empty)"
+      }
+    ]
+  },
   "fonrex_factor_exposure": {
     "name": "Fonrex Factor Exposure",
     "description": "Exposure of a listing to the Fama/French factors (Kenneth French Data Library): alpha, betas with t-stats, R², on returns in US dollars",

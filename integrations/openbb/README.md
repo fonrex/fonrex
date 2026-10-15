@@ -48,6 +48,8 @@ directly inside OpenBB.
 | `fonrex_etf_details` | Fonrex ETF Details | Fundamentals | table | UCITS ETF details from JustETF |
 | `fonrex_index_constituents` | Fonrex Index Constituents | Market Data | table | Index constituents (S&P 500, CAC 40, NASDAQ 100, DAX) |
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates, one card per series: US 10Y Treasury (FRED); euro AAA 10Y, ECB deposit rate, CISS (ECB). Parameter `currency`: USD, EUR or both |
+| `fonrex_macro_indicators` | Fonrex Macro Indicators | Macro | metric | Latest Eurostat indicators of a country or of the euro area (parameter `geo`, `EA` by default): inflation (HICP) and core inflation, unemployment rate, GDP growth on the quarter and on the year, economic sentiment, consumer confidence; `delta` is the change on the previous period (percentage points for a rate) |
+| `fonrex_macro_indicator_chart` | Fonrex Macro Indicator Chart | Macro | chart | One Eurostat indicator over time, one line per country (parameter `geo`, up to 10 separated by commas, `EA,DE,FR,IT,ES` by default), last 10 years by default (parameter `start`). Source: Eurostat |
 | `fonrex_factor_exposure` | Fonrex Factor Exposure | Factors | table | Fama/French exposure of a listing (model ff3, ff5 or carhart; monthly or daily): annualised alpha, betas with standard errors and t-stats, R², residual volatility, periods and warnings. Returns are in US dollars (other currencies converted with the ECB reference rates) |
 | `fonrex_factor_returns` | Fonrex Factor Returns | Factors | chart | Cumulative returns of the factors of a dataset (US, Europe or developed markets; 3 factors, 5 factors or momentum), in US dollars, last 10 years by default (parameter `start`). Source: Kenneth R. French Data Library |
 
@@ -65,7 +67,7 @@ A comprehensive dashboard for analyzing a single ticker:
 ### Fonrex — Screener & Macro
 An idea-generation dashboard:
 - **Screener** tab: Technical screener (e.g. RSI < 30 for oversold stocks)
-- **Macro Context** tab: Current macro rates (FRED and ECB) + index constituents
+- **Macro Context** tab: Current macro rates (FRED and ECB), Eurostat indicators of the euro area, inflation of the main euro area countries over time + index constituents
 
 ## Authentication
 

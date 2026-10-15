@@ -947,6 +947,45 @@ class TestExchangeRatesOnPostgres:
             assert connection.execute(text("SELECT to_regclass('fx_rates')")).scalar()
 
 
+class TestMacroObservationsOnPostgres:
+    """Revision 022: macro-economic series by period."""
+
+    def test_a_revision_replaces_the_value_of_its_period(self, engine):
+        upsert = text("""
+            INSERT INTO macro_observations
+                (source, indicator, geo, period, frequency, value, unit, status, fetched_at)
+            VALUES ('eurostat', 'hicp', 'EA21', DATE '2026-09-01', 'monthly',
+                    :value, 'ratio', :status, now())
+            ON CONFLICT (source, indicator, geo, period)
+            DO UPDATE SET value = EXCLUDED.value, status = EXCLUDED.status,
+                          fetched_at = EXCLUDED.fetched_at
+        """)
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM macro_observations"))
+            # The flash estimate, then the final figure a month later.
+            connection.execute(upsert, {"value": "0.038", "status": "e"})
+            connection.execute(upsert, {"value": "0.037", "status": None})
+            rows = connection.execute(
+                text("SELECT value, status FROM macro_observations")
+            ).all()
+            connection.execute(text("DELETE FROM macro_observations"))
+        assert [(str(value), status) for value, status in rows] == [("0.03700000", None)]
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "021")
+        with engine.connect() as connection:
+            for table in ("macro_observations", "macro_series_loads"):
+                assert connection.execute(
+                    text("SELECT to_regclass(:table)"), {"table": table}
+                ).scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            for table in ("macro_observations", "macro_series_loads"):
+                assert connection.execute(
+                    text("SELECT to_regclass(:table)"), {"table": table}
+                ).scalar()
+
+
 class TestFactorExposureReadsTheListing:
     """``FactorExposure`` reads the daily closes of one listing, by its session date."""
 

@@ -888,6 +888,41 @@ class MacroRateCache(Base):
     fetched_at       = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class MacroObservation(Base):
+    """One value of a macro-economic series for one period (Eurostat indicators).
+
+    A period is dated by its first day: ``2026-09`` is 1 September 2026 and
+    ``2026-Q2`` is 1 April 2026. A rate is a ratio (``0.038`` for 3.8 %); an index
+    or a survey balance is stored as published. A revision of the source replaces
+    the value of its period.
+    """
+
+    __tablename__ = "macro_observations"
+    source = Column(String(10), primary_key=True)  # "eurostat"
+    indicator = Column(String(30), primary_key=True)  # "hicp", "unemployment", ...
+    geo = Column(String(10), primary_key=True)  # "EA21", "FR", ...
+    period = Column(Date, primary_key=True)
+    frequency = Column(String(10), nullable=False)  # "monthly" | "quarterly"
+    value = Column(Numeric(18, 8), nullable=False)
+    unit = Column(String(10), nullable=False)  # "ratio" | "index" | "balance"
+    status = Column(String(8))  # flag of the source: "e" for an estimate, ...
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class MacroSeriesLoad(Base):
+    """The last refresh of one macro-economic series, and the periods it held."""
+
+    __tablename__ = "macro_series_loads"
+    source = Column(String(10), primary_key=True)
+    indicator = Column(String(30), primary_key=True)
+    geo = Column(String(10), primary_key=True)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    first_period = Column(Date)
+    last_period = Column(Date)
+    # Last update of the series announced by the source ("LAST UPDATE" of Eurostat).
+    source_updated_at = Column(DateTime(timezone=True))
+
+
 class FactorReturn(Base):
     """One factor return of the Kenneth French library, as a ratio, for one period.
 

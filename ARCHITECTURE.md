@@ -188,7 +188,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `use_cases/realtime.py` | Realtime quote, multi-quotes, subscription, unsubscription, and status use cases. |
 | `use_cases/errors.py` | Application error vocabulary without FastAPI dependency (`InvalidInput`, `ResourceNotFound`, `DependencyUnavailable`, `UpstreamFailure`). |
 | `concurrency.py` | Boundary between asynchronous orchestration and blocking adapters, via `run_sync()` and the standard worker pool; the only other pool is the dedicated TradingView stream pool of `realtime/worker.py`. |
-| `models.py` | Central ORM models: instruments, listings, provider mappings, EOD and intraday prices, realtime subscriptions, fundamentals (highlights, statements, earnings, ratings, ESG, trends, outstanding shares), ETFs, news articles, provider health logs/aggregates/alerts, macro rate cache, usage and ingestion logs. |
+| `models.py` | Central ORM models: instruments, listings, provider mappings, EOD and intraday prices, realtime subscriptions, fundamentals (highlights, statements, earnings, ratings, ESG, trends, outstanding shares), ETFs, news articles, provider health logs/aggregates/alerts, macro rate cache, macro-economic series by period (Eurostat), factor returns, euro exchange rates, usage and ingestion logs. |
 | `database/service.py` | Compatibility facade and SQLAlchemy composition root; owns the engine/session factory and delegates to specialized components. |
 | `database/assets.py` | Asset identity/listing, mappings, and profile enrichment repository. |
 | `database/fundamentals.py` | Standard and deep fundamentals read repository. |
@@ -651,6 +651,7 @@ Constraints, indexes, and compatibility:
 - `provider_health_daily` contains a daily aggregate per provider, with unique constraint `uq_provider_health_daily(provider_name, date)`. Columns: counters by status, success rate, average latency, canary result, and `is_healthy` flag.
 - `provider_alerts` stores alerts with index `(provider_name, is_resolved)` and `(severity, is_resolved)`. Two alert types are raised today, `canary_failed` and `high_outlier_rate`; `consecutive_nulls` and `latency_spike` are named in the schema but no code raises them. Canary alerts are auto-resolved when all checks pass.
 - `macro_rates_cache` keeps the series read from FRED, unique by `(series_id, observation_date)`.
+- `macro_observations` keeps the monthly and quarterly indicators of Eurostat, one row per `(source, indicator, geo, period)`; a period is dated by its first day (`2026-Q2` is `2026-04-01`) and a revision of the source replaces the value of its period. `status` keeps the flag of the source (`e` for an estimate). `macro_series_loads` records the last refresh of each series.
 - `usage_logs` holds one row per API request, with indexes on `created_at` alone and combined with `endpoint`, `api_key_id` and `provider_used` (see [Cache And Logging](#cache-and-logging)).
 - Two objects exist in the database without an ORM model: the `index_constituents` table (migration 003), which no code reads or writes — index constituents are fetched and kept in Redis — and the `fundamentals_v2` view (migration 002).
 
@@ -1672,6 +1673,7 @@ Every file of `alembic/versions/` is listed here (`tests/test_docs_consistency.p
 | 019 | `019_yahoo_epoch_dates.py` | `fundamentals_highlights.dividend_ex_date` and `shares_short_date` equal to 1970-01-01 become NULL: Yahoo gives these dates in seconds since 1970 and the enrichment read them as nanoseconds. The enrichment now reads seconds (and also stores `dividend_pay_date` from `dividendDate`); the dates come back at the next refresh. The downgrade leaves the data alone. |
 | 020 | `020_factor_returns.py` | `factor_returns` (dataset, frequency, period end, factor → value as a ratio) and `factor_dataset_loads` (last download of each file of the Kenneth French library). The downgrade drops both tables. |
 | 021 | `021_fx_rates.py` | `fx_rates` (currency, day → units of the currency for one euro, ECB reference rate) and `fx_rate_loads` (last refresh of each currency). The downgrade drops both tables. |
+| 022 | `022_macro_observations.py` | `macro_observations` (source, indicator, geographic area, period → value, unit, flag of the source; Eurostat indicators, monthly or quarterly, a revision replacing the value of its period) and `macro_series_loads` (last refresh of each series). The downgrade drops both tables. |
 
 ## Zipline Bundle (Backtesting Integration)
 

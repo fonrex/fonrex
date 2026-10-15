@@ -1,0 +1,73 @@
+{
+  "hicp_total.csv": {
+    "EA": {
+      "period": "2026-09-01",
+      "value": "0.038",
+      "status": "e"
+    },
+    "FR": {
+      "period": "2026-09-01",
+      "value": "0.034",
+      "status": "e"
+    },
+    "DE": {
+      "period": "2026-09-01",
+      "value": "0.033",
+      "status": "e"
+    },
+    "rows": 18
+  },
+  "hicp_core.csv": {
+    "EA": {
+      "period": "2026-09-01",
+      "value": "0.025",
+      "status": "e"
+    },
+    "rows": 8
+  },
+  "unemployment.csv": {
+    "EA21": {
+      "period": "2026-08-01",
+      "value": "0.064"
+    },
+    "FR": {
+      "period": "2026-08-01",
+      "value": "0.082"
+    },
+    "rows": 9
+  },
+  "gdp_growth.csv": {
+    "EA CLV_PCH_PRE": {
+      "period": "2026-04-01",
+      "value": "0.006"
+    },
+    "FR CLV_PCH_PRE": {
+      "period": "2026-01-01",
+      "value": "-0.002"
+    },
+    "EA CLV_PCH_SM": {
+      "period": "2026-04-01",
+      "value": "0.012"
+    },
+    "rows": 16
+  },
+  "sentiment.csv": {
+    "EA21 BS-ESI-I": {
+      "period": "2026-09-01",
+      "value": "97.9",
+      "unit": "index"
+    },
+    "FR BS-CSMCI-BAL": {
+      "period": "2026-09-01",
+      "value": "-18.4",
+      "unit": "balance"
+    },
+    "rows": 12
+  },
+  "error_invalid_geo.xml": {
+    "http_status": 400
+  },
+  "error_unknown_dataset.xml": {
+    "http_status": 404
+  }
+}

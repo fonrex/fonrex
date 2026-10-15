@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Literal, Optional
 
@@ -72,6 +72,96 @@ class MacroRatesResponse(BaseModel):
             "CISS stress index for EUR."
         ),
     )
+
+
+EUROSTAT_SOURCE = "Eurostat, https://ec.europa.eu/eurostat"
+
+IndicatorUnit = Literal["ratio", "index", "balance"]
+
+
+class IndicatorLoad(BaseModel):
+    """What the database holds for one series, and what its last refresh did."""
+
+    status: Literal["fetched", "fresh", "failed"] = Field(
+        ...,
+        description=(
+            "fetched: read from Eurostat for this answer; fresh: read less than "
+            "EUROSTAT_REFRESH_HOURS hours ago; failed: Eurostat could not be read "
+            "(what was stored is kept)"
+        ),
+    )
+    fetched_at: Optional[datetime] = Field(None, description="Last reading from Eurostat.")
+    first_period: Optional[date] = None
+    last_period: Optional[date] = None
+    reason: Optional[str] = Field(None, description="Why the refresh failed.")
+
+
+class IndicatorValue(BaseModel):
+    """The latest value of one indicator for one country or area."""
+
+    indicator: str
+    label: str
+    frequency: Literal["monthly", "quarterly"]
+    unit: IndicatorUnit = Field(
+        ...,
+        description=(
+            "ratio: 0.038 for 3.8 %; index: as published (100 = long-term average); "
+            "balance: as published (positive answers minus negative answers)"
+        ),
+    )
+    period: Optional[date] = Field(
+        None, description="First day of the period: 2026-04-01 for the second quarter of 2026."
+    )
+    value: Optional[float] = None
+    status: Optional[str] = Field(
+        None, description="Flag of Eurostat: 'e' for an estimate (the flash inflation)."
+    )
+    previous_period: Optional[date] = None
+    previous_value: Optional[float] = None
+    change: Optional[float] = Field(None, description="value - previous_value")
+    load: IndicatorLoad
+
+
+class IndicatorsResponse(BaseModel):
+    """Answer of GET /macro/indicators: the latest value of each indicator."""
+
+    geo: str = Field(..., description="Country or area, as Eurostat names it ('EA21', 'FR').")
+    source: str = EUROSTAT_SOURCE
+    indicators: List[IndicatorValue]
+
+
+class IndicatorObservation(BaseModel):
+    period: date
+    value: float
+    status: Optional[str] = None
+
+
+class IndicatorGeoSeries(BaseModel):
+    geo: str
+    load: IndicatorLoad
+    observations: List[IndicatorObservation]
+
+
+class IndicatorSeriesResponse(BaseModel):
+    """Answer of GET /macro/indicators/{indicator}: one series per country, oldest first."""
+
+    indicator: str
+    label: str
+    frequency: Literal["monthly", "quarterly"]
+    unit: IndicatorUnit
+    source: str = EUROSTAT_SOURCE
+    series: List[IndicatorGeoSeries]
+
+
+class IndicatorRefreshItem(IndicatorLoad):
+    indicator: str
+    geo: str
+    received: int = Field(0, description="Observations read from Eurostat.")
+
+
+class IndicatorRefreshResponse(BaseModel):
+    source: str = EUROSTAT_SOURCE
+    loads: List[IndicatorRefreshItem]
 
 
 class SolvencyRatios(BaseModel):

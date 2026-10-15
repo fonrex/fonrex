@@ -412,6 +412,23 @@ class EurostatService:
             received=len(rows),
         )
 
+    async def latest(self, name: str, geo: str, count: int = 2) -> list[Observation]:
+        """The last ``count`` stored values of a series, most recent first."""
+        item, code = indicator(name), normalize_geo(geo)
+        statement = (
+            select(MacroObservation.period, MacroObservation.value, MacroObservation.status)
+            .where(
+                MacroObservation.source == SOURCE,
+                MacroObservation.indicator == item.name,
+                MacroObservation.geo == code,
+            )
+            .order_by(MacroObservation.period.desc())
+            .limit(count)
+        )
+        async with self.session_factory() as session:
+            rows = (await session.execute(statement)).all()
+        return [Observation(period, value, status) for period, value, status in rows]
+
     async def observations(
         self, name: str, geo: str, start: date | None = None, end: date | None = None
     ) -> list[Observation]:

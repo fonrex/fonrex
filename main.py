@@ -42,6 +42,7 @@ from financials.router import router as financials_router
 from financials.service import FinancialsAggregator
 from historical.ingestion_service import HistoricalIngestionService
 from macro.ecb_service import ECBService
+from macro.eurostat_service import EurostatService
 from macro.fred_service import FREDService
 from macro.fx_rates import EcbExchangeRates
 from monitoring.canary_monitor import CanaryMonitor
@@ -298,6 +299,7 @@ def configure_application_state(application: FastAPI):
         "canary_scheduler",
         "fred_service",
         "ecb_service",
+        "eurostat_service",
         "factor_library",
         "factor_exposure",
         "validation_layer",
@@ -413,6 +415,16 @@ async def startup_event(application: FastAPI):
     except Exception as exc:
         state.ecb_service = None
         logger.warning("⚠️ ECBService not started: %s", exc)
+
+    try:
+        if async_resources:
+            state.eurostat_service = EurostatService(async_resources.session_factory)
+            logger.info("🇪🇺 EurostatService started")
+        else:
+            logger.warning("⚠️ DATABASE_URL not set — EurostatService disabled")
+    except Exception as exc:
+        state.eurostat_service = None
+        logger.warning("⚠️ EurostatService not started: %s", exc)
 
     try:
         if async_resources:
@@ -544,6 +556,7 @@ async def shutdown_event(application: FastAPI):
         "async_db_resources",
         "fred_service",
         "ecb_service",
+        "eurostat_service",
         "factor_library",
         "factor_exposure",
         "usage_recorder",

@@ -1040,6 +1040,11 @@ class TestMacroObservationsOnPostgres:
         ]
         later = await service.observations("hicp", "EA", start=date(2026, 9, 1), end=date(2026, 9, 1))
         assert [o.period for o in later] == [date(2026, 9, 1)]
+        latest = await service.latest("hicp", "EA21")
+        assert [(o.period, o.value) for o in latest] == [
+            (date(2026, 10, 1), Decimal("0.03600000")),
+            (date(2026, 9, 1), Decimal("0.03700000")),
+        ]
 
     async def test_a_quarterly_series_asks_again_its_last_eight_quarters(self, eurostat):
         from macro.eurostat_service import Observation, SeriesAnswer

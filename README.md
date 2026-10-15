@@ -88,7 +88,7 @@ documentation to an LLM, use [llms.txt](https://fonrex.io/llms.txt).
 | 📈 **Prices** | Ten years of daily history by default, per listing; traded prices adjusted for splits and an `adj_close` adjusted for dividends; weekly and monthly bars; realtime ticks over WebSocket |
 | 🧾 **Fundamentals** | Statements, highlights, earnings, analyst ratings, ESG scores, ETF details and holdings, insider transactions (SEC) |
 | 💶 **Valuation** | FCF, EPS and dividend DCF models, model comparison, WACC × growth sensitivity matrix, cost of equity from the CAPM or the Fama/French factors |
-| 🧮 **Factors and rates** | Kenneth French factor returns (US, Europe, developed markets), factor exposure of a listing, FRED and ECB rates, ECB exchange rates |
+| 🧮 **Factors and rates** | Kenneth French factor returns (US, Europe, developed markets), factor exposure of a listing, FRED and ECB rates, ECB exchange rates, Eurostat indicators by country (inflation, unemployment, GDP growth, economic sentiment) |
 | 📊 **Technical analysis** | Indicators computed on your stored prices, multi-indicator reads, a screener |
 | 📰 **News** | Deduplicated articles from several sources, per ticker and as a global feed |
 | 🛡️ **Data quality** | Range checks, cross-source consensus, a daily canary run and alerts on every provider |
@@ -150,7 +150,7 @@ Finance, deduplicated by URL and by title similarity.
 | Prices | `GET /eod/{ticker}` · `GET /ticker/{symbol}/history` · `POST /historical/ingest` · `GET /quote/{ticker}` · `GET /quotes` · `WS /ws/realtime/{ticker}` |
 | Fundamentals | `GET /fundamental` · `GET /fundamental/deep` · `GET /etf/{isin}/details` · `GET /insider-transactions/{ticker}` · `GET /index/{name}/constituents` |
 | Valuation | `GET /dcf/{ticker}` · `POST /dcf/{ticker}` · `GET /dcf/{ticker}/compare` · `GET /dcf/{ticker}/sensitivity` |
-| Factors and rates | `GET /factors` · `GET /factors/{dataset}` · `GET /factors/exposure/{ticker}` · `GET /macro/rates` |
+| Factors and rates | `GET /factors` · `GET /factors/{dataset}` · `GET /factors/exposure/{ticker}` · `GET /macro/rates` · `GET /macro/indicators` · `GET /macro/indicators/{indicator}` |
 | Technical analysis | `GET /technical/{ticker}` · `GET /technical/{ticker}/multi` · `GET /technical/{ticker}/chart` · `GET /technical/screen` |
 | News | `GET /news/{ticker}` · `GET /news/feed` |
 | Assets | `GET /assets/by-isin/{isin}` · `GET /listings` |

@@ -263,7 +263,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `scripts/load_factors.py` | Command line download of the factor files into the database. |
 | `scripts/load_fx_rates.py` | Command line download of the ECB reference rates of the euro into the database. |
 | `schemas/news.py` | Pydantic v2 schemas for the news system: `RawNewsItem`, `NewsArticleSchema`, `NewsResponse`, `NewsFeedResponse`, `NewsLanguage` / `NewsSentiment` enums. |
-| `schemas/macro.py` | Pydantic v2 schemas for macroeconomic rates response. |
+| `schemas/macro.py` | Pydantic v2 schemas for the macro-economic rates and for the Eurostat indicators (latest values, series, refresh). |
 | `schemas/factors.py` | Pydantic v2 schemas of the factor routes: datasets, what is stored of a file, series of factor returns. |
 | `monitoring/__init__.py` | Monitoring package exposing `ValidationLayer` and `CanaryMonitor`. |
 | `monitoring/models.py` | Pydantic-independent business models for canary results and statuses. |
@@ -275,7 +275,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `monitoring/canary_monitor.py` | Daily orchestration of canary controls, aggregates, and alerts via ports. |
 | `database/monitoring.py` | SQLAlchemy monitoring adapter: price history, logs, aggregates, and alerts. |
 | `routers/monitoring.py` | REST monitoring endpoints (`/health/*`) whose dependencies are resolved from `app.state`. |
-| `routers/macro.py` | HTTP routes for macro-economic data: the rates of FRED (USD) and of the ECB (EUR), by currency. |
+| `routers/macro.py` | HTTP routes for macro-economic data: the rates of FRED (USD) and of the ECB (EUR), by currency; the indicators of Eurostat by country (latest values, series, refresh). |
 | `routers/factors.py` | HTTP routes of the factor returns: the datasets, the series of one dataset, the refresh of the files. |
 | `historical/providers.py` | yfinance and TradingView connectors for retrieving historical bars, and the choice between them (`fetch`): yfinance with the verified symbol, TradingView only for a line quoted in the currency of the listing. |
 | `historical/normalization.py` | Pure OHLCV validation, deduplication, and normalization rules. |
@@ -742,6 +742,9 @@ Every route of the application is listed here, and `tests/test_docs_consistency.
 | GET | `/health/canary/history` | Canary results history (filterable by provider, ticker, period) |
 | GET | `/health/stats` | Global data quality statistics (7 days, validity rate, reliable providers) |
 | GET | `/macro/rates` | Current macro-economic rates of FRED (USD) and of the ECB (EUR); `currency=USD` or `EUR` keeps one source |
+| GET | `/macro/indicators` | Latest value of each Eurostat indicator for one country or area (`geo`, `EA` by default, read as `EA21`; `indicator` to keep some), with the previous period and the change; a series missing or older than `EUROSTAT_REFRESH_HOURS` is read first |
+| GET | `/macro/indicators/{indicator}` | Values of one Eurostat indicator over time (`geo`: up to 10 countries or areas separated by commas, `start`, `end`), periods dated by their first day, rates as ratios |
+| POST | `/macro/indicators/refresh` | Read Eurostat series into the database (`geo`, `indicator`, `force`) |
 | GET | `/factors` | Factor datasets of the Kenneth French library and what is stored of each file |
 | GET | `/factors/{dataset}` | Factor returns of one dataset (`frequency`, `start`, `end`), as ratios in US dollars; a file missing or older than `FACTORS_REFRESH_DAYS` is downloaded first |
 | POST | `/factors/refresh` | Download files of the library (`dataset`, `frequency`, `force`) |
@@ -1382,6 +1385,8 @@ The `ECBService` reads the series of the European Central Bank Data Portal (`htt
 
 `GET /macro/rates` gives the rates of both sources, each tagged with its `source` (`fred`, `ecb`) and its `currency` (`USD`, `EUR`): `rates` lists the US 10-year Treasury rate, then the euro AAA 10-year rate, the deposit facility rate and the CISS (an index, not a ratio). `currency=USD` or `currency=EUR` keeps the series of one source; another currency answers `422`, as no source publishes its rates. `risk_free_rate` is the 10-year rate of the currency asked, the US one when none is asked (the answer before the ECB was a source). A source that did not start is left out (`503` when it is the only one asked, or when none started). `GET /openbb/macro/rates` takes the same `currency` (empty: both) and shows one card per series: rates as percentages, the CISS with four decimals, the date of the observation and `stale` when the value is an older stored one.
 
+**Eurostat indicators.** `EurostatService` (`macro/eurostat_service.py`) reads seven indicators of Eurostat in SDMX-CSV (`https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/{flow}/{key}?format=SDMX-CSV`, free and without key; `EUROSTAT_API_URL` replaces the address), by country or area: `hicp` and `hicp_core` (annual rate of the HICP, all items and excluding energy, food, alcohol and tobacco, flow `prc_hicp_minr` of the ECOICOP 2 classification), `unemployment` (`une_rt_m`, seasonally adjusted), `gdp_qoq` and `gdp_yoy` (`namq_10_gdp`, chain-linked volumes, on the previous quarter and on the same quarter of the previous year), `economic_sentiment` and `consumer_confidence` (`ei_bssi_m_r2`). Rates are stored as ratios; the sentiment indicator (an index, 100 the long-term average) and the confidence (a balance of answers) as published. The euro area is `EA21`, its composition since 2026 (`EA` is read as `EA21`): the flows of the labour market and of the surveys have no code for a changing composition. The series are kept in `macro_observations`, a period dated by its first day; the first reading takes the whole series, the next ones the last 24 months (8 quarters for GDP) again, so that a revision replaces the value of its period, and a series read less than `EUROSTAT_REFRESH_HOURS` hours ago (24 by default) is not asked again. A refusal of Eurostat (an unknown code answers 400) is reported with its reason, and the stored values stay. `GET /macro/indicators` gives the latest value of each indicator for one country, with the previous period and the change; `GET /macro/indicators/{indicator}` the series of up to 10 countries; both read a missing or old series first. `POST /macro/indicators/refresh` reads series on demand.
+
 ### Weighting and Consensus
 
 The final intrinsic value (consensus) is calculated by combining active models according to default or custom weights in the request:
@@ -1626,6 +1631,7 @@ Test coverage, by theme:
 - `tests/test_dcf_currency.py`: currency of the valuation (statements, then listing, then instrument), pence turned into pounds, no upside across currencies, the risk-free rate chosen by currency (ECB for EUR, FRED for USD, the configured rate otherwise), on statements stored by the enricher.
 - `tests/test_ecb_service.py`: ECB answers read in CSV (percent stored as ratios, the CISS as published, the latest observation with a value), through the shared cache (live, cached, stale), and the euro area rates listed with their source and currency.
 - `tests/test_macro_rates_route.py`: `GET /macro/rates` with and without `currency` (both sources, one source, a currency without source, a source not started) and the OpenBB cards, one per series.
+- `tests/test_macro_indicators_route.py`: `/macro/indicators` (latest values with the previous period and the change, a failed series that says why, countries and indicators asked, series of several countries, refresh, refusals, no database).
 - `tests/test_macro_rate_cache.py`: the shared cache of the macro sources when a layer fails — Redis down for reading or writing, a database that refuses reads and writes, a source that cannot be asked — and odd ECB answers (a value that is not a number, rows out of order, an unknown series).
 - `tests/test_factor_library.py`: the files of the Kenneth French library (US and Europe, 3 and 5 factors, momentum) read from reduced real files, odd content (missing values, daily rows, unreadable files), the catalogue, the download, the refresh delay and what a failed download keeps, and the command line script.
 - `tests/test_fx_rates.py`: ECB answers of exchange rates (days without value, currency read from the key, unreadable answers), addresses, conversions between two currencies through the euro, and the command line script.

@@ -22,8 +22,9 @@ import sys
 import time
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
 import pytest
@@ -970,6 +971,114 @@ class TestMacroObservationsOnPostgres:
             ).all()
             connection.execute(text("DELETE FROM macro_observations"))
         assert [(str(value), status) for value, status in rows] == [("0.03700000", None)]
+
+    @pytest.fixture
+    async def eurostat(self, database_url, engine):
+        from macro.eurostat_service import EurostatService
+
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM macro_observations"))
+            connection.execute(text("DELETE FROM macro_series_loads"))
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        downloader = MagicMock()
+        yield EurostatService(async_sessionmaker(async_engine), downloader=downloader), downloader
+        await async_engine.dispose()
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM macro_observations"))
+            connection.execute(text("DELETE FROM macro_series_loads"))
+
+    async def test_whole_series_then_the_last_periods_again(self, eurostat):
+        from macro.eurostat_service import Observation, SeriesAnswer
+
+        service, downloader = eurostat
+        asked = []
+        answers = [
+            SeriesAnswer(
+                [
+                    Observation(date(2026, 8, 1), Decimal("0.032")),
+                    Observation(date(2026, 9, 1), Decimal("0.038"), "e"),
+                ],
+                datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc),
+            ),
+            # A month later: the flash estimate of September revised, October new.
+            SeriesAnswer(
+                [
+                    Observation(date(2026, 9, 1), Decimal("0.037")),
+                    Observation(date(2026, 10, 1), Decimal("0.036"), "e"),
+                ]
+            ),
+        ]
+
+        async def download(item, geo, start):
+            asked.append((item.name, geo, start))
+            return answers[len(asked) - 1]
+
+        downloader.side_effect = download
+
+        first = await service.refresh("hicp", "EA")
+        assert (first.status, first.geo, first.first_period, first.last_period) == (
+            "fetched",
+            "EA21",
+            date(2026, 8, 1),
+            date(2026, 9, 1),
+        )
+        assert asked == [("hicp", "EA21", None)]  # the whole series
+
+        assert (await service.refresh("hicp", "EA21")).status == "fresh"  # read a moment ago
+
+        second = await service.refresh("hicp", "EA21", force=True)
+        assert asked[1] == ("hicp", "EA21", date(2024, 9, 1))  # 24 months before September
+        assert (second.received, second.last_period) == (2, date(2026, 10, 1))
+        assert [
+            (o.period, o.value, o.status) for o in await service.observations("hicp", "EA")
+        ] == [
+            (date(2026, 8, 1), Decimal("0.03200000"), None),
+            (date(2026, 9, 1), Decimal("0.03700000"), None),
+            (date(2026, 10, 1), Decimal("0.03600000"), "e"),
+        ]
+        later = await service.observations("hicp", "EA", start=date(2026, 9, 1), end=date(2026, 9, 1))
+        assert [o.period for o in later] == [date(2026, 9, 1)]
+
+    async def test_a_quarterly_series_asks_again_its_last_eight_quarters(self, eurostat):
+        from macro.eurostat_service import Observation, SeriesAnswer
+
+        service, downloader = eurostat
+        downloader.side_effect = AsyncMock(
+            return_value=SeriesAnswer([Observation(date(2026, 4, 1), Decimal("0.006"))])
+        )
+        await service.refresh("gdp_qoq", "FR")
+        await service.refresh("gdp_qoq", "FR", force=True)
+        assert downloader.side_effect.await_args.args[2] == date(2024, 4, 1)
+
+    async def test_a_failed_refresh_keeps_the_stored_periods(self, eurostat):
+        from macro.eurostat_service import EurostatError, Observation, SeriesAnswer
+
+        service, downloader = eurostat
+        downloader.side_effect = AsyncMock(
+            return_value=SeriesAnswer([Observation(date(2026, 8, 1), Decimal("0.082"))])
+        )
+        await service.refresh("unemployment", "FR")
+        downloader.side_effect = EurostatError("GEO=FR is not allowed\nmore")
+
+        failed = await service.refresh("unemployment", "FR", force=True)
+
+        assert (failed.status, failed.last_period, failed.reason) == (
+            "failed",
+            date(2026, 8, 1),
+            "EurostatError: GEO=FR is not allowed",
+        )
+        assert [o.value for o in await service.observations("unemployment", "FR")] == [
+            Decimal("0.08200000")
+        ]
+
+    async def test_a_first_refresh_that_fails_leaves_nothing(self, eurostat):
+        service, downloader = eurostat
+        downloader.side_effect = RuntimeError()
+        failed = await service.refresh("economic_sentiment", "DE")
+        assert (failed.status, failed.fetched_at, failed.reason) == ("failed", None, "RuntimeError")
+        assert await service.observations("economic_sentiment", "DE") == []
 
     def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
         _alembic(database_url, "downgrade", "021")

@@ -923,6 +923,42 @@ class MacroSeriesLoad(Base):
     source_updated_at = Column(DateTime(timezone=True))
 
 
+class XbrlFact(Base):
+    """One value filed with the SEC: a concept of a company, in a unit, for a period.
+
+    A period is its end and its length in days: 0 for a balance at a date, about
+    365 for a fiscal year, about 90 for a quarter. The value of the latest filing
+    is kept (a restatement replaces the earlier one); ``accession`` names it.
+    """
+
+    __tablename__ = "xbrl_facts"
+    cik = Column(String(10), primary_key=True)  # ten digits: "0000320193"
+    taxonomy = Column(String(20), primary_key=True)  # "us-gaap" | "ifrs-full" | "dei"
+    concept = Column(String(200), primary_key=True)  # "Revenues", "Revenue", ...
+    unit = Column(String(30), primary_key=True)  # "USD", "EUR", "USD/shares", "shares"
+    period_end = Column(Date, primary_key=True)
+    duration_days = Column(Integer, primary_key=True)
+    period_start = Column(Date)  # NULL for a balance at a date
+    value = Column(Numeric(28, 6), nullable=False)
+    accession = Column(String(25), nullable=False)  # "0000320193-25-000079"
+    form = Column(String(10), nullable=False)  # "10-K", "20-F", "10-Q", ...
+    fiscal_year = Column(Integer)  # of the filing, not always of the period
+    fiscal_period = Column(String(4))  # "FY", "Q1", ...
+    filed = Column(Date, nullable=False)
+    frame = Column(String(12))  # calendar period given by the SEC: "CY2025", "CY2025Q4I"
+
+
+class SecCompanyLoad(Base):
+    """The last reading of the facts of one company from the SEC."""
+
+    __tablename__ = "sec_company_loads"
+    cik = Column(String(10), primary_key=True)
+    entity_name = Column(String(255))
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    last_filed = Column(Date)  # the latest filing among the facts kept
+    facts = Column(Integer, nullable=False, default=0, server_default="0")
+
+
 class FactorReturn(Base):
     """One factor return of the Kenneth French library, as a ratio, for one period.
 

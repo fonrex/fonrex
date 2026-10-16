@@ -1201,3 +1201,66 @@ class TestSecCikOnPostgres:
         assert [tuple(row) for row in rows] == [
             (88, None, "0001000184", NOT_FOUND, False, True, 1)
         ]
+
+
+class TestXbrlFactsOnPostgres:
+    """Revision 023: the facts of the XBRL filings of the SEC."""
+
+    UPSERT = text("""
+        INSERT INTO xbrl_facts
+            (cik, taxonomy, concept, unit, period_end, duration_days, period_start, value,
+             accession, form, fiscal_year, fiscal_period, filed, frame)
+        VALUES ('0001000184', 'ifrs-full', 'Assets', 'EUR', DATE '2024-12-31', 0, NULL,
+                :value, :accession, '20-F', :fy, 'FY', :filed, NULL)
+        ON CONFLICT (cik, taxonomy, concept, unit, period_end, duration_days)
+        DO UPDATE SET value = EXCLUDED.value, accession = EXCLUDED.accession,
+                      fiscal_year = EXCLUDED.fiscal_year, filed = EXCLUDED.filed
+        WHERE EXCLUDED.filed >= xbrl_facts.filed
+    """)
+
+    def test_a_restatement_replaces_the_first_figure_and_an_older_filing_does_not(self, engine):
+        first = {"value": 74122000000, "accession": "0001104659-25-017815", "fy": 2024,
+                 "filed": date(2025, 2, 27)}
+        restated = {"value": 74237000000, "accession": "0001104659-26-020058", "fy": 2025,
+                    "filed": date(2026, 2, 26)}
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM xbrl_facts"))
+            connection.execute(self.UPSERT, first)
+            connection.execute(self.UPSERT, restated)
+            connection.execute(self.UPSERT, first)  # read again from the older filing
+            rows = connection.execute(
+                text("SELECT value, accession, filed FROM xbrl_facts")
+            ).all()
+            connection.execute(text("DELETE FROM xbrl_facts"))
+        assert [(int(value), accession, filed) for value, accession, filed in rows] == [
+            (74237000000, "0001104659-26-020058", date(2026, 2, 26))
+        ]
+
+    def test_a_year_and_a_quarter_ending_the_same_day_are_two_facts(self, engine):
+        insert = text("""
+            INSERT INTO xbrl_facts (cik, taxonomy, concept, unit, period_end, duration_days,
+                                    period_start, value, accession, form, filed)
+            VALUES ('0000320193', 'us-gaap', 'Revenues', 'USD', DATE '2025-09-27', :days,
+                    :start, :value, '0000320193-25-000079', '10-K', DATE '2025-10-31')
+        """)
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM xbrl_facts"))
+            connection.execute(insert, {"days": 363, "start": date(2024, 9, 29), "value": 416161000000})
+            connection.execute(insert, {"days": 90, "start": date(2025, 6, 29), "value": 100000000000})
+            count = connection.execute(text("SELECT count(*) FROM xbrl_facts")).scalar()
+            connection.execute(text("DELETE FROM xbrl_facts"))
+        assert count == 2
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "022")
+        with engine.connect() as connection:
+            for table in ("xbrl_facts", "sec_company_loads"):
+                assert connection.execute(
+                    text("SELECT to_regclass(:table)"), {"table": table}
+                ).scalar() is None
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            for table in ("xbrl_facts", "sec_company_loads"):
+                assert connection.execute(
+                    text("SELECT to_regclass(:table)"), {"table": table}
+                ).scalar()

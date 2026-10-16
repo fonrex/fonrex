@@ -1141,3 +1141,63 @@ class TestFactorExposureReadsTheListing:
         # Daily bars only; the dividend-adjusted close, else the close.
         assert closes == {date(2026, 9, 29): 9.5, date(2026, 9, 30): 11.0}
         assert missing == (None, None, {})
+
+
+class TestSecCikOnPostgres:
+    """``financials.sec_cik``: the CIK kept in the ``SEC`` mapping of the instrument."""
+
+    async def test_found_then_reused_and_shared_by_every_listing(self, database_url, engine):
+        import json
+
+        from financials.sec_cik import NOT_FOUND, SecCikResolver, SqlCikStore
+
+        table = json.loads(
+            (PROJECT_ROOT / "tests" / "fixtures" / "sec" / "company_tickers_exchange.json").read_text()
+        )
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin, quote_type)
+                    VALUES (88, 'SAP', 'SAP SE', 'EUR', true, 'DE0007164600', 'EQUITY'),
+                           (89, 'AIR', 'Airbus SE', 'EUR', true, 'NL0000235190', 'EQUITY');
+                    INSERT INTO asset_listings
+                        (id, asset_id, ticker, exchange, currency, source, is_primary, is_active,
+                         created_at, updated_at)
+                    VALUES (880, 88, 'SAP', 'XETR', 'EUR', 'csv', true, true, now(), now()),
+                           (881, 88, 'SAP', 'NYSE', 'USD', 'csv', false, true, now(), now()),
+                           (890, 89, 'AIR', 'XPAR', 'EUR', 'csv', true, true, now(), now());
+                """)
+            )
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        source = AsyncMock(return_value=table)
+        resolver = SecCikResolver(SqlCikStore(async_sessionmaker(async_engine)), source)
+        try:
+            sap = await resolver.resolve(88)
+            again = await resolver.resolve(88)
+            airbus = await resolver.resolve(89)
+            # A CIK no longer confirmed is switched off.
+            source.return_value = {"fields": table["fields"], "data": []}
+            lost = await resolver.resolve(88, refresh=True)
+        finally:
+            await async_engine.dispose()
+
+        assert sap.cik == again.cik == "0001000184"
+        assert airbus.cik is None and source.await_count == 2  # Airbus: the SEC is not asked
+        assert lost.cik is None and lost.origin == NOT_FOUND
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT asset_id, asset_listing_id, provider_ticker, source, is_active,
+                           last_verified_at IS NULL, failure_count
+                    FROM asset_mappings WHERE provider_name = 'SEC' ORDER BY asset_id
+                """)
+            ).all()
+            connection.execute(text("DELETE FROM asset_mappings WHERE asset_id IN (88, 89)"))
+            connection.execute(text("DELETE FROM asset_listings WHERE asset_id IN (88, 89)"))
+            connection.execute(text("DELETE FROM assets WHERE id IN (88, 89)"))
+        # One row for the instrument (no listing), kept with the last CIK, switched off.
+        assert [tuple(row) for row in rows] == [
+            (88, None, "0001000184", NOT_FOUND, False, True, 1)
+        ]

@@ -80,6 +80,8 @@ class SECEdgarProvider(BaseFinancialProvider):
     BASE_URL = "https://data.sec.gov"
     ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data"
     TICKER_URL = "https://www.sec.gov/cgi-bin/browse-edgar"
+    # Every ticker of the SEC with its CIK, company name and exchange (about 10 000 rows).
+    TICKERS_EXCHANGE_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
 
     def __init__(self):
         self._sec_email = os.environ.get("SEC_EDGAR_EMAIL", "contact@fonrex.io")
@@ -87,6 +89,13 @@ class SECEdgarProvider(BaseFinancialProvider):
 
     def _sec_headers(self) -> dict:
         return {"User-Agent": self._sec_ua, "Accept": "application/json"}
+
+    async def ticker_table(self) -> Optional[dict]:
+        """The table of the tickers of the SEC, with their exchange (``None`` when not read).
+
+        Read by ``financials/sec_cik.py``, which verifies a CIK before any use.
+        """
+        return await self._get_json(self.TICKERS_EXCHANGE_URL, headers=self._sec_headers())
 
     async def fetch(
         self,

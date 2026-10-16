@@ -1,0 +1,62 @@
+{
+  "rules": {
+    "annual_forms": ["10-K", "20-F"],
+    "annual_duration_days": [350, 380],
+    "one_value_per_period": "the fact of the latest filing (largest 'filed', then largest 'accn')",
+    "currency": "the unit of the figure ('USD', 'EUR'); per-share figures use '<currency>/shares'"
+  },
+  "companyfacts_aapl.json": {
+    "currency": "USD",
+    "fiscal_year_ends": ["2024-09-28", "2025-09-27"],
+    "2025-09-27": {
+      "revenue": 416161000000, "gross_profit": 195201000000, "operating_income": 133050000000,
+      "net_income": 112010000000, "eps_basic": 7.49, "eps_diluted": 7.46,
+      "total_assets": 359241000000, "total_liabilities": 285508000000, "total_equity": 73733000000,
+      "cash_and_equivalents": 35934000000, "long_term_debt": 78328000000,
+      "operating_cashflow": 111482000000, "capex": 12715000000,
+      "dividends_paid": 15421000000, "stock_repurchases": 90711000000
+    },
+    "revenue_concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "left_out": "the 10-Q facts: quarters (about 90 days) and nine months (about 270 days)"
+  },
+  "companyfacts_jpm.json": {
+    "currency": "USD",
+    "2025-12-31": {
+      "revenue": 182447000000, "net_income": 57048000000, "eps_diluted": 20.02,
+      "total_assets": 4424900000000, "total_equity": 362438000000,
+      "operating_cashflow": -147782000000,
+      "operating_income": null, "capex": null
+    },
+    "note": "a bank publishes no operating income nor capex: the figures stay null, not zero"
+  },
+  "companyfacts_sap.json": {
+    "currency": "EUR",
+    "2025-12-31": {
+      "revenue": 36800000000, "gross_profit": 26814000000, "operating_income": 9617000000,
+      "net_income": 7161000000, "eps_diluted": 6.1, "total_assets": 70362000000,
+      "total_equity": 44586000000, "cash_and_equivalents": 8220000000,
+      "operating_cashflow": 9156000000, "capex": 739000000, "dividends_paid": 2743000000
+    },
+    "2024-12-31": {
+      "total_assets": 74237000000, "total_liabilities": 28431000000,
+      "total_equity": 45438000000, "operating_cashflow": 5207000000
+    },
+    "note": "2024 restated in the 20-F filed on 2026-02-26 (total assets 74122000000 -> 74237000000): the latest filing wins"
+  },
+  "companyfacts_nvs.json": {
+    "currency": "USD",
+    "2025-12-31": {
+      "revenue": 54532000000, "operating_income": 17644000000, "net_income": 13984000000,
+      "eps_diluted": 7.15, "total_assets": 110949000000, "capex": 1548000000,
+      "dividends_paid": 7818000000
+    },
+    "revenue_concept": "RevenueFromSaleOfGoods",
+    "note": "Novartis does not publish ifrs-full:Revenue"
+  },
+  "company_tickers_exchange.json": {
+    "AAPL": [320193, "Nasdaq"], "SAP": [1000184, "NYSE"], "NVS": [1114448, "NYSE"],
+    "AIR": [1750, "NYSE"],
+    "note": "AIR is AAR Corp on the NYSE: AIR.PA (Airbus, Paris) must never be resolved to it"
+  },
+  "error_unknown_cik.xml": {"http_status": 404}
+}

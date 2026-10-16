@@ -1264,3 +1264,100 @@ class TestXbrlFactsOnPostgres:
                 assert connection.execute(
                     text("SELECT to_regclass(:table)"), {"table": table}
                 ).scalar()
+
+
+class TestSecStatementsOnPostgres:
+    """``financials.sec_statements``: facts of the SEC stored, then read as fiscal years."""
+
+    @pytest.fixture
+    async def statements(self, database_url, engine):
+        from financials.sec_cik import CikResolution
+        from financials.sec_statements import SecStatements
+
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM xbrl_facts"))
+            connection.execute(text("DELETE FROM sec_company_loads"))
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        provider, resolver = MagicMock(), MagicMock()
+        resolver.resolve = AsyncMock(
+            return_value=CikResolution("0001000184", origin="ticker_check", company_name="SAP SE")
+        )
+        provider.company_facts = AsyncMock()
+        yield SecStatements(async_sessionmaker(async_engine), provider, resolver), provider, resolver
+        await async_engine.dispose()
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM xbrl_facts"))
+            connection.execute(text("DELETE FROM sec_company_loads"))
+
+    async def test_read_stored_then_reused_and_read_as_fiscal_years(self, statements):
+        import json
+
+        service, provider, _ = statements
+        answer = json.loads(
+            (PROJECT_ROOT / "tests" / "fixtures" / "sec" / "companyfacts_sap.json").read_text()
+        )
+        provider.company_facts.return_value = answer
+
+        first = await service.refresh(1)
+        assert (first.status, first.cik, first.entity_name, first.last_filed) == (
+            "fetched",
+            "0001000184",
+            "SAP SE",
+            date(2026, 2, 26),
+        )
+        assert first.facts == 26  # 13 concepts, two fiscal years, latest filing each
+        assert (await service.refresh(1)).status == "fresh"
+        provider.company_facts.assert_awaited_once_with("0001000184")
+
+        load, years = await service.annual(1, refresh=False)
+        assert load.status == "fresh"
+        assert [year.period_end for year in years] == [date(2025, 12, 31), date(2024, 12, 31)]
+        assert years[0].currency == "EUR"
+        assert years[0].value("revenue") == Decimal("36800000000")
+        assert years[1].value("total_assets") == Decimal("74237000000")  # restated
+
+    async def test_an_older_filing_read_later_does_not_replace_a_restatement(self, statements):
+        service, provider, _ = statements
+        restated = {"start": None, "end": "2024-12-31", "accn": "0001104659-26-020058",
+                    "form": "20-F", "filed": "2026-02-26", "fy": 2025, "fp": "FY"}
+        first = {**restated, "accn": "0001104659-25-017815", "filed": "2025-02-27", "fy": 2024}
+
+        def facts(*entries):
+            return {"entityName": "SAP SE", "facts": {"ifrs-full": {"Assets": {"units": {"EUR": [
+                {key: value for key, value in entry.items() if value is not None} for entry in entries
+            ]}}}}}
+
+        provider.company_facts.return_value = facts({**restated, "val": 74237000000})
+        await service.refresh(1, force=True)
+        provider.company_facts.return_value = facts({**first, "val": 74122000000})
+        await service.refresh(1, force=True)
+
+        (row,) = await service.stored_rows("0001000184")
+        assert (row.value, row.accession) == (Decimal("74237000000.000000"), "0001104659-26-020058")
+
+    async def test_a_failed_reading_keeps_what_was_stored(self, statements):
+        service, provider, _ = statements
+        provider.company_facts.return_value = {"entityName": "SAP SE", "facts": {}}
+        await service.refresh(1, force=True)
+        provider.company_facts.return_value = None
+
+        failed = await service.refresh(1, force=True)
+
+        assert (failed.status, failed.entity_name, failed.reason) == (
+            "failed",
+            "SAP SE",
+            "XbrlError: no answer from the SEC",
+        )
+
+    async def test_without_cik_the_sec_is_not_asked(self, statements):
+        from financials.sec_cik import CikResolution
+
+        service, provider, resolver = statements
+        resolver.resolve.return_value = CikResolution(None, "No US listing in the catalogue")
+
+        load, years = await service.annual(1)
+
+        assert (load.status, load.reason, years) == ("no_cik", "No US listing in the catalogue", [])
+        provider.company_facts.assert_not_awaited()

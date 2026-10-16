@@ -97,6 +97,15 @@ class SECEdgarProvider(BaseFinancialProvider):
         """
         return await self._get_json(self.TICKERS_EXCHANGE_URL, headers=self._sec_headers())
 
+    async def company_facts(self, cik: str) -> Optional[dict]:
+        """Every XBRL fact filed by a company (``None`` when not read: unknown CIK or failure).
+
+        Several megabytes for a large company. ``cik`` must come from
+        ``financials/sec_cik.py``: it is never derived from a ticker here.
+        """
+        url = f"{self.BASE_URL}/api/xbrl/companyfacts/CIK{str(cik).zfill(10)}.json"
+        return await self._get_json(url, headers=self._sec_headers())
+
     async def fetch(
         self,
         ticker: str = None,

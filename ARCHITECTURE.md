@@ -219,12 +219,14 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `financials/provider_runner.py` | Parallel orchestration of fundamental providers with mappings, timeouts, `raw_providers`, and optional injection of `ValidationLayer` for real-time outlier filtering. |
 | `financials/enrichment/adapters.py` | Concrete yfinance adapters and ticker normalization injected into use cases by the HTTP router. |
 | `financials/enrichment/yfinance_enricher.py` | Deep enrichment from Yahoo: writes highlights, financial statements, earnings history, analyst ratings, ESG scores, earnings trend and shares history. |
-| `financials/providers/` | Asynchronous connectors to ZoneBourse, Google Finance, Boursorama, Barrons, WSJ, MarketWatch, MorningStar, Investing, Gurufocus, Fortuneo, BourseDirect, MSN, Investir Les Echos, YahooFinance, JustETF, SECEdgar, OpenFIGI, and IndexConstituents. |
+| `financials/providers/` | Asynchronous connectors to ZoneBourse, Google Finance, Boursorama, Barrons, WSJ, MarketWatch, MorningStar, Investing, Gurufocus, Fortuneo, BourseDirect, MSN, Investir Les Echos, YahooFinance, JustETF, SECEdgar (insider transactions, the tickers of the SEC and the XBRL facts of a company), OpenFIGI, and IndexConstituents. |
 | `financials/providers/base.py` | The one HTTP layer of every provider: client creation, retries, per-provider concurrency, optional outbound proxy. |
 | `financials/providers/JustETF_provider.py` | Legacy synchronous justETF scraper, kept and hardened; it relies on `fundamental/tools/ToolsBox.py`. The API uses `financials/providers/justetf.py`. |
 | `fundamental/tools/ToolsBox.py` | Legacy helpers still used by the legacy justETF scraper and by the Google Finance to Yahoo ticker conversion. |
 | `financials/numbers.py` | The one reader of numbers displayed on a page (`parse_number`, `find_number`). |
 | `financials/sec_cik.py` | The CIK of an instrument at the SEC, verified and never guessed: looked up only through a US listing of the catalogue (USD, US exchange, US ticker), confirmed by the company name of the SEC table, kept in the `SEC` mapping of the instrument. |
+| `financials/xbrl_mapping.py` | From the XBRL facts of the SEC to annual statements: the concepts (US GAAP, then IFRS) that fill each column of `financial_statements`, one value per period (the latest filing), fiscal years of 350 to 380 days from the annual reports, read in the currency of the latest report. |
+| `financials/sec_statements.py` | The annual statements filed with the SEC for an instrument whose CIK is verified: the facts of the company read from `companyfacts`, kept in `xbrl_facts` (a restatement replaces the first figure, an older filing never does), read again after `SEC_XBRL_REFRESH_HOURS`. |
 | `financials/fiscal_years.py` | Puts the statement rows of a fiscal year together (`fiscal_years`): the one way the valuation and the solvency ratios read `financial_statements`. |
 | `financials/models.py` | Pydantic models returned by the providers (`StandardFinancials`, `FinancialMetrics`, `StockSummary`). |
 | `financials/router.py` | Legacy `/stocks` routes. |
@@ -1622,6 +1624,8 @@ Test coverage, by theme:
 - `tests/test_justetf_provider.py`: `JustETFProvider` — percentage and amount parsing, answer of the API, fallback on the page.
 - `tests/test_justetf_scraper.py`: the legacy scraper of justETF profile pages on real extracts (French and English pages give the same figures, the page of another ETF is rejected, errors return only the ISIN).
 - `tests/test_sec_edgar_provider.py`: Form 4 insider transactions extraction from SEC EDGAR.
+- `tests/test_xbrl_mapping.py`: the real answers of `tests/fixtures/sec/` read as annual statements — Apple's 10-Q facts left out, the latest filing kept, SAP's restatement, a bank without operating income, Novartis' revenue concept, the currency of the latest report and never a mix, the reading of `companyfacts` with the `User-Agent` of the instance.
+- `tests/test_sec_statements.py`: the SEC statements of an instrument without CIK (the SEC is never asked) and the refresh delay; storing and reading the facts is tested on PostgreSQL.
 - `tests/test_sec_cik.py`: the CIK of an instrument is verified, never guessed, on the real SEC table of `tests/fixtures/sec/` — Airbus is never AAR Corp, SAP is found through its NYSE listing, classes of shares, homonyms (`Apple Hospitality REIT`), funds, reuse and retry of a stored answer, the table read with the `User-Agent` of the instance.
 - `tests/test_openfigi_provider.py`: OpenFIGI lookup by ISIN, batches of 100, request body and headers with and without an API key.
 - `tests/test_index_constituents_provider.py`: parsing of the Wikipedia pages of the S&P 500 and of the CAC 40, network failure, dispatch by index.

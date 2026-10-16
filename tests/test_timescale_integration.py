@@ -1361,3 +1361,57 @@ class TestSecStatementsOnPostgres:
 
         assert (load.status, load.reason, years) == ("no_cik", "No US listing in the catalogue", [])
         provider.company_facts.assert_not_awaited()
+
+
+class TestSecCheckOnPostgres:
+    """``financials.sec_check``: the Yahoo statements read by fiscal year from the database."""
+
+    async def test_the_three_rows_of_a_year_are_read_together(self, database_url, engine):
+        import json
+        from types import SimpleNamespace
+
+        from financials.sec_check import MATCH, SecCheck
+        from financials.xbrl_mapping import annual_statements, facts_to_rows
+
+        answer = json.loads(
+            (PROJECT_ROOT / "tests" / "fixtures" / "sec" / "companyfacts_aapl.json").read_text()
+        )
+        sec_years = annual_statements(facts_to_rows("0000320193", answer))
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin, quote_type)
+                    VALUES (91, 'AAPL', 'Apple Inc.', 'USD', true, 'US0000000091', 'EQUITY');
+                    INSERT INTO financial_statements
+                        (asset_id, statement_type, period_type, period_end, currency,
+                         revenue, net_income, total_assets, operating_cashflow, capex)
+                    VALUES
+                        (91, 'income', 'annual', DATE '2025-09-30', 'USD',
+                         416161000000, 112010000000, NULL, NULL, NULL),
+                        (91, 'balance', 'annual', DATE '2025-09-30', 'USD',
+                         NULL, NULL, 359241000000, NULL, NULL),
+                        (91, 'cashflow', 'annual', DATE '2025-09-30', 'USD',
+                         NULL, NULL, NULL, 111482000000, -12715000000),
+                        (91, 'income', 'quarterly', DATE '2025-09-30', 'USD',
+                         1, NULL, NULL, NULL, NULL);
+                """)
+            )
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        statements = MagicMock()
+        statements.annual = AsyncMock(return_value=(SimpleNamespace(status="fresh"), sec_years))
+        try:
+            result = await SecCheck(async_sessionmaker(async_engine), statements).check(91)
+        finally:
+            await async_engine.dispose()
+            with engine.begin() as connection:
+                connection.execute(text("DELETE FROM financial_statements WHERE asset_id = 91"))
+                connection.execute(text("DELETE FROM assets WHERE id = 91"))
+
+        latest = result.years[0]
+        figures = {figure.column: figure.status for figure in latest.figures}
+        assert latest.yahoo_period_end == date(2025, 9, 30)
+        # One row per statement, read together; the quarterly row is not an annual figure.
+        for column in ("revenue", "net_income", "total_assets", "operating_cashflow", "capex"):
+            assert figures[column] == MATCH, column

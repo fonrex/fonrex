@@ -46,6 +46,7 @@ directly inside OpenBB.
 | `fonrex_dcf_sensitivity` | Fonrex DCF Sensitivity Matrix | Valuation | table | WACC × terminal growth sensitivity matrix |
 | `fonrex_insider_transactions` | Fonrex Insider Transactions | Fundamentals | table | SEC Form 4 insider trading data (US only) |
 | `fonrex_etf_details` | Fonrex ETF Details | Fundamentals | table | UCITS ETF details from JustETF |
+| `fonrex_sec_check` | Fonrex SEC Check | Fundamentals | table | Annual statements stored from Yahoo checked against the SEC filings (XBRL), year by year (parameter `years`, 3 by default): one row per figure, gaps beyond `SEC_CHECK_TOLERANCE` first, with the XBRL concept and the link to the filing. Only for an instrument with a US listing in the catalogue |
 | `fonrex_index_constituents` | Fonrex Index Constituents | Market Data | table | Index constituents (S&P 500, CAC 40, NASDAQ 100, DAX) |
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates, one card per series: US 10Y Treasury (FRED); euro AAA 10Y, ECB deposit rate, CISS (ECB). Parameter `currency`: USD, EUR or both |
 | `fonrex_macro_indicators` | Fonrex Macro Indicators | Macro | metric | Latest Eurostat indicators of a country or of the euro area (parameter `geo`, `EA` by default): inflation (HICP) and core inflation, unemployment rate, GDP growth on the quarter and on the year, economic sentiment, consumer confidence; `delta` is the change on the previous period (percentage points for a rate) |

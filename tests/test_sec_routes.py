@@ -216,3 +216,59 @@ class TestContact:
     def test_an_address_of_the_owner_is_not(self, monkeypatch):
         monkeypatch.setenv("SEC_EDGAR_EMAIL", "pierre@example.org")
         assert not uses_default_contact()
+
+
+class TestOpenBB:
+    def test_one_row_per_figure_the_gaps_first(self, client, services):
+        response = client.get("/openbb/sec/AAPL/check", params={"years": 1})
+
+        assert response.status_code == 200
+        rows = response.json()
+        assert {row["Year"] for row in rows} == {"2025-09-27"}
+        assert rows[0] == {
+            "Year": "2025-09-27",
+            "Figure": "Net income",
+            "Status": "Mismatch",
+            "SEC": 112010000000,
+            "Yahoo": 100000000000,
+            "Gap": "-10.72%",
+            "Concept": "NetIncomeLoss",
+            "Filing": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/",
+        }
+        assert rows[1]["Status"] == "Missing at Yahoo"
+        assert rows[-1]["Status"] == "Match" and rows[-1]["Figure"] == "Revenue"
+        assert rows[-1]["Gap"] == "+0.00%"
+        services[1].check.assert_awaited_once_with(7)
+
+    def test_three_years_by_default(self, client):
+        rows = client.get("/openbb/sec/AAPL/check").json()
+        assert {row["Year"] for row in rows} == {"2025-09-27", "2024-09-28"}
+
+    def test_a_year_in_another_currency_and_nothing_filed(self):
+        from integrations.openbb.adapters import format_sec_check_table
+
+        rows = format_sec_check_table(
+            {"years": [{"period_end": "2025-12-31", "note": "not compared", "figures": []}]}
+        )
+        assert rows == [
+            {
+                "Year": "2025-12-31",
+                "Figure": "—",
+                "Status": "not compared",
+                "SEC": None,
+                "Yahoo": None,
+                "Gap": None,
+                "Concept": None,
+                "Filing": None,
+            }
+        ]
+        assert (
+            format_sec_check_table({"years": []})[0]["Status"]
+            == "No fiscal year filed with the SEC"
+        )
+
+    def test_an_instrument_without_sec_filer(self, client, services):
+        services[1].check.return_value = SecCheckResult(
+            SecLoad("no_cik", reason="No US listing"), Decimal("0.01"), []
+        )
+        assert client.get("/openbb/sec/AIR.PA/check").status_code == 404

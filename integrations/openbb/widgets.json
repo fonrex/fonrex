@@ -364,6 +364,31 @@
       }
     ]
   },
+  "fonrex_sec_check": {
+    "name": "Fonrex SEC Check",
+    "description": "Annual statements stored from Yahoo checked against the statements the company filed with the SEC (XBRL), year by year: gaps beyond the tolerance first, with the XBRL concept and a link to the filing on EDGAR. US filers, and foreign companies with a US listing (20-F)",
+    "category": "Fundamentals",
+    "type": "table",
+    "endpoint": "openbb/sec/{ticker}/check",
+    "gridData": { "w": 20, "h": 12 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Ticker of an instrument with a US listing in the catalogue (e.g. AAPL, MSFT, SAP)"
+      },
+      {
+        "paramName": "years",
+        "value": "3",
+        "label": "Years",
+        "type": "text",
+        "description": "Most recent fiscal years checked (1 to 30)"
+      }
+    ]
+  },
   "fonrex_etf_details": {
     "name": "Fonrex ETF Details",
     "description": "UCITS ETF details from JustETF: TER, AUM, replication, top holdings, performance",

@@ -33,6 +33,7 @@ from integrations.openbb.adapters import (
     format_macro_indicators_metric,
     format_macro_rates_metric,
     format_quote_metric,
+    format_sec_check_table,
     format_technical_chart_overlay,
     format_technical_multi_chart,
 )
@@ -78,6 +79,7 @@ from routers.realtime import (
     get_quotes_batch,
     get_realtime_worker,
 )
+from routers.sec import check_statements_against_sec, get_sec_check, get_sec_statements
 from routers.specialized import (
     get_etf_details,
     get_index_constituents,
@@ -434,6 +436,20 @@ async def get_openbb_factor_exposure(
         exposure=exposure,
     )
     return format_factor_exposure_table(res)
+
+
+@router.get("/sec/{ticker}/check")
+async def get_openbb_sec_check(
+    ticker: str,
+    years: Optional[int] = Query(3, ge=1, le=30),
+    statements=Depends(get_sec_statements),
+    checker=Depends(get_sec_check),
+) -> List[Dict[str, Any]]:
+    """Return the check of the Yahoo statements against the SEC filings as an AgGrid table."""
+    res = await check_statements_against_sec(
+        ticker=ticker, years=years, isin=None, statements=statements, checker=checker
+    )
+    return format_sec_check_table(res)
 
 
 @router.get("/factors/{dataset}/chart")

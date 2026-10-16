@@ -112,6 +112,7 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/macro/indicators/{indicator}/chart",
     "openbb/factors/exposure/{ticker}",
     "openbb/factors/{dataset}/chart",
+    "openbb/sec/{ticker}/check",
 ]
 
 

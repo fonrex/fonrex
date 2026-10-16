@@ -874,3 +874,75 @@ def format_macro_indicator_chart(series_obj: Any) -> Dict[str, Any]:
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
         },
     }
+
+
+# Names of the figures checked against the SEC, as shown in the table.
+SEC_FIGURE_NAMES = {
+    "revenue": "Revenue",
+    "gross_profit": "Gross profit",
+    "operating_income": "Operating income",
+    "net_income": "Net income",
+    "eps_basic": "EPS (basic)",
+    "eps_diluted": "EPS (diluted)",
+    "shares_basic": "Shares (basic)",
+    "shares_diluted": "Shares (diluted)",
+    "interest_expense": "Interest expense",
+    "tax_provision": "Income tax",
+    "total_assets": "Total assets",
+    "total_liabilities": "Total liabilities",
+    "operating_cashflow": "Operating cash flow",
+    "investing_cashflow": "Investing cash flow",
+    "financing_cashflow": "Financing cash flow",
+    "capex": "Capex",
+    "dividends_paid": "Dividends paid",
+}
+SEC_STATUS_LABELS = {
+    "mismatch": "Mismatch",
+    "missing_yahoo": "Missing at Yahoo",
+    "missing_sec": "Not filed with the SEC",
+    "match": "Match",
+}
+# Order of the rows of a year: what needs a look first.
+_SEC_STATUS_ORDER = {"mismatch": 0, "missing_yahoo": 1, "missing_sec": 2, "match": 3}
+
+
+def _sec_note_row(year: Optional[str], note: str) -> Dict[str, Any]:
+    columns = ("SEC", "Yahoo", "Gap", "Concept", "Filing")
+    return {"Year": year, "Figure": "—", "Status": note, **dict.fromkeys(columns)}
+
+
+def format_sec_check_table(check_obj: Any) -> List[Dict[str, Any]]:
+    """The check of the Yahoo statements against the SEC filings as AgGrid rows.
+
+    One row per fiscal year and figure, the gaps first. ``Gap`` is (Yahoo - SEC) / SEC,
+    in percent; ``Filing`` links to the filing on EDGAR.
+    """
+    data = _to_dict(check_obj)
+    rows: List[Dict[str, Any]] = []
+    for year in data.get("years") or []:
+        year = _to_dict(year)
+        label = str(year.get("period_end"))
+        if year.get("note"):
+            rows.append(_sec_note_row(label, year["note"]))
+            continue
+        figures = sorted(
+            (_to_dict(figure) for figure in year.get("figures") or []),
+            key=lambda figure: _SEC_STATUS_ORDER.get(figure.get("status"), 9),
+        )
+        for figure in figures:
+            difference = figure.get("difference")
+            rows.append(
+                {
+                    "Year": label,
+                    "Figure": SEC_FIGURE_NAMES.get(figure.get("column"), figure.get("column")),
+                    "Status": SEC_STATUS_LABELS.get(figure.get("status"), figure.get("status")),
+                    "SEC": _to_plain_value(figure.get("sec")),
+                    "Yahoo": _to_plain_value(figure.get("yahoo")),
+                    "Gap": None if difference is None else f"{float(difference) * 100:+.2f}%",
+                    "Concept": figure.get("concept"),
+                    "Filing": figure.get("filing_url"),
+                }
+            )
+    if not rows:
+        rows.append(_sec_note_row(None, "No fiscal year filed with the SEC"))
+    return rows

@@ -22,6 +22,7 @@ from financials.sec_check import (
     MISMATCH,
     MISSING_SEC,
     MISSING_YAHOO,
+    NO_YAHOO_YEAR,
     NOT_COMPARED,
     check_tolerance,
     compare,
@@ -128,7 +129,7 @@ class TestApple:
         older = compare(APPLE, self.YAHOO, Decimal("0.01"))[1]
         assert older.period_end == date(2024, 9, 28)
         assert older.yahoo_period_end is None
-        assert {figure.status for figure in older.figures} == {MISSING_YAHOO}
+        assert (older.figures, older.note) == ([], NO_YAHOO_YEAR)
 
     def test_a_yahoo_year_more_than_two_weeks_away_is_not_matched(self):
         far = fiscal_years(yahoo(date(2025, 12, 31), revenue=1))

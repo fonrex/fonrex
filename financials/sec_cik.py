@@ -9,8 +9,9 @@ The CIK is therefore never guessed:
 
 * only a **US listing** of the instrument is looked up: quoted in USD, on a US
   exchange (or on none named), with a ticker that names no foreign exchange.
-  ``AIR.PA`` and ``SAP.DE`` are never sent to the SEC; SAP is found through its
-  NYSE listing when the catalogue has one;
+  ``AIR.PA`` and ``SAP.DE`` are never sent to the SEC. The NYSE ADR of SAP has
+  an ISIN of its own, so it is an instrument of its own: it is found, the German
+  share is not;
 * the ticker must be in the table of the SEC (``company_tickers_exchange.json``)
   on a US exchange, and the **name** of the company there must be the name of
   the instrument in the catalogue;
@@ -63,6 +64,10 @@ _LEGAL_WORDS = frozenset(
     """inc incorporated corp corporation co company plc sa se ag nv bv ltd limited llc lp
     the class a b c adr ads sponsored ordinary shares share common stock new""".split()
 )
+# Words of a depositary receipt: the word that follows ("ADR on SAP SE", "Sponsored ADR
+# of Novartis") links the receipt to its company, and is left out with them.
+_RECEIPT_WORDS = frozenset({"adr", "adrs", "ads", "gdr", "sponsored", "unsponsored"})
+_RECEIPT_LINKS = frozenset({"on", "of", "for"})
 
 
 class SecTableError(Exception):
@@ -135,8 +140,14 @@ def is_us_listing(ticker: str, exchange: str | None, currency: str | None) -> bo
 def _name_words(name: str) -> list[str]:
     text = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
     text = text.lower().replace("&", " and ")
-    words = re.findall(r"[a-z0-9]+", text)
-    return [word for word in words if word not in _LEGAL_WORDS]
+    kept, after_receipt = [], False
+    for word in re.findall(r"[a-z0-9]+", text):
+        if after_receipt and word in _RECEIPT_LINKS:
+            continue
+        after_receipt = word in _RECEIPT_WORDS
+        if word not in _LEGAL_WORDS and word not in _RECEIPT_WORDS:
+            kept.append(word)
+    return kept
 
 
 def same_company(catalogue_name: str | None, sec_name: str | None) -> bool:
@@ -145,8 +156,8 @@ def same_company(catalogue_name: str | None, sec_name: str | None) -> bool:
     The legal forms and the classes of shares are left out (``Alphabet Inc Class A``
     is ``Alphabet Inc.``); the first word must be the same, and the names must
     share at least half of the words of the longer one: ``JPMorgan Chase & Co``
-    is ``JPMORGAN CHASE & CO``; ``AAR Corp`` is not ``Airbus SE``, and
-    ``Apple Hospitality REIT`` is not ``Apple Inc.``.
+    is ``JPMORGAN CHASE & CO``, ``ADR on SAP SE`` is ``SAP SE``; ``AAR Corp`` is not
+    ``Airbus SE``, and ``Apple Hospitality REIT`` is not ``Apple Inc.``.
     """
     ours, theirs = _name_words(catalogue_name or ""), _name_words(sec_name or "")
     if not ours or not theirs or ours[0] != theirs[0]:

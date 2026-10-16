@@ -62,6 +62,10 @@ NOT_COMPARED = {
     "total_equity": "Yahoo includes the minority interests",
 }
 YEAR_END_SLACK = 14  # days
+NO_YAHOO_YEAR = (
+    "No Yahoo statements for this fiscal year (deep enrichment not run, "
+    "or Yahoo gives fewer years): not compared"
+)
 
 MATCH = "match"
 MISMATCH = "mismatch"
@@ -168,8 +172,8 @@ def compare(
     """Check each fiscal year filed with the SEC against the Yahoo year ending with it.
 
     ``yahoo_years`` are fiscal years as ``fiscal_years()`` gives them (one object
-    per year, every column). A SEC year without Yahoo year has every figure
-    ``missing_yahoo``.
+    per year, every column). A SEC year without Yahoo year has no figures and a
+    ``note``: the statements of that year were never stored from Yahoo.
     """
     tolerance = check_tolerance() if tolerance is None else tolerance
     yahoo_years = list(yahoo_years)
@@ -181,6 +185,10 @@ def compare(
         if yahoo_year is not None:
             check.yahoo_period_end = yahoo_year.period_end
             check.yahoo_currency = getattr(yahoo_year, "currency", None)
+        if yahoo_year is None:
+            check.note = NO_YAHOO_YEAR
+            checks.append(check)
+            continue
         if check.yahoo_currency and check.yahoo_currency.upper() != sec_year.currency.upper():
             check.note = (
                 f"Yahoo gives this year in {check.yahoo_currency}, the SEC filing in "
@@ -189,7 +197,7 @@ def compare(
             checks.append(check)
             continue
         for column in COMPARED:
-            yahoo_value = getattr(yahoo_year, column, None) if yahoo_year is not None else None
+            yahoo_value = getattr(yahoo_year, column, None)
             result = _compare_figure(column, sec_year, yahoo_value, tolerance)
             if result is not None:
                 check.figures.append(result)

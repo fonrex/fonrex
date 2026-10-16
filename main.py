@@ -38,7 +38,11 @@ from database.technical import SqlAlchemyTechnicalRepository
 from documentation import get_api_documentation
 from factors.exposure import FactorExposure
 from factors.store import FactorLibrary
+from financials.providers.sec_edgar import uses_default_contact
 from financials.router import router as financials_router
+from financials.sec_check import SecCheck
+from financials.sec_cik import SecCikResolver, SqlCikStore
+from financials.sec_statements import SecStatements
 from financials.service import FinancialsAggregator
 from historical.ingestion_service import HistoricalIngestionService
 from macro.ecb_service import ECBService
@@ -60,6 +64,7 @@ from routers.monitoring import router as monitoring_router
 from routers.news import router as news_router
 from routers.openbb import router as openbb_router
 from routers.realtime import router as realtime_router
+from routers.sec import router as sec_router
 from routers.specialized import router as specialized_router
 from routers.technical import router as technical_router
 from routers.valuation import router as valuation_router
@@ -113,6 +118,7 @@ app.include_router(specialized_router)
 app.include_router(realtime_router)
 app.include_router(macro_router)
 app.include_router(factors_router)
+app.include_router(sec_router)
 
 app.include_router(monitoring_router)
 app.include_router(openbb_router)
@@ -300,6 +306,8 @@ def configure_application_state(application: FastAPI):
         "fred_service",
         "ecb_service",
         "eurostat_service",
+        "sec_statements",
+        "sec_check",
         "factor_library",
         "factor_exposure",
         "validation_layer",
@@ -425,6 +433,26 @@ async def startup_event(application: FastAPI):
     except Exception as exc:
         state.eurostat_service = None
         logger.warning("⚠️ EurostatService not started: %s", exc)
+
+    try:
+        sec_provider = getattr(state, "sec_edgar_provider", None)
+        if async_resources and sec_provider is not None:
+            session_factory = async_resources.session_factory
+            cik_resolver = SecCikResolver(SqlCikStore(session_factory), sec_provider.ticker_table)
+            state.sec_statements = SecStatements(session_factory, sec_provider, cik_resolver)
+            state.sec_check = SecCheck(session_factory, state.sec_statements)
+            logger.info("🏛️ SEC statements started")
+            if uses_default_contact():
+                logger.warning(
+                    "⚠️ SEC_EDGAR_EMAIL is not set to your own address: the SEC asks every "
+                    "automated client to name who runs it"
+                )
+        else:
+            logger.warning("⚠️ DATABASE_URL not set or SECEdgar unavailable — SEC statements disabled")
+    except Exception as exc:
+        state.sec_statements = None
+        state.sec_check = None
+        logger.warning("⚠️ SEC statements not started: %s", exc)
 
     try:
         if async_resources:
@@ -557,6 +585,8 @@ async def shutdown_event(application: FastAPI):
         "fred_service",
         "ecb_service",
         "eurostat_service",
+        "sec_statements",
+        "sec_check",
         "factor_library",
         "factor_exposure",
         "usage_recorder",

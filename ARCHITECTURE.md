@@ -268,6 +268,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `scripts/load_fx_rates.py` | Command line download of the ECB reference rates of the euro into the database. |
 | `schemas/news.py` | Pydantic v2 schemas for the news system: `RawNewsItem`, `NewsArticleSchema`, `NewsResponse`, `NewsFeedResponse`, `NewsLanguage` / `NewsSentiment` enums. |
 | `schemas/macro.py` | Pydantic v2 schemas for the macro-economic rates and for the Eurostat indicators (latest values, series, refresh). |
+| `schemas/sec.py` | Pydantic v2 schemas of the SEC routes: statements as filed, the check against Yahoo, the refresh. |
 | `schemas/factors.py` | Pydantic v2 schemas of the factor routes: datasets, what is stored of a file, series of factor returns. |
 | `monitoring/__init__.py` | Monitoring package exposing `ValidationLayer` and `CanaryMonitor`. |
 | `monitoring/models.py` | Pydantic-independent business models for canary results and statuses. |
@@ -280,6 +281,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `database/monitoring.py` | SQLAlchemy monitoring adapter: price history, logs, aggregates, and alerts. |
 | `routers/monitoring.py` | REST monitoring endpoints (`/health/*`) whose dependencies are resolved from `app.state`. |
 | `routers/macro.py` | HTTP routes for macro-economic data: the rates of FRED (USD) and of the ECB (EUR), by currency; the indicators of Eurostat by country (latest values, series, refresh). |
+| `routers/sec.py` | HTTP routes of the annual statements filed with the SEC: statements, check against Yahoo, refresh; the instrument of the ticker, then its verified CIK. |
 | `routers/factors.py` | HTTP routes of the factor returns: the datasets, the series of one dataset, the refresh of the files. |
 | `historical/providers.py` | yfinance and TradingView connectors for retrieving historical bars, and the choice between them (`fetch`): yfinance with the verified symbol, TradingView only for a line quoted in the currency of the listing. |
 | `historical/normalization.py` | Pure OHLCV validation, deduplication, and normalization rules. |
@@ -750,6 +752,9 @@ Every route of the application is listed here, and `tests/test_docs_consistency.
 | GET | `/macro/indicators` | Latest value of each Eurostat indicator for one country or area (`geo`, `EA` by default, read as `EA21`; `indicator` to keep some), with the previous period and the change; a series missing or older than `EUROSTAT_REFRESH_HOURS` is read first |
 | GET | `/macro/indicators/{indicator}` | Values of one Eurostat indicator over time (`geo`: up to 10 countries or areas separated by commas, `start`, `end`), periods dated by their first day, rates as ratios |
 | POST | `/macro/indicators/refresh` | Read Eurostat series into the database (`geo`, `indicator`, `force`) |
+| GET | `/sec/{ticker}/statements` | Annual statements the company filed with the SEC (XBRL), most recent year first (`years`, `isin`): each figure with its concept, form, filing date and EDGAR link; `404` for an instrument without SEC filer (no verified CIK) |
+| GET | `/sec/{ticker}/check` | The annual statements stored from Yahoo checked against the SEC filings, year by year: `match`, `mismatch`, `missing_yahoo`, `missing_sec` within `SEC_CHECK_TOLERANCE` |
+| POST | `/sec/{ticker}/refresh` | Look the CIK up again and read the facts of the company from the SEC now |
 | GET | `/factors` | Factor datasets of the Kenneth French library and what is stored of each file |
 | GET | `/factors/{dataset}` | Factor returns of one dataset (`frequency`, `start`, `end`), as ratios in US dollars; a file missing or older than `FACTORS_REFRESH_DAYS` is downloaded first |
 | POST | `/factors/refresh` | Download files of the library (`dataset`, `frequency`, `force`) |
@@ -1626,6 +1631,7 @@ Test coverage, by theme:
 - `tests/test_justetf_scraper.py`: the legacy scraper of justETF profile pages on real extracts (French and English pages give the same figures, the page of another ETF is rejected, errors return only the ISIN).
 - `tests/test_sec_edgar_provider.py`: Form 4 insider transactions extraction from SEC EDGAR.
 - `tests/test_xbrl_mapping.py`: the real answers of `tests/fixtures/sec/` read as annual statements — Apple's 10-Q facts left out, the latest filing kept, SAP's restatement, a bank without operating income, Novartis' revenue concept, the currency of the latest report and never a mix, the reading of `companyfacts` with the `User-Agent` of the instance.
+- `tests/test_sec_routes.py`: `/sec/{ticker}/statements`, `/check` and `/refresh` on the real SEC answers (concepts and filings of each figure, an instrument without SEC filer, the SEC down with and without stored years, counts of a check), the instrument of the ticker, and the warning when `SEC_EDGAR_EMAIL` is the address of the example.
 - `tests/test_sec_check.py`: the Yahoo statements stored the way the enrichment stores them (three rows a year) checked against the real SEC answers — Apple's year dated three days apart, a gap beyond the tolerance, payments with opposite signs, a figure only Yahoo gives, another currency, the tolerance setting.
 - `tests/test_sec_statements.py`: the SEC statements of an instrument without CIK (the SEC is never asked) and the refresh delay; storing and reading the facts is tested on PostgreSQL.
 - `tests/test_sec_cik.py`: the CIK of an instrument is verified, never guessed, on the real SEC table of `tests/fixtures/sec/` — Airbus is never AAR Corp, SAP is found through its NYSE listing, classes of shares, homonyms (`Apple Hospitality REIT`), funds, reuse and retry of a stored answer, the table read with the `User-Agent` of the instance.

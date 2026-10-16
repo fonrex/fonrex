@@ -67,6 +67,18 @@ _TRANSACTION_CODES = {
 
 # ── Provider ──────────────────────────────────────────────────────────────────
 
+# The address of the example configuration. The SEC asks every automated client
+# to name who runs it: an instance that keeps it speaks in the name of Fonrex.
+DEFAULT_SEC_EMAIL = "contact@fonrex.io"
+
+
+def uses_default_contact() -> bool:
+    """Whether ``SEC_EDGAR_EMAIL`` is unset or still the address of the example."""
+    email = (os.environ.get("SEC_EDGAR_EMAIL") or "").strip().lower()
+    return email in ("", DEFAULT_SEC_EMAIL)
+
+
+
 
 class SECEdgarProvider(BaseFinancialProvider):
     """SEC EDGAR provider of the Form 4 insider transactions."""
@@ -84,7 +96,7 @@ class SECEdgarProvider(BaseFinancialProvider):
     TICKERS_EXCHANGE_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
 
     def __init__(self):
-        self._sec_email = os.environ.get("SEC_EDGAR_EMAIL", "contact@fonrex.io")
+        self._sec_email = os.environ.get("SEC_EDGAR_EMAIL", DEFAULT_SEC_EMAIL)
         self._sec_ua = f"Fonrex {self._sec_email}"
 
     def _sec_headers(self) -> dict:

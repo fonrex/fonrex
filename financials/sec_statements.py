@@ -79,9 +79,15 @@ class SecStatements:
         fetched_at = _aware(fetched_at)
         return fetched_at is not None and self._now() - fetched_at < self.refresh_after
 
-    async def refresh(self, asset_id: int, force: bool = False) -> SecLoad:
-        """Read the facts of the company of an instrument, unless they were read recently."""
-        resolution = await self.cik_resolver.resolve(asset_id, refresh=False)
+    async def refresh(
+        self, asset_id: int, force: bool = False, *, recheck_cik: bool = False
+    ) -> SecLoad:
+        """Read the facts of the company of an instrument, unless they were read recently.
+
+        ``recheck_cik`` looks the CIK up again in the table of the SEC (after a US
+        listing was added to the catalogue, for instance).
+        """
+        resolution = await self.cik_resolver.resolve(asset_id, refresh=recheck_cik)
         if not resolution.found:
             return SecLoad("no_cik", reason=resolution.reason)
         cik = resolution.cik

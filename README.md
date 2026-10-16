@@ -149,6 +149,7 @@ Finance, deduplicated by URL and by title similarity.
 |---|---|
 | Prices | `GET /eod/{ticker}` · `GET /ticker/{symbol}/history` · `POST /historical/ingest` · `GET /quote/{ticker}` · `GET /quotes` · `WS /ws/realtime/{ticker}` |
 | Fundamentals | `GET /fundamental` · `GET /fundamental/deep` · `GET /etf/{isin}/details` · `GET /insider-transactions/{ticker}` · `GET /index/{name}/constituents` |
+| SEC filings | `GET /sec/{ticker}/statements` · `GET /sec/{ticker}/check` · `POST /sec/{ticker}/refresh` |
 | Valuation | `GET /dcf/{ticker}` · `POST /dcf/{ticker}` · `GET /dcf/{ticker}/compare` · `GET /dcf/{ticker}/sensitivity` |
 | Factors and rates | `GET /factors` · `GET /factors/{dataset}` · `GET /factors/exposure/{ticker}` · `GET /macro/rates` · `GET /macro/indicators` · `GET /macro/indicators/{indicator}` |
 | Technical analysis | `GET /technical/{ticker}` · `GET /technical/{ticker}/multi` · `GET /technical/{ticker}/chart` · `GET /technical/screen` |

@@ -8,6 +8,7 @@ Transforms Fonrex domain responses into contracts expected by OpenBB Workspace w
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
@@ -93,7 +94,9 @@ def format_quote_metric(quote_obj: Any) -> List[Dict[str, Any]]:
             {
                 "label": "Change",
                 "value": f"{change:+.2f}" if isinstance(change, (int, float)) else change,
-                "delta": f"{change_pct:+.2f}%" if isinstance(change_pct, (int, float)) else change_pct,
+                "delta": f"{change_pct:+.2f}%"
+                if isinstance(change_pct, (int, float))
+                else change_pct,
             }
         )
 
@@ -200,7 +203,14 @@ def format_factor_exposure_table(exposure_obj: Any) -> List[Dict[str, Any]]:
         ("Adjusted R²", "adj_r_squared"),
         ("Residual volatility (annualised)", "residual_volatility"),
     ):
-        rows.append({"Coefficient": label, "Value": _rounded(data.get(key)), "Std error": None, "t-stat": None})
+        rows.append(
+            {
+                "Coefficient": label,
+                "Value": _rounded(data.get(key)),
+                "Std error": None,
+                "t-stat": None,
+            }
+        )
     rows.append(
         {
             "Coefficient": f"Periods ({data.get('frequency')}, {data.get('start')} → {data.get('end')})",
@@ -567,7 +577,9 @@ def format_dcf_table(dcf_data: Any) -> List[Dict[str, Any]]:
             {
                 "category": "Summary",
                 "metric": "Consensus Upside (%)",
-                "value": f"{consensus_upside:+.2f}%" if isinstance(consensus_upside, (int, float)) else consensus_upside,
+                "value": f"{consensus_upside:+.2f}%"
+                if isinstance(consensus_upside, (int, float))
+                else consensus_upside,
             }
         )
 
@@ -610,7 +622,9 @@ def format_dcf_table(dcf_data: Any) -> List[Dict[str, Any]]:
                         v_str = str(v)
                 else:
                     v_str = str(v)
-                rows.append({"category": "WACC", "metric": w_key.replace("_", " ").title(), "value": v_str})
+                rows.append(
+                    {"category": "WACC", "metric": w_key.replace("_", " ").title(), "value": v_str}
+                )
 
     return rows
 
@@ -775,7 +789,13 @@ def format_factor_returns_chart(series_obj: Any) -> Dict[str, Any]:
             xs.append(_to_plain_value(row.get("date")))
             ys.append(round(growth - 1, 6))
         traces.append(
-            {"type": "scatter", "mode": "lines", "name": FACTOR_LABELS.get(name, name), "x": xs, "y": ys}
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": FACTOR_LABELS.get(name, name),
+                "x": xs,
+                "y": ys,
+            }
         )
     return {
         "data": traces,
@@ -870,7 +890,9 @@ def format_macro_indicator_chart(series_obj: Any) -> Dict[str, Any]:
             "title": f"{name} — Eurostat",
             "xaxis": {"rangeslider": {"visible": False}},
             "yaxis": {
-                "title": "Rate" if is_rate else ("Index" if data.get("unit") == "index" else "Balance"),
+                "title": "Rate"
+                if is_rate
+                else ("Index" if data.get("unit") == "index" else "Balance"),
                 "tickformat": ".1%" if is_rate else ".1f",
             },
             "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
@@ -948,3 +970,98 @@ def format_sec_check_table(check_obj: Any) -> List[Dict[str, Any]]:
     if not rows:
         rows.append(_sec_note_row(None, "No fiscal year filed with the SEC"))
     return rows
+
+
+_OFFSET_NAME = re.compile(r"^\d{1,3}[DWMY]$")
+
+
+def format_treasury_curve_chart(curve_obj: Any) -> Dict[str, Any]:
+    """The Treasury yield curve of a day as a Plotly figure, one line per day compared.
+
+    The maturities are categories, shortest first, so that the short end of the
+    curve stays readable; each comparison is a dotted line named after its date.
+    """
+    data = _to_dict(curve_obj)
+    curve_day = _to_plain_value(data.get("date"))
+    lines = [(f"{curve_day}", data.get("points") or [], "solid")]
+    for comparison in data.get("comparisons") or []:
+        comparison = _to_dict(comparison)
+        if comparison.get("date"):
+            found = str(_to_plain_value(comparison["date"]))
+            requested = str(comparison.get("requested") or "").strip().upper()
+            # An offset (1M, 1Y) is named with the day found; a date is its own name.
+            name = f"{requested} before ({found})" if _OFFSET_NAME.match(requested) else found
+            lines.append((name, comparison.get("points") or [], "dot"))
+    tenors = [_to_dict(point).get("tenor") for point in data.get("points") or []]
+    for _, points, _ in lines[1:]:
+        tenors += [
+            _to_dict(p).get("tenor") for p in points if _to_dict(p).get("tenor") not in tenors
+        ]
+    traces = []
+    for name, points, dash in lines:
+        values = {_to_dict(p).get("tenor"): _to_dict(p).get("value") for p in points}
+        traces.append(
+            {
+                "type": "scatter",
+                "mode": "lines+markers",
+                "name": name,
+                "x": tenors,
+                "y": [values.get(tenor) for tenor in tenors],
+                "line": {"dash": dash},
+            }
+        )
+    kind = "real yields (TIPS)" if data.get("curve") == "real" else "par yields"
+    return {
+        "data": traces,
+        "layout": {
+            "title": f"US Treasury curve, {kind} — {curve_day}",
+            "xaxis": {"title": "Maturity", "type": "category"},
+            "yaxis": {"title": "Yield", "tickformat": ".2%"},
+            "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
+        },
+    }
+
+
+def format_treasury_series_chart(series_obj: Any) -> Dict[str, Any]:
+    """Treasury maturities or spreads over time as a Plotly figure, one line each.
+
+    A spread (``10Y-2Y``) gets a zero line: below it, the curve is inverted.
+    """
+    data = _to_dict(series_obj)
+    traces, names = [], []
+    for series in data.get("series") or []:
+        series = _to_dict(series)
+        observations = [_to_dict(o) for o in series.get("observations") or []]
+        names.append(series.get("tenor") or "")
+        traces.append(
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": series.get("tenor"),
+                "x": [_to_plain_value(o.get("date")) for o in observations],
+                "y": [o.get("value") for o in observations],
+            }
+        )
+    layout: Dict[str, Any] = {
+        "title": f"US Treasury {', '.join(names)}",
+        "xaxis": {"rangeslider": {"visible": False}},
+        "yaxis": {
+            "title": "Yield" if not any("-" in n for n in names) else "Spread",
+            "tickformat": ".2%",
+        },
+        "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
+    }
+    if any("-" in name for name in names):
+        layout["shapes"] = [
+            {
+                "type": "line",
+                "xref": "paper",
+                "x0": 0,
+                "x1": 1,
+                "yref": "y",
+                "y0": 0,
+                "y1": 0,
+                "line": {"dash": "dash", "width": 1},
+            }
+        ]
+    return {"data": traces, "layout": layout}

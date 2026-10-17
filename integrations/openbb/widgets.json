@@ -521,6 +521,73 @@
       }
     ]
   },
+  "fonrex_treasury_curve": {
+    "name": "Fonrex Treasury Curve",
+    "description": "US Treasury yield curve of a day, 1 month to 30 years, with the curves of 1 month and 1 year before by default; nominal (par yields) or real (TIPS)",
+    "category": "Macro",
+    "type": "chart",
+    "endpoint": "openbb/macro/treasury/curve/chart",
+    "gridData": { "w": 12, "h": 12 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "curve",
+        "value": "nominal",
+        "label": "Curve",
+        "type": "text",
+        "description": "Nominal par yields or real yields (TIPS)",
+        "options": [
+          { "label": "Nominal (par yields)", "value": "nominal" },
+          { "label": "Real (TIPS)", "value": "real" }
+        ]
+      },
+      {
+        "paramName": "date",
+        "value": "",
+        "label": "Date",
+        "type": "date",
+        "description": "Day of the curve (the latest when empty)"
+      },
+      {
+        "paramName": "compare",
+        "value": "1M,1Y",
+        "label": "Compare with",
+        "type": "text",
+        "description": "Days to compare with, separated by commas: 1W, 1M, 3M, 1Y before, or dates"
+      }
+    ]
+  },
+  "fonrex_treasury_spread": {
+    "name": "Fonrex Treasury Spread",
+    "description": "US Treasury 10-year minus 2-year spread over time (below zero, the curve is inverted), or other maturities and spreads; last 10 years by default",
+    "category": "Macro",
+    "type": "chart",
+    "endpoint": "openbb/macro/treasury/series/chart",
+    "gridData": { "w": 12, "h": 12 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "tenor",
+        "value": "10Y-2Y",
+        "label": "Maturities",
+        "type": "text",
+        "description": "Maturities (10Y) or spreads of two (10Y-2Y), separated by commas",
+        "options": [
+          { "label": "10Y - 2Y", "value": "10Y-2Y" },
+          { "label": "10Y - 3M", "value": "10Y-3M" },
+          { "label": "30Y - 5Y", "value": "30Y-5Y" },
+          { "label": "2Y and 10Y", "value": "2Y,10Y" }
+        ]
+      },
+      {
+        "paramName": "start",
+        "value": "",
+        "label": "Start",
+        "type": "date",
+        "description": "First day (10 years ago when empty)"
+      }
+    ]
+  },
   "fonrex_factor_exposure": {
     "name": "Fonrex Factor Exposure",
     "description": "Exposure of a listing to the Fama/French factors (Kenneth French Data Library): alpha, betas with t-stats, R², on returns in US dollars",

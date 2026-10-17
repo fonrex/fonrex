@@ -324,3 +324,83 @@ def test_the_day_of_a_comparison(day, requested, before):
 
 def test_values_are_ratios_of_the_files():
     assert FakeCurves().days["real"][date(2026, 10, 16)]["5Y"] == Decimal("0.0252")
+
+
+class TestOpenBB:
+    def test_the_curve_of_today_and_of_the_days_compared(self, client):
+        response = client.get("/openbb/macro/treasury/curve/chart")
+
+        assert response.status_code == 200
+        figure = response.json()
+        today, month, year = figure["data"]
+        assert [trace["name"] for trace in figure["data"]] == [
+            "2026-10-16",
+            "1M before (2026-01-02)",  # the fixture holds no day between 2026-01-02 and 10-14
+            "1Y before (2025-02-18)",
+        ]
+        assert today["x"][:3] == ["1M", "6W", "2M"] and today["x"][-1] == "30Y"
+        assert today["y"][today["x"].index("10Y")] == 0.0509
+        assert (today["line"]["dash"], month["line"]["dash"]) == ("solid", "dot")
+        assert year["y"][year["x"].index("10Y")] == 0.0455
+        assert figure["layout"]["title"] == "US Treasury curve, par yields — 2026-10-16"
+        assert figure["layout"]["xaxis"]["type"] == "category"
+        assert figure["layout"]["yaxis"]["tickformat"] == ".2%"
+
+    def test_compared_with_a_date_or_with_nothing(self, client):
+        dated = client.get(
+            "/openbb/macro/treasury/curve/chart", params={"compare": "2026-01-02, 40Y"}
+        ).json()
+        alone = client.get("/openbb/macro/treasury/curve/chart", params={"compare": ""}).json()
+
+        # A day before any stored one draws no line.
+        assert [trace["name"] for trace in dated["data"]] == ["2026-10-16", "2026-01-02"]
+        assert len(alone["data"]) == 1
+
+    def test_the_real_curve(self, client):
+        figure = client.get("/openbb/macro/treasury/curve/chart", params={"curve": "real"}).json()
+        assert figure["data"][0]["x"] == ["5Y", "7Y", "10Y", "20Y", "30Y"]
+        assert figure["layout"]["title"] == "US Treasury curve, real yields (TIPS) — 2026-10-16"
+
+    def test_the_10_year_minus_2_year_spread_with_its_zero_line(self, client):
+        figure = client.get(
+            "/openbb/macro/treasury/series/chart", params={"start": "2026-10-01"}
+        ).json()
+
+        (spread,) = figure["data"]
+        assert spread["name"] == "10Y-2Y"
+        assert spread["x"] == ["2026-10-14", "2026-10-15", "2026-10-16"]
+        assert spread["y"][-1] == pytest.approx(0.0035)
+        assert figure["layout"]["yaxis"]["title"] == "Spread"
+        assert figure["layout"]["shapes"][0]["y0"] == 0
+
+    def test_maturities_without_zero_line(self, client):
+        figure = client.get(
+            "/openbb/macro/treasury/series/chart", params={"tenor": "2Y,10Y"}
+        ).json()
+        assert [trace["name"] for trace in figure["data"]] == ["2Y", "10Y"]
+        assert figure["layout"]["yaxis"]["title"] == "Yield"
+        assert "shapes" not in figure["layout"]
+
+    def test_refusals_are_those_of_the_routes(self, client):
+        assert (
+            client.get("/openbb/macro/treasury/series/chart", params={"tenor": "15Y"}).status_code
+            == 422
+        )
+        assert (
+            client.get(
+                "/openbb/macro/treasury/curve/chart", params={"date": "1989-12-31"}
+            ).status_code
+            == 404
+        )
+
+    def test_an_empty_field_of_the_widget_is_left_out(self, client):
+        # OpenBB sends an empty date field as ``date=``: the latest curve, 10 years.
+        curve = client.get("/openbb/macro/treasury/curve/chart?date=&compare=1M")
+        series = client.get("/openbb/macro/treasury/series/chart?start=")
+        assert (curve.status_code, series.status_code) == (200, 200)
+        assert curve.json()["data"][0]["name"] == "2026-10-16"
+
+    def test_a_date_field_that_is_not_a_date(self, client):
+        response = client.get("/openbb/macro/treasury/series/chart?start=yesterday")
+        assert response.status_code == 422
+        assert response.json()["detail"] == "start is not a date YYYY-MM-DD: 'yesterday'"

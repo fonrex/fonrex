@@ -36,6 +36,8 @@ from integrations.openbb.adapters import (
     format_sec_check_table,
     format_technical_chart_overlay,
     format_technical_multi_chart,
+    format_treasury_curve_chart,
+    format_treasury_series_chart,
 )
 from routers.assets import get_eod
 from routers.dependencies import (
@@ -66,6 +68,9 @@ from routers.macro import (
     get_macro_indicator_series,
     get_macro_indicators,
     get_macro_rates,
+    get_treasury_curve,
+    get_treasury_curves,
+    get_treasury_series,
 )
 from routers.news import (
     NEWS_DEFAULT_LIMIT,
@@ -226,7 +231,9 @@ async def get_openbb_history(
         cache_service=cache_service,
     )
     records = res.get("data", [])
-    return format_candlestick_chart(symbol.upper(), records, title=f"{symbol.upper()} History ({interval})")
+    return format_candlestick_chart(
+        symbol.upper(), records, title=f"{symbol.upper()} History ({interval})"
+    )
 
 
 @router.get("/technical/screen")
@@ -469,14 +476,27 @@ async def get_openbb_factor_returns_chart(
     return format_factor_returns_chart(res)
 
 
+def _widget_date(value: Optional[str], name: str) -> Optional[date]:
+    """A date field of a widget: OpenBB sends an empty field as ``name=``, which is no date."""
+    if value is None or not value.strip():
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail=f"{name} is not a date YYYY-MM-DD: {value!r}"
+        ) from None
+
+
 @router.get("/macro/indicators/{indicator}/chart")
 async def get_openbb_macro_indicator_chart(
     indicator: str,
     geo: str = Query("EA,DE,FR,IT,ES", description="Countries or areas, separated by commas"),
-    start: Optional[date] = None,
+    start: Optional[str] = Query(None, description="First period (10 years ago when empty)"),
     service=Depends(get_eurostat_service),
 ) -> Dict[str, Any]:
     """Return one Eurostat indicator of several countries as a Plotly chart (10 years by default)."""
+    start = _widget_date(start, "start")
     if start is None:
         today = date.today()
         start = today.replace(year=today.year - 10, month=1, day=1)
@@ -484,6 +504,41 @@ async def get_openbb_macro_indicator_chart(
         indicator=indicator, geo=geo, start=start, end=None, service=service
     )
     return format_macro_indicator_chart(res)
+
+
+@router.get("/macro/treasury/curve/chart")
+async def get_openbb_treasury_curve_chart(
+    curve: str = Query("nominal", pattern="^(nominal|real)$"),
+    on: Optional[str] = Query(
+        None, alias="date", description="Day of the curve (latest when empty)"
+    ),
+    compare: str = Query(
+        "1M,1Y", description="Days to compare with, separated by commas: 1W, 1M, 1Y or dates"
+    ),
+    service=Depends(get_treasury_curves),
+) -> Dict[str, Any]:
+    """Return the Treasury yield curve of a day, and of the days compared, as a Plotly chart."""
+    wanted = [part.strip() for part in compare.split(",") if part.strip()]
+    res = await get_treasury_curve(
+        curve=curve, on=_widget_date(on, "date"), compare=wanted, service=service
+    )
+    return format_treasury_curve_chart(res)
+
+
+@router.get("/macro/treasury/series/chart")
+async def get_openbb_treasury_series_chart(
+    tenor: str = Query(
+        "10Y-2Y", description="Maturities (10Y) or spreads (10Y-2Y), separated by commas"
+    ),
+    curve: str = Query("nominal", pattern="^(nominal|real)$"),
+    start: Optional[str] = Query(None, description="First day (10 years ago when empty)"),
+    service=Depends(get_treasury_curves),
+) -> Dict[str, Any]:
+    """Return Treasury maturities or spreads over time as a Plotly chart (10 years by default)."""
+    res = await get_treasury_series(
+        tenor=[tenor], curve=curve, start=_widget_date(start, "start"), end=None, service=service
+    )
+    return format_treasury_series_chart(res)
 
 
 @router.get("/dcf/{ticker}")

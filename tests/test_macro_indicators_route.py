@@ -297,6 +297,13 @@ class TestOpenBB:
             "ES",
         ]
 
+    def test_an_empty_start_of_the_widget_is_ten_years(self, client, eurostat):
+        # OpenBB sends the empty Start field of the widget as ``start=``.
+        response = client.get("/openbb/macro/indicators/hicp/chart?geo=EA&start=")
+
+        assert response.status_code == 200
+        assert eurostat.observations.await_args.args[2].year == date.today().year - 10
+
     def test_an_index_is_not_shown_as_a_percentage(self):
         from integrations.openbb.adapters import format_macro_indicator_chart
 

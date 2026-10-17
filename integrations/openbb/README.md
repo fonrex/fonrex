@@ -51,6 +51,8 @@ directly inside OpenBB.
 | `fonrex_macro_rates` | Fonrex Macro Rates | Macro | metric | Current macro-economic rates, one card per series: US 10Y Treasury (FRED); euro AAA 10Y, ECB deposit rate, CISS (ECB). Parameter `currency`: USD, EUR or both |
 | `fonrex_macro_indicators` | Fonrex Macro Indicators | Macro | metric | Latest Eurostat indicators of a country or of the euro area (parameter `geo`, `EA` by default): inflation (HICP) and core inflation, unemployment rate, GDP growth on the quarter and on the year, economic sentiment, consumer confidence; `delta` is the change on the previous period (percentage points for a rate) |
 | `fonrex_macro_indicator_chart` | Fonrex Macro Indicator Chart | Macro | chart | One Eurostat indicator over time, one line per country (parameter `geo`, up to 10 separated by commas, `EA,DE,FR,IT,ES` by default), last 10 years by default (parameter `start`). Source: Eurostat |
+| `fonrex_treasury_curve` | Fonrex Treasury Curve | Macro | chart | US Treasury yield curve of a day, 1 month to 30 years, shortest maturity first, with the curves of the days compared (parameter `compare`, `1M,1Y` by default: offsets 1W, 1M, 3M, 1Y or dates); `curve` nominal (par yields) or real (TIPS), `date` the latest by default. Source: US Treasury |
+| `fonrex_treasury_spread` | Fonrex Treasury Spread | Macro | chart | US Treasury maturities (`10Y`) or spreads (`10Y-2Y`) over time, separated by commas (parameter `tenor`, `10Y-2Y` by default), with a zero line for a spread (below it, the curve is inverted); last 10 years by default (parameter `start`). Source: US Treasury |
 | `fonrex_factor_exposure` | Fonrex Factor Exposure | Factors | table | Fama/French exposure of a listing (model ff3, ff5 or carhart; monthly or daily): annualised alpha, betas with standard errors and t-stats, R², residual volatility, periods and warnings. Returns are in US dollars (other currencies converted with the ECB reference rates) |
 | `fonrex_factor_returns` | Fonrex Factor Returns | Factors | chart | Cumulative returns of the factors of a dataset (US, Europe or developed markets; 3 factors, 5 factors or momentum), in US dollars, last 10 years by default (parameter `start`). Source: Kenneth R. French Data Library |
 
@@ -68,7 +70,7 @@ A comprehensive dashboard for analyzing a single ticker:
 ### Fonrex — Screener & Macro
 An idea-generation dashboard:
 - **Screener** tab: Technical screener (e.g. RSI < 30 for oversold stocks)
-- **Macro Context** tab: Current macro rates (FRED and ECB), Eurostat indicators of the euro area, inflation of the main euro area countries over time + index constituents
+- **Macro Context** tab: Current macro rates (FRED and ECB), Eurostat indicators of the euro area, inflation of the main euro area countries over time, the US Treasury curve (today, 1 month and 1 year before) and the 10-year minus 2-year spread + index constituents
 
 ## Authentication
 

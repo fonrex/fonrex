@@ -292,6 +292,22 @@
             "w": 24,
             "h": 12,
             "state": { "params": { "indicator": "hicp", "geo": "EA,DE,FR,IT,ES" } }
+          },
+          {
+            "i": "fonrex_treasury_curve",
+            "x": 0,
+            "y": 26,
+            "w": 12,
+            "h": 12,
+            "state": { "params": { "curve": "nominal", "compare": "1M,1Y" } }
+          },
+          {
+            "i": "fonrex_treasury_spread",
+            "x": 12,
+            "y": 26,
+            "w": 12,
+            "h": 12,
+            "state": { "params": { "tenor": "10Y-2Y" } }
           }
         ]
       }

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from financials.providers.treasury import NOMINAL, REAL, CurveFile, TreasuryError
-from macro.treasury_curves import TreasuryCurves, curve_of, is_complete
+from macro.treasury_curves import CurveLoad, TreasuryCurves, curve_of, is_complete
 
 NOW = datetime(2026, 10, 17, 9, 0, tzinfo=timezone.utc)
 
@@ -137,3 +137,77 @@ class TestQuestionsRefusedBeforeTheDatabase:
         service.refresh = AsyncMock()
         await service.ensure(REAL, date(2024, 6, 1))
         service.refresh.assert_awaited_once_with(REAL, 2024, 2026)
+
+
+class TestScript:
+    def test_both_curves_and_the_whole_history_by_default(self):
+        from scripts import load_treasury_curve
+
+        arguments = load_treasury_curve.parse_arguments([])
+        assert (arguments.curve, arguments.start_year, arguments.end_year, arguments.force) == (
+            ["nominal", "real"],
+            1990,
+            None,
+            False,
+        )
+
+    def test_some_years_of_one_curve(self):
+        from scripts import load_treasury_curve
+
+        arguments = load_treasury_curve.parse_arguments(
+            ["--curve", "real", "--start-year", "2020", "--end-year", "2021", "--force"]
+        )
+        assert (arguments.curve, arguments.start_year, arguments.end_year, arguments.force) == (
+            ["real"],
+            2020,
+            2021,
+            True,
+        )
+
+    @pytest.mark.parametrize(
+        "argv",
+        [["--curve", "zero"], ["--start-year", "2026", "--end-year", "2020"]],
+    )
+    def test_refused(self, argv, capsys):
+        from scripts import load_treasury_curve
+
+        with pytest.raises(SystemExit) as stopped:
+            load_treasury_curve.parse_arguments(argv)
+        assert stopped.value.code == 2
+
+    def test_a_line_per_curve(self):
+        from scripts import load_treasury_curve
+
+        fetched = CurveLoad(
+            "nominal",
+            "fetched",
+            first_day=date(1990, 1, 2),
+            last_day=date(2026, 10, 16),
+            years_read=list(range(1990, 2027)),
+        )
+        fresh = CurveLoad("real", "fresh", first_day=date(2003, 1, 2), last_day=date(2026, 10, 16))
+        failed = CurveLoad(
+            "real",
+            "failed",
+            years_read=[2003, 2004],
+            years_failed=[2005, 2006, 2007, 2008],
+            reason="the Treasury did not answer",
+        )
+
+        assert load_treasury_curve.describe(fetched) == (
+            "nominal  fetched  1990-01-02 → 2026-10-16  (37 years read: 1990–2026)"
+        )
+        assert load_treasury_curve.describe(fresh) == "real     fresh    2003-01-02 → 2026-10-16"
+        assert load_treasury_curve.describe(failed) == (
+            "real     failed   nothing stored  (2 years read: 2003, 2004)"
+            "  (not read: 2005–2008, the Treasury did not answer)"
+        )
+
+    async def test_without_database_the_script_stops(self, monkeypatch, capsys):
+        from scripts import load_treasury_curve
+
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("ASYNC_DATABASE_URL", raising=False)
+
+        assert await load_treasury_curve.main([]) == 2
+        assert "DATABASE_URL" in capsys.readouterr().err

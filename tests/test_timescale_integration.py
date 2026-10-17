@@ -1770,3 +1770,58 @@ class TestTreasuryCurvesOnPostgres:
                 text("SELECT year, days, first_day FROM yield_curve_loads ORDER BY year")
             ).all()
         assert [tuple(row) for row in rows] == [(2024, 0, None), (2025, 0, None)]
+
+
+class TestTreasuryScriptOnPostgres:
+    """``scripts/load_treasury_curve.py`` from the files of the Treasury to the tables."""
+
+    async def test_the_years_of_both_curves_read_then_up_to_date(
+        self, database_url, engine, fake_network, monkeypatch, capsys
+    ):
+        import httpx
+
+        from scripts import load_treasury_curve
+
+        fixtures = Path(__file__).parent / "fixtures" / "treasury"
+        for curve, year, name in [
+            ("daily_treasury_yield_curve", 2025, "nominal_2025.csv"),
+            ("daily_treasury_yield_curve", 2026, "nominal_2026.csv"),
+            ("daily_treasury_real_yield_curve", 2025, "empty_1989.csv"),
+            ("daily_treasury_real_yield_curve", 2026, "real_2026.csv"),
+        ]:
+            fake_network.get(
+                f"csv/{year}/all?type={curve}&",
+                httpx.Response(200, text=(fixtures / name).read_bytes().decode()),
+            )
+        monkeypatch.delenv("ASYNC_DATABASE_URL", raising=False)
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM yield_curve_points"))
+            connection.execute(text("DELETE FROM yield_curve_loads"))
+        argv = ["--start-year", "2025", "--end-year", "2026"]
+
+        try:
+            first = await load_treasury_curve.main(argv)
+            first_output = capsys.readouterr().out
+            second = await load_treasury_curve.main(argv)
+            second_output = capsys.readouterr().out
+            with engine.connect() as connection:
+                counts = dict(
+                    connection.execute(
+                        text("SELECT curve, count(*) FROM yield_curve_points GROUP BY curve")
+                    ).all()
+                )
+        finally:
+            with engine.begin() as connection:
+                connection.execute(text("DELETE FROM yield_curve_points"))
+                connection.execute(text("DELETE FROM yield_curve_loads"))
+
+        assert (first, second) == (0, 0)
+        assert first_output.splitlines() == [
+            "nominal  fetched  2025-01-02 → 2026-10-16  (2 years read: 2025, 2026)",
+            "real     fetched  2026-01-02 → 2026-10-16  (2 years read: 2025, 2026)",
+        ]
+        assert counts == {"nominal": 4 * 14 - 2 + 4 * 14, "real": 4 * 5}
+        # 2025 was read after its end: only 2026 could be read again, and it is up to date.
+        assert fake_network.calls("daily-treasury-rates.csv") == 4
+        assert "fresh" in second_output.splitlines()[0]

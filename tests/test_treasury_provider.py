@@ -196,3 +196,9 @@ class TestProvider:
 
     def test_the_first_years(self):
         assert (CURVES[NOMINAL].first_year, CURVES[REAL].first_year) == (1990, 2003)
+
+    @pytest.mark.parametrize(
+        ("name", "curve"), [("nominal_2026.csv", NOMINAL), ("real_2026.csv", REAL)]
+    )
+    def test_the_maturities_of_each_curve_are_those_of_its_files(self, name, curve):
+        assert CURVES[curve].tenors == read(name).tenors

@@ -14,6 +14,7 @@ Freshness = Literal["live", "cached", "stale"]
 
 class MacroRate(BaseModel):
     """An observation of a macroeconomic rate (e.g. the risk-free rate)."""
+
     series_id: str = Field(
         ...,
         description="Series name: FRED id (DGS10) or ECB flow.key (YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y).",
@@ -36,9 +37,10 @@ class MacroRate(BaseModel):
     )
     source: Optional[str] = Field(None, description="Where the series is read: 'fred' or 'ecb'.")
     currency: Optional[str] = Field(
-        None, description="Currency (or currency area) of the series: 'USD' for FRED, 'EUR' for the ECB."
+        None,
+        description="Currency (or currency area) of the series: 'USD' for FRED, 'EUR' for the ECB.",
     )
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -166,21 +168,114 @@ class IndicatorRefreshResponse(BaseModel):
 
 class SolvencyRatios(BaseModel):
     """Solvency ratios and cost of debt of the company."""
-    debt_to_equity_ratio: Optional[Decimal] = Field(
-        None, description="Total Debt / Total Equity"
-    )
-    debt_to_assets_ratio: Optional[Decimal] = Field(
-        None, description="Total Debt / Total Assets"
-    )
-    net_debt_to_ebitda: Optional[Decimal] = Field(
-        None, description="(Total Debt - Cash) / EBITDA"
-    )
-    interest_coverage_ratio: Optional[Decimal] = Field(
-        None, description="EBIT / Interest Expense"
-    )
+
+    debt_to_equity_ratio: Optional[Decimal] = Field(None, description="Total Debt / Total Equity")
+    debt_to_assets_ratio: Optional[Decimal] = Field(None, description="Total Debt / Total Assets")
+    net_debt_to_ebitda: Optional[Decimal] = Field(None, description="(Total Debt - Cash) / EBITDA")
+    interest_coverage_ratio: Optional[Decimal] = Field(None, description="EBIT / Interest Expense")
     actual_cost_of_debt: Optional[Decimal] = Field(
-        None, description="Actual cost of debt (Interest Expense / Total Debt), or a sector estimate."
+        None,
+        description="Actual cost of debt (Interest Expense / Total Debt), or a sector estimate.",
     )
     cost_of_debt_source: Optional[str] = Field(
         None, description="Source of the cost of debt: 'calculated' or 'sector_estimate'."
     )
+
+
+# ── US Treasury yield curves ─────────────────────────────────────────────────
+
+# A field named ``date`` would hide the type ``date`` from pydantic: the type is named ``Day``.
+Day = date
+
+TREASURY_SOURCE = "US Treasury, Daily Treasury Par Yield Curve Rates (https://home.treasury.gov)"
+
+
+class TreasuryLoad(BaseModel):
+    """What the database holds for a curve, and what this request read from the Treasury."""
+
+    status: Literal["fetched", "fresh", "failed"] = Field(
+        ...,
+        description=(
+            "fetched: a year read from the Treasury for this answer; fresh: every year "
+            "needed was stored (a past year read after its end, or the current year read "
+            "less than TREASURY_REFRESH_HOURS hours ago); failed: the Treasury could not "
+            "be read (what was stored is given)"
+        ),
+    )
+    fetched_at: Optional[datetime] = Field(None, description="Latest reading of the years asked.")
+    first_day: Optional[Day] = Field(None, description="First day stored for the curve.")
+    last_day: Optional[Day] = Field(None, description="Last day stored for the curve.")
+    years_read: List[int] = Field(default_factory=list)
+    years_failed: List[int] = Field(default_factory=list)
+    reason: Optional[str] = Field(None, description="Why a year could not be read.")
+
+
+class TreasuryPoint(BaseModel):
+    tenor: str = Field(..., description="Maturity: 1M, 6W (six weeks), 2M, ... 10Y, 20Y, 30Y.")
+    months: float = Field(..., description="Length of the maturity in months (6W is 1.5).")
+    value: float = Field(..., description="The rate as a ratio: 0.0509 for 5.09 %.")
+
+
+class TreasuryChange(TreasuryPoint):
+    change: Optional[float] = Field(
+        None, description="Rate of the curve asked minus this one, in ratio (0.0025 = 25 bp)."
+    )
+
+
+class TreasuryComparison(BaseModel):
+    requested: str = Field(..., description="As asked: a date, or 1W, 1M, 3M, 1Y... before.")
+    date: Optional[Day] = Field(None, description="Business day found, on or before.")
+    points: List[TreasuryChange]
+
+
+class TreasuryCurveResponse(BaseModel):
+    """Answer of GET /macro/treasury/curve: the curve of one day, shortest maturity first."""
+
+    curve: Literal["nominal", "real"]
+    label: str
+    source: str = TREASURY_SOURCE
+    requested_date: Optional[Day] = Field(None, description="The day asked (latest when empty).")
+    date: Day = Field(
+        ..., description="Business day of the curve: the day asked or the one before."
+    )
+    points: List[TreasuryPoint]
+    comparisons: List[TreasuryComparison] = Field(default_factory=list)
+    breakeven: List[TreasuryPoint] = Field(
+        default_factory=list,
+        description=(
+            "Breakeven inflation of the day: nominal minus real yield, for the maturities "
+            "of both curves (5Y to 30Y); empty when one curve has no rate that day."
+        ),
+    )
+    load: TreasuryLoad
+
+
+class TreasuryObservation(BaseModel):
+    date: Day
+    value: float
+
+
+class TreasurySeries(BaseModel):
+    tenor: str = Field(..., description="A maturity (10Y), or a spread of two (10Y-2Y).")
+    observations: List[TreasuryObservation]
+
+
+class TreasurySeriesResponse(BaseModel):
+    """Answer of GET /macro/treasury/series: maturities and spreads over time, oldest first."""
+
+    curve: Literal["nominal", "real"]
+    label: str
+    source: str = TREASURY_SOURCE
+    start: Day
+    end: Day
+    series: List[TreasurySeries]
+    load: TreasuryLoad
+
+
+class TreasuryRefreshItem(TreasuryLoad):
+    curve: Literal["nominal", "real"]
+
+
+class TreasuryRefreshResponse(BaseModel):
+    source: str = TREASURY_SOURCE
+    loads: List[TreasuryRefreshItem]

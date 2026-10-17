@@ -55,24 +55,16 @@ class TreasuryError(ValueError):
 
 @dataclass(frozen=True)
 class Curve:
-    """A curve of the Treasury: its ``type`` in the URL and its first year."""
+    """A curve of the Treasury: its ``type`` in the URL, its first year and its maturities."""
 
     name: str
     label: str
     treasury_type: str
     first_year: int
+    tenors: tuple[str, ...]
 
     def url(self, year: int) -> str:
         return TREASURY_CSV_URL.format(year=year, type=self.treasury_type)
-
-
-CURVES: dict[str, Curve] = {
-    curve.name: curve
-    for curve in (
-        Curve(NOMINAL, "Par yield curve (nominal)", "daily_treasury_yield_curve", 1990),
-        Curve(REAL, "Par real yield curve (TIPS)", "daily_treasury_real_yield_curve", 2003),
-    )
-}
 
 
 @dataclass(frozen=True)
@@ -101,6 +93,26 @@ TENORS: tuple[Tenor, ...] = (
     Tenor("30Y", Decimal(360), "30 Yr"),
 )
 TENORS_BY_CODE: dict[str, Tenor] = {tenor.code: tenor for tenor in TENORS}
+
+CURVES: dict[str, Curve] = {
+    curve.name: curve
+    for curve in (
+        Curve(
+            NOMINAL,
+            "Par yield curve (nominal)",
+            "daily_treasury_yield_curve",
+            1990,
+            tuple(tenor.code for tenor in TENORS),
+        ),
+        Curve(
+            REAL,
+            "Par real yield curve (TIPS)",
+            "daily_treasury_real_yield_curve",
+            2003,
+            ("5Y", "7Y", "10Y", "20Y", "30Y"),
+        ),
+    )
+}
 
 
 def _label_key(label: str) -> str:

@@ -618,9 +618,13 @@ class TestYahooEpochDatesBecomeUnknown:
     def test_only_the_1970_dates_become_null(self, database_url, engine):
         _alembic(database_url, "downgrade", "018")
         with engine.begin() as connection:
-            asset_ids = connection.execute(
-                text("SELECT asset_id FROM fundamentals_highlights ORDER BY asset_id LIMIT 2")
-            ).scalars().all()
+            asset_ids = (
+                connection.execute(
+                    text("SELECT asset_id FROM fundamentals_highlights ORDER BY asset_id LIMIT 2")
+                )
+                .scalars()
+                .all()
+            )
             wrong, right = asset_ids
             connection.execute(
                 text("""
@@ -795,7 +799,6 @@ class TestCleanupOnPostgres:
             assert connection.execute(text("SELECT count(*) FROM prices_eod")).scalar() == before
 
 
-
 class TestFactorReturnsOnPostgres:
     """Revision 020 and ``factors.store`` on the database of an installation."""
 
@@ -807,7 +810,9 @@ class TestFactorReturnsOnPostgres:
         fixtures = PROJECT_ROOT / "tests" / "fixtures" / "factors"
 
         def table(name):
-            return parse_factor_csv(read_zip((fixtures / f"{name}_CSV.zip").read_bytes()), "monthly")
+            return parse_factor_csv(
+                read_zip((fixtures / f"{name}_CSV.zip").read_bytes()), "monthly"
+            )
 
         async_engine = create_async_engine(
             database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
@@ -923,6 +928,7 @@ class TestExchangeRatesOnPostgres:
         from decimal import Decimal
 
         rates, downloader = rates
+
         async def download(currency, start):
             return {date(2026, 10, 8): Decimal("0.8412")}
 
@@ -966,9 +972,7 @@ class TestMacroObservationsOnPostgres:
             # The flash estimate, then the final figure a month later.
             connection.execute(upsert, {"value": "0.038", "status": "e"})
             connection.execute(upsert, {"value": "0.037", "status": None})
-            rows = connection.execute(
-                text("SELECT value, status FROM macro_observations")
-            ).all()
+            rows = connection.execute(text("SELECT value, status FROM macro_observations")).all()
             connection.execute(text("DELETE FROM macro_observations"))
         assert [(str(value), status) for value, status in rows] == [("0.03700000", None)]
 
@@ -1038,7 +1042,9 @@ class TestMacroObservationsOnPostgres:
             (date(2026, 9, 1), Decimal("0.03700000"), None),
             (date(2026, 10, 1), Decimal("0.03600000"), "e"),
         ]
-        later = await service.observations("hicp", "EA", start=date(2026, 9, 1), end=date(2026, 9, 1))
+        later = await service.observations(
+            "hicp", "EA", start=date(2026, 9, 1), end=date(2026, 9, 1)
+        )
         assert [o.period for o in later] == [date(2026, 9, 1)]
         latest = await service.latest("hicp", "EA21")
         assert [(o.period, o.value) for o in latest] == [
@@ -1089,9 +1095,12 @@ class TestMacroObservationsOnPostgres:
         _alembic(database_url, "downgrade", "021")
         with engine.connect() as connection:
             for table in ("macro_observations", "macro_series_loads"):
-                assert connection.execute(
-                    text("SELECT to_regclass(:table)"), {"table": table}
-                ).scalar() is None
+                assert (
+                    connection.execute(
+                        text("SELECT to_regclass(:table)"), {"table": table}
+                    ).scalar()
+                    is None
+                )
         _alembic(database_url, "upgrade", "head")
         with engine.connect() as connection:
             for table in ("macro_observations", "macro_series_loads"):
@@ -1152,7 +1161,9 @@ class TestSecCikOnPostgres:
         from financials.sec_cik import NOT_FOUND, SecCikResolver, SqlCikStore
 
         table = json.loads(
-            (PROJECT_ROOT / "tests" / "fixtures" / "sec" / "company_tickers_exchange.json").read_text()
+            (
+                PROJECT_ROOT / "tests" / "fixtures" / "sec" / "company_tickers_exchange.json"
+            ).read_text()
         )
         with engine.begin() as connection:
             connection.execute(
@@ -1198,9 +1209,7 @@ class TestSecCikOnPostgres:
             connection.execute(text("DELETE FROM asset_listings WHERE asset_id IN (88, 89)"))
             connection.execute(text("DELETE FROM assets WHERE id IN (88, 89)"))
         # One row for the instrument (no listing), kept with the last CIK, switched off.
-        assert [tuple(row) for row in rows] == [
-            (88, None, "0001000184", NOT_FOUND, False, True, 1)
-        ]
+        assert [tuple(row) for row in rows] == [(88, None, "0001000184", NOT_FOUND, False, True, 1)]
 
 
 class TestXbrlFactsOnPostgres:
@@ -1219,18 +1228,24 @@ class TestXbrlFactsOnPostgres:
     """)
 
     def test_a_restatement_replaces_the_first_figure_and_an_older_filing_does_not(self, engine):
-        first = {"value": 74122000000, "accession": "0001104659-25-017815", "fy": 2024,
-                 "filed": date(2025, 2, 27)}
-        restated = {"value": 74237000000, "accession": "0001104659-26-020058", "fy": 2025,
-                    "filed": date(2026, 2, 26)}
+        first = {
+            "value": 74122000000,
+            "accession": "0001104659-25-017815",
+            "fy": 2024,
+            "filed": date(2025, 2, 27),
+        }
+        restated = {
+            "value": 74237000000,
+            "accession": "0001104659-26-020058",
+            "fy": 2025,
+            "filed": date(2026, 2, 26),
+        }
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM xbrl_facts"))
             connection.execute(self.UPSERT, first)
             connection.execute(self.UPSERT, restated)
             connection.execute(self.UPSERT, first)  # read again from the older filing
-            rows = connection.execute(
-                text("SELECT value, accession, filed FROM xbrl_facts")
-            ).all()
+            rows = connection.execute(text("SELECT value, accession, filed FROM xbrl_facts")).all()
             connection.execute(text("DELETE FROM xbrl_facts"))
         assert [(int(value), accession, filed) for value, accession, filed in rows] == [
             (74237000000, "0001104659-26-020058", date(2026, 2, 26))
@@ -1245,8 +1260,12 @@ class TestXbrlFactsOnPostgres:
         """)
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM xbrl_facts"))
-            connection.execute(insert, {"days": 363, "start": date(2024, 9, 29), "value": 416161000000})
-            connection.execute(insert, {"days": 90, "start": date(2025, 6, 29), "value": 100000000000})
+            connection.execute(
+                insert, {"days": 363, "start": date(2024, 9, 29), "value": 416161000000}
+            )
+            connection.execute(
+                insert, {"days": 90, "start": date(2025, 6, 29), "value": 100000000000}
+            )
             count = connection.execute(text("SELECT count(*) FROM xbrl_facts")).scalar()
             connection.execute(text("DELETE FROM xbrl_facts"))
         assert count == 2
@@ -1255,9 +1274,12 @@ class TestXbrlFactsOnPostgres:
         _alembic(database_url, "downgrade", "022")
         with engine.connect() as connection:
             for table in ("xbrl_facts", "sec_company_loads"):
-                assert connection.execute(
-                    text("SELECT to_regclass(:table)"), {"table": table}
-                ).scalar() is None
+                assert (
+                    connection.execute(
+                        text("SELECT to_regclass(:table)"), {"table": table}
+                    ).scalar()
+                    is None
+                )
         _alembic(database_url, "upgrade", "head")
         with engine.connect() as connection:
             for table in ("xbrl_facts", "sec_company_loads"):
@@ -1285,7 +1307,11 @@ class TestSecStatementsOnPostgres:
             return_value=CikResolution("0001000184", origin="ticker_check", company_name="SAP SE")
         )
         provider.company_facts = AsyncMock()
-        yield SecStatements(async_sessionmaker(async_engine), provider, resolver), provider, resolver
+        yield (
+            SecStatements(async_sessionmaker(async_engine), provider, resolver),
+            provider,
+            resolver,
+        )
         await async_engine.dispose()
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM xbrl_facts"))
@@ -1320,14 +1346,37 @@ class TestSecStatementsOnPostgres:
 
     async def test_an_older_filing_read_later_does_not_replace_a_restatement(self, statements):
         service, provider, _ = statements
-        restated = {"start": None, "end": "2024-12-31", "accn": "0001104659-26-020058",
-                    "form": "20-F", "filed": "2026-02-26", "fy": 2025, "fp": "FY"}
+        restated = {
+            "start": None,
+            "end": "2024-12-31",
+            "accn": "0001104659-26-020058",
+            "form": "20-F",
+            "filed": "2026-02-26",
+            "fy": 2025,
+            "fp": "FY",
+        }
         first = {**restated, "accn": "0001104659-25-017815", "filed": "2025-02-27", "fy": 2024}
 
         def facts(*entries):
-            return {"entityName": "SAP SE", "facts": {"ifrs-full": {"Assets": {"units": {"EUR": [
-                {key: value for key, value in entry.items() if value is not None} for entry in entries
-            ]}}}}}
+            return {
+                "entityName": "SAP SE",
+                "facts": {
+                    "ifrs-full": {
+                        "Assets": {
+                            "units": {
+                                "EUR": [
+                                    {
+                                        key: value
+                                        for key, value in entry.items()
+                                        if value is not None
+                                    }
+                                    for entry in entries
+                                ]
+                            }
+                        }
+                    }
+                },
+            }
 
         provider.company_facts.return_value = facts({**restated, "val": 74237000000})
         await service.refresh(1, force=True)
@@ -1415,3 +1464,108 @@ class TestSecCheckOnPostgres:
         # One row per statement, read together; the quarterly row is not an annual figure.
         for column in ("revenue", "net_income", "total_assets", "operating_cashflow", "capex"):
             assert figures[column] == MATCH, column
+
+
+class TestYieldCurvesOnPostgres:
+    """Revision 024: the daily yield curves of the US Treasury."""
+
+    UPSERT = text("""
+        INSERT INTO yield_curve_points
+            (source, curve, rate_date, tenor, tenor_months, value, fetched_at)
+        VALUES ('treasury', :curve, :day, :tenor, :months, :value, now())
+        ON CONFLICT (source, curve, rate_date, tenor)
+        DO UPDATE SET value = EXCLUDED.value, fetched_at = EXCLUDED.fetched_at
+    """)
+
+    def test_a_file_read_again_replaces_the_rate_of_its_day(self, engine):
+        day = date(2026, 10, 16)
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM yield_curve_points"))
+            for value in (Decimal("0.0510"), Decimal("0.0509")):
+                connection.execute(
+                    self.UPSERT,
+                    {"curve": "nominal", "day": day, "tenor": "10Y", "months": 120, "value": value},
+                )
+            rows = connection.execute(
+                text("SELECT tenor, tenor_months, value FROM yield_curve_points")
+            ).all()
+            connection.execute(text("DELETE FROM yield_curve_points"))
+        assert [tuple(row) for row in rows] == [("10Y", Decimal("120.00"), Decimal("0.050900"))]
+
+    def test_both_curves_and_every_maturity_of_a_day_side_by_side(self, engine):
+        day = date(2021, 1, 4)
+        points = [
+            ("nominal", "6W", Decimal("1.5"), Decimal("0.0009")),
+            ("nominal", "10Y", 120, Decimal("0.0093")),
+            ("real", "10Y", 120, Decimal("-0.0108")),
+        ]
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM yield_curve_points"))
+            for curve, tenor, months, value in points:
+                connection.execute(
+                    self.UPSERT,
+                    {"curve": curve, "day": day, "tenor": tenor, "months": months, "value": value},
+                )
+            rows = connection.execute(
+                text("""
+                    SELECT curve, tenor, value FROM yield_curve_points
+                    WHERE rate_date = :day ORDER BY curve, tenor_months
+                """),
+                {"day": day},
+            ).all()
+            connection.execute(text("DELETE FROM yield_curve_points"))
+        assert [tuple(row) for row in rows] == [
+            ("nominal", "6W", Decimal("0.000900")),
+            ("nominal", "10Y", Decimal("0.009300")),
+            ("real", "10Y", Decimal("-0.010800")),
+        ]
+
+    def test_the_history_of_one_maturity_reads_the_tenor_index(self, engine):
+        with engine.connect() as connection:
+            columns = (
+                connection.execute(
+                    text("""
+                    SELECT a.attname FROM pg_index i
+                    JOIN pg_class c ON c.oid = i.indexrelid
+                    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                    WHERE c.relname = 'ix_yield_curve_points_tenor'
+                    ORDER BY array_position(i.indkey::int[], a.attnum::int)
+                """)
+                )
+                .scalars()
+                .all()
+            )
+        assert columns == ["source", "curve", "tenor", "rate_date"]
+
+    def test_the_reading_of_a_year(self, engine):
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM yield_curve_loads"))
+            connection.execute(
+                text("""
+                    INSERT INTO yield_curve_loads (source, curve, year, fetched_at)
+                    VALUES ('treasury', 'nominal', 1989, now())
+                """)
+            )
+            row = connection.execute(
+                text("SELECT days, first_day, last_day FROM yield_curve_loads")
+            ).one()
+            connection.execute(text("DELETE FROM yield_curve_loads"))
+        assert tuple(row) == (0, None, None)  # a year without data is read, and holds no day
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        _alembic(database_url, "downgrade", "023")
+        with engine.connect() as connection:
+            for table in ("yield_curve_points", "yield_curve_loads"):
+                assert (
+                    connection.execute(
+                        text("SELECT to_regclass(:table)"), {"table": table}
+                    ).scalar()
+                    is None
+                )
+            assert connection.execute(text("SELECT to_regclass('xbrl_facts')")).scalar()
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            for table in ("yield_curve_points", "yield_curve_loads"):
+                assert connection.execute(
+                    text("SELECT to_regclass(:table)"), {"table": table}
+                ).scalar()

@@ -959,6 +959,40 @@ class SecCompanyLoad(Base):
     facts = Column(Integer, nullable=False, default=0, server_default="0")
 
 
+class YieldCurvePoint(Base):
+    """The rate of one maturity of a yield curve on one day (US Treasury par curves).
+
+    The rate is a ratio (``0.0509`` for 5.09 %); a real yield may be negative. A
+    maturity not published on a day has no row. ``tenor`` is a code (``1M``, ``6W``
+    for six weeks, ``10Y``) and ``tenor_months`` its length, to sort a curve.
+    """
+
+    __tablename__ = "yield_curve_points"
+    __table_args__ = (
+        Index("ix_yield_curve_points_tenor", "source", "curve", "tenor", "rate_date"),
+    )
+    source = Column(String(10), primary_key=True)  # "treasury"
+    curve = Column(String(10), primary_key=True)  # "nominal" | "real"
+    rate_date = Column(Date, primary_key=True)
+    tenor = Column(String(4), primary_key=True)  # "1M", "6W", "10Y", ...
+    tenor_months = Column(Numeric(6, 2), nullable=False)
+    value = Column(Numeric(10, 6), nullable=False)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class YieldCurveLoad(Base):
+    """The last reading of one year of a yield curve, and the days it held."""
+
+    __tablename__ = "yield_curve_loads"
+    source = Column(String(10), primary_key=True)
+    curve = Column(String(10), primary_key=True)
+    year = Column(Integer, primary_key=True)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    days = Column(Integer, nullable=False, default=0, server_default="0")
+    first_day = Column(Date)
+    last_day = Column(Date)
+
+
 class FactorReturn(Base):
     """One factor return of the Kenneth French library, as a ratio, for one period.
 

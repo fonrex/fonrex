@@ -49,6 +49,7 @@ from macro.ecb_service import ECBService
 from macro.eurostat_service import EurostatService
 from macro.fred_service import FREDService
 from macro.fx_rates import EcbExchangeRates
+from macro.treasury_curves import TreasuryCurves
 from monitoring.canary_monitor import CanaryMonitor
 from monitoring.validation_layer import ValidationLayer
 from news.news_service import NewsService
@@ -147,10 +148,7 @@ async def api_key_auth_middleware(request: Request, call_next):
             "/health",
             "/health/",
         }
-        if (
-            path not in public_exact
-            and not path.startswith("/static")
-        ):
+        if path not in public_exact and not path.startswith("/static"):
             try:
                 require_api_key(request)
             except HTTPException as exc:
@@ -307,6 +305,7 @@ def configure_application_state(application: FastAPI):
         "fred_service",
         "ecb_service",
         "eurostat_service",
+        "treasury_curves",
         "sec_statements",
         "sec_check",
         "factor_library",
@@ -436,6 +435,21 @@ async def startup_event(application: FastAPI):
         logger.warning("⚠️ EurostatService not started: %s", exc)
 
     try:
+        treasury_provider = getattr(state, "treasury_provider", None)
+        if async_resources and treasury_provider is not None:
+            state.treasury_curves = TreasuryCurves(
+                async_resources.session_factory, treasury_provider.curve_year
+            )
+            logger.info("🇺🇸 Treasury yield curves started")
+        else:
+            logger.warning(
+                "⚠️ DATABASE_URL not set or Treasury unavailable — Treasury yield curves disabled"
+            )
+    except Exception as exc:
+        state.treasury_curves = None
+        logger.warning("⚠️ Treasury yield curves not started: %s", exc)
+
+    try:
         sec_provider = getattr(state, "sec_edgar_provider", None)
         if async_resources and sec_provider is not None:
             session_factory = async_resources.session_factory
@@ -449,7 +463,9 @@ async def startup_event(application: FastAPI):
                     "automated client to name who runs it"
                 )
         else:
-            logger.warning("⚠️ DATABASE_URL not set or SECEdgar unavailable — SEC statements disabled")
+            logger.warning(
+                "⚠️ DATABASE_URL not set or SECEdgar unavailable — SEC statements disabled"
+            )
     except Exception as exc:
         state.sec_statements = None
         state.sec_check = None
@@ -524,11 +540,12 @@ async def startup_event(application: FastAPI):
         state.openbb_widgets = json.loads(
             (_openbb_dir / "widgets.json").read_text(encoding="utf-8")
         )
-        state.openbb_apps = json.loads(
-            (_openbb_dir / "apps.json").read_text(encoding="utf-8")
+        state.openbb_apps = json.loads((_openbb_dir / "apps.json").read_text(encoding="utf-8"))
+        logger.info(
+            "🔌 OpenBB Workspace integration loaded (%d widgets, %d apps)",
+            len(state.openbb_widgets),
+            len(state.openbb_apps),
         )
-        logger.info("🔌 OpenBB Workspace integration loaded (%d widgets, %d apps)",
-                     len(state.openbb_widgets), len(state.openbb_apps))
     except FileNotFoundError as exc:
         state.openbb_widgets = {}
         state.openbb_apps = []
@@ -586,6 +603,7 @@ async def shutdown_event(application: FastAPI):
         "fred_service",
         "ecb_service",
         "eurostat_service",
+        "treasury_curves",
         "sec_statements",
         "sec_check",
         "factor_library",
@@ -609,6 +627,7 @@ async def index():
 # ──────────────────────────────────────────────────────────────────────
 # OpenBB Workspace — static configuration endpoints
 # ──────────────────────────────────────────────────────────────────────
+
 
 @app.get("/widgets.json", include_in_schema=False)
 async def get_openbb_widgets(request: Request):

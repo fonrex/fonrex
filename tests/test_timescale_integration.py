@@ -21,7 +21,7 @@ import subprocess
 import sys
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -1569,3 +1569,204 @@ class TestYieldCurvesOnPostgres:
                 assert connection.execute(
                     text("SELECT to_regclass(:table)"), {"table": table}
                 ).scalar()
+
+
+class TestTreasuryCurvesOnPostgres:
+    """The service of the yield curves on the tables of revision 024."""
+
+    NOW = datetime(2026, 10, 17, 9, 0, tzinfo=timezone.utc)
+    FIXTURES = Path(__file__).parent / "fixtures" / "treasury"
+
+    @classmethod
+    def file(cls, name: str, curve: str, year: int):
+        from financials.providers.treasury import parse_curve_csv
+
+        return parse_curve_csv((cls.FIXTURES / name).read_bytes().decode(), curve, year)
+
+    @pytest.fixture
+    async def treasury(self, database_url, engine):
+        from financials.providers.treasury import CurveFile
+        from macro.treasury_curves import TreasuryCurves
+
+        def clean():
+            with engine.begin() as connection:
+                connection.execute(text("DELETE FROM yield_curve_points"))
+                connection.execute(text("DELETE FROM yield_curve_loads"))
+
+        clean()
+        files = {
+            ("nominal", 2025): self.file("nominal_2025.csv", "nominal", 2025),
+            ("nominal", 2026): self.file("nominal_2026.csv", "nominal", 2026),
+            ("real", 2026): self.file("real_2026.csv", "real", 2026),
+        }
+
+        async def read_year(curve, year):
+            return files.get((curve, year), CurveFile(curve, year, (), ()))
+
+        reader = AsyncMock(side_effect=read_year)
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        service = TreasuryCurves(async_sessionmaker(async_engine), reader, now=lambda: self.NOW)
+        yield service, reader, files
+        await async_engine.dispose()
+        clean()
+
+    @staticmethod
+    def years_asked(reader) -> list:
+        return [call.args for call in reader.await_args_list]
+
+    async def test_a_request_reads_the_years_it_needs(self, treasury, engine):
+        service, reader, _ = treasury
+
+        load = await service.refresh("nominal", 2025)
+
+        assert (load.status, load.years_read, load.years_failed) == ("fetched", [2025, 2026], [])
+        assert (load.first_day, load.last_day) == (date(2025, 1, 2), date(2026, 10, 16))
+        assert load.fetched_at == self.NOW
+        with engine.connect() as connection:
+            points = connection.execute(text("SELECT count(*) FROM yield_curve_points")).scalar()
+            loads = connection.execute(
+                text("SELECT year, days, first_day, last_day FROM yield_curve_loads ORDER BY year")
+            ).all()
+        assert points == 4 * 14 - 2 + 4 * 14  # the 6-week bill starts on 2025-02-18
+        assert [tuple(row) for row in loads] == [
+            (2025, 4, date(2025, 1, 2), date(2025, 12, 31)),
+            (2026, 4, date(2026, 1, 2), date(2026, 10, 16)),
+        ]
+
+    async def test_the_curve_of_a_day_shortest_maturity_first(self, treasury):
+        service, _, _ = treasury
+        await service.refresh("nominal", 2025)
+
+        latest = await service.curve_on("nominal")
+        sunday = await service.curve_on("nominal", date(2026, 10, 18))
+        new_year = await service.curve_on("nominal", date(2026, 1, 1))
+
+        assert latest.day == sunday.day == date(2026, 10, 16)
+        assert list(latest.points)[:3] == ["1M", "6W", "2M"] and list(latest.points)[-1] == "30Y"
+        assert latest.points["10Y"] == Decimal("0.0509")
+        assert new_year.day == date(2025, 12, 31)  # the business day before
+        assert await service.curve_on("nominal", date(1989, 12, 31)) is None
+        assert await service.curve_on("real") is None  # never read
+
+    async def test_the_history_of_some_maturities(self, treasury):
+        service, _, _ = treasury
+        await service.refresh("nominal", 2025)
+
+        history = await service.history(
+            "nominal", ["10Y", "6W"], start=date(2025, 1, 1), end=date(2025, 12, 31)
+        )
+
+        assert history["10Y"] == [
+            (date(2025, 1, 2), Decimal("0.0457")),
+            (date(2025, 2, 14), Decimal("0.0447")),
+            (date(2025, 2, 18), Decimal("0.0455")),
+            (date(2025, 12, 31), Decimal("0.0418")),
+        ]
+        assert [day for day, _ in history["6W"]] == [date(2025, 2, 18), date(2025, 12, 31)]
+
+    async def test_what_is_read_again(self, treasury):
+        service, reader, _ = treasury
+        await service.refresh("nominal", 2025)
+
+        again = await service.refresh("nominal", 2025)
+        assert (again.status, again.years_read) == ("fresh", [])
+
+        service.now = lambda: self.NOW + timedelta(hours=12)
+        later = await service.refresh("nominal", 2025)
+        assert later.years_read == [2026]  # 2025, read after its end, is complete
+
+        await service.refresh("nominal", 2025, force=True)
+        assert self.years_asked(reader) == [
+            ("nominal", 2025),
+            ("nominal", 2026),
+            ("nominal", 2026),
+            ("nominal", 2025),
+            ("nominal", 2026),
+        ]
+
+    async def test_a_file_read_again_replaces_its_year(self, treasury):
+        from financials.providers.treasury import CurveDay, CurveFile
+
+        service, _, files = treasury
+        await service.refresh("nominal", 2026)
+        first = files[("nominal", 2026)]
+        latest = first.days[-1]
+        files[("nominal", 2026)] = CurveFile(
+            "nominal",
+            2026,
+            first.tenors,
+            (first.days[0], CurveDay(latest.day, {**latest.points, "10Y": Decimal("0.0510")})),
+        )
+
+        await service.refresh("nominal", 2026, force=True)
+
+        history = await service.history("nominal", ["10Y"])
+        assert history["10Y"] == [
+            (date(2026, 1, 2), Decimal("0.0419")),
+            (date(2026, 10, 16), Decimal("0.0510")),
+        ]
+
+    async def test_an_empty_file_keeps_the_days_stored(self, treasury):
+        from financials.providers.treasury import CurveFile
+
+        service, _, files = treasury
+        await service.refresh("nominal", 2026)
+        files[("nominal", 2026)] = CurveFile("nominal", 2026, (), ())
+        service.now = lambda: self.NOW + timedelta(days=1)
+
+        load = await service.refresh("nominal", 2026)
+
+        assert (load.status, load.years_failed) == ("failed", [2026])
+        assert load.reason == "the Treasury gave no day for 2026; the 56 rates stored are kept"
+        assert load.fetched_at == self.NOW  # the last reading that stored something
+        assert (await service.curve_on("nominal")).day == date(2026, 10, 16)
+
+    async def test_the_treasury_down(self, treasury, engine):
+        service, reader, _ = treasury
+        await service.refresh("nominal", 2026)
+        reader.side_effect = None
+        reader.return_value = None
+        service.now = lambda: self.NOW + timedelta(days=1)
+
+        load = await service.refresh("nominal", 2024)
+
+        assert (load.status, load.years_read) == ("failed", [])
+        assert load.years_failed == [2024, 2025, 2026]
+        assert load.reason == "the Treasury did not answer"
+        assert load.last_day == date(2026, 10, 16)
+        # Once the Treasury does not answer, the next years are not asked.
+        assert self.years_asked(reader)[-1] == ("nominal", 2024)
+        with engine.connect() as connection:
+            years = connection.execute(text("SELECT year FROM yield_curve_loads")).scalars().all()
+        assert years == [2026]  # a year never read stays unread
+
+    async def test_a_file_that_cannot_be_read_fails_alone(self, treasury):
+        from financials.providers.treasury import TreasuryError
+
+        service, reader, files = treasury
+        good = reader.side_effect
+
+        async def read_year(curve, year):
+            if year == 2025:
+                raise TreasuryError("unknown maturity column '15 Yr'")
+            return await good(curve, year)
+
+        reader.side_effect = read_year
+        load = await service.refresh("nominal", 2025)
+
+        assert (load.status, load.years_read, load.years_failed) == ("failed", [2026], [2025])
+        assert load.reason == "TreasuryError: unknown maturity column '15 Yr'"
+
+    async def test_a_year_without_data_is_read_and_holds_no_day(self, treasury, engine):
+        service, _, _ = treasury
+
+        load = await service.refresh("real", 2024, 2025)
+
+        assert (load.status, load.years_read, load.first_day) == ("fetched", [2024, 2025], None)
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("SELECT year, days, first_day FROM yield_curve_loads ORDER BY year")
+            ).all()
+        assert [tuple(row) for row in rows] == [(2024, 0, None), (2025, 0, None)]

@@ -120,14 +120,17 @@ class DCFService:
         model = request.wacc_params.cost_of_equity_model if request.wacc_params else "capm"
         if model != "capm":
             if self.factor_exposure is None:
-                raise ValueError("Factor cost of equity unavailable: the database is not configured")
+                raise ValueError(
+                    "Factor cost of equity unavailable: the database is not configured"
+                )
             factor = await factor_cost_of_equity(self.factor_exposure, ticker, model)
         return await run_sync(self._compute_dcf_sync, ticker, request, rf, factor)
 
     async def _risk_free_rate(self, currency: Optional[str]) -> RiskFreeRate:
         """The risk-free rate of the currency of the cash flows.
 
-        EUR: the AAA 10-year rate of the ECB; USD: the 10-year Treasury rate of FRED.
+        EUR: the AAA 10-year rate of the ECB; USD: the 10-year Treasury rate of FRED,
+        or of the Treasury curve when FRED gives none.
         Without a source for the currency (or when the source gives nothing),
         ``DCF_RISK_FREE_RATE``: a rate of another currency would be wrong.
         """
@@ -272,7 +275,7 @@ class DCFService:
             # configured rate and a rate given in the request name none.
             rf_source = wacc_res.risk_free_rate_source or ""
             wacc_res.risk_free_rate_currency = (
-                currency.currency if rf_source.startswith(("fred_", "ecb_")) else None
+                currency.currency if rf_source.startswith(("fred_", "treasury_", "ecb_")) else None
             )
             result_warnings = [currency.warning] if currency.warning else []
             if factor is not None:
@@ -349,6 +352,7 @@ class DCFService:
 
             # Solvency Ratios
             from schemas.macro import SolvencyRatios
+
             solvency = SolvencyRatios(
                 debt_to_equity_ratio=highlights.debt_to_equity_ratio,
                 debt_to_assets_ratio=highlights.debt_to_assets_ratio,
@@ -395,7 +399,7 @@ class DCFService:
             risk_free, current_rf_source = rf_fred, rf_source or "fred_cached"
         else:
             risk_free, current_rf_source, rf_date = DEFAULT_RISK_FREE_RATE, "env_fallback", None
-        
+
         erp = DEFAULT_EQUITY_RISK_PREMIUM
         beta = self._dec(highlights.beta) if highlights.beta else Decimal("1.0")
 
@@ -432,7 +436,7 @@ class DCFService:
         # Cost of debt: Kd priority
         cost_of_debt = None
         current_kd_source = None
-        
+
         if params and params.cost_of_debt_override is not None:
             cost_of_debt = params.cost_of_debt_override
             current_kd_source = "client_override"

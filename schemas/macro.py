@@ -35,7 +35,9 @@ class MacroRate(BaseModel):
             "be read (no API key, or no answer)"
         ),
     )
-    source: Optional[str] = Field(None, description="Where the series is read: 'fred' or 'ecb'.")
+    source: Optional[str] = Field(
+        None, description="Where the series is read: 'fred', 'treasury' or 'ecb'."
+    )
     currency: Optional[str] = Field(
         None,
         description="Currency (or currency area) of the series: 'USD' for FRED, 'EUR' for the ECB.",
@@ -49,7 +51,7 @@ class RiskFreeRate:
     """The risk-free rate a valuation uses, and where it comes from."""
 
     value: Decimal
-    source: str  # fred_live, fred_cached, fred_stale, ecb_live, ..., or env_fallback
+    source: str  # fred_live, fred_cached, fred_stale, treasury_live, ecb_live, ..., env_fallback
     observation_date: Optional[date] = None
 
 
@@ -62,15 +64,15 @@ class MacroRatesResponse(BaseModel):
     risk_free_rate: Optional[MacroRate] = Field(
         None,
         description=(
-            "10-year risk-free rate of the currency asked: US Treasury (FRED DGS10) for USD "
-            "and when no currency is asked, AAA euro area government spot rate (ECB) for EUR."
+            "10-year risk-free rate of the currency asked: US Treasury (FRED DGS10, or the "
+            "Treasury par yield curve when FRED gives none) for USD and when no currency is asked, AAA euro area government spot rate (ECB) for EUR."
         ),
     )
     rates: List[MacroRate] = Field(
         default_factory=list,
         description=(
             "Every series of the currency asked (all currencies when none is asked): "
-            "DGS10 for USD; the AAA 10-year spot rate, the deposit facility rate and the "
+            "DGS10 (or treasury:nominal:10Y) for USD; the AAA 10-year spot rate, the deposit facility rate and the "
             "CISS stress index for EUR."
         ),
     )

@@ -440,6 +440,9 @@ async def startup_event(application: FastAPI):
             state.treasury_curves = TreasuryCurves(
                 async_resources.session_factory, treasury_provider.curve_year
             )
+            if state.fred_service is not None:
+                # The US risk-free rate without FRED key, or when FRED does not answer.
+                state.fred_service.treasury = state.treasury_curves
             logger.info("🇺🇸 Treasury yield curves started")
         else:
             logger.warning(

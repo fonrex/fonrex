@@ -117,6 +117,8 @@ def _percent(ratio: Any) -> str:
 # Short names of the tiles, by series.
 MACRO_TILE_NAMES = {
     "DGS10": "US 10Y Treasury",
+    # The same rate read from the Treasury yield curve, when FRED gives none.
+    "treasury:nominal:10Y": "US 10Y Treasury",
     "YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y": "Euro AAA 10Y",
     "FM.D.U2.EUR.4F.KR.DFR.LEV": "ECB deposit rate",
     "CISS.D.U2.Z0Z.4F.EC.SS_CIN.IDX": "Euro stress index (CISS)",

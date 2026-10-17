@@ -1,8 +1,14 @@
-"""Macro-economic rates from FRED (St. Louis Fed): the US risk-free rate."""
+"""Macro-economic rates from FRED (St. Louis Fed): the US risk-free rate.
+
+FRED republishes the 10-year rate of the US Treasury (``DGS10``) and needs an API
+key. The Treasury publishes the same rate in its daily par yield curve, without
+key (``macro/treasury_curves.py``): when FRED gives no rate, or only an older
+stored one, the 10-year rate of the Treasury curve is used, if it is as recent.
+"""
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import httpx
@@ -14,6 +20,12 @@ from schemas.macro import RATE_UNIT, MacroRate, MacroRatesResponse, RiskFreeRate
 logger = logging.getLogger(__name__)
 
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
+NOMINAL = "nominal"
+TEN_YEARS = "10Y"
+TREASURY_SERIES = "treasury:nominal:10Y"
+# A curve read now is live, one stored and up to date is cached, one the Treasury
+# could not refresh is stale: the same words as for FRED.
+_TREASURY_FRESHNESS = {"fetched": "live", "fresh": "cached", "failed": "stale"}
 
 
 class FREDService(CachedRateService):
@@ -22,15 +34,46 @@ class FREDService(CachedRateService):
     source = "fred"
     currency = "USD"
 
-    def __init__(self, db_service, redis_client=None):
+    def __init__(self, db_service, redis_client=None, treasury=None):
         super().__init__(db_service, redis_client)
         self.api_key = os.environ.get("FRED_API_KEY")
+        # The yield curves of the Treasury (``TreasuryCurves``): the 10-year rate without key.
+        self.treasury = treasury
 
     async def get_current_rates(self) -> MacroRatesResponse:
-        """Returns the current macro rates (mainly risk-free rate) from cache or FRED."""
+        """The 10-year rate of FRED, or of the Treasury curve when FRED gives none or an older one."""
         risk_free = await self._get_series("DGS10", "10-Year Treasury Constant Maturity Rate")
+        if risk_free is None or risk_free.freshness == "stale":
+            treasury = await self._treasury_ten_years()
+            if treasury is not None and (
+                risk_free is None or treasury.observation_date >= risk_free.observation_date
+            ):
+                risk_free = treasury
         return MacroRatesResponse(
             currency=self.currency, risk_free_rate=risk_free, rates=[risk_free] if risk_free else []
+        )
+
+    async def _treasury_ten_years(self) -> MacroRate | None:
+        """The 10-year rate of the latest Treasury curve stored, read first when needed."""
+        if self.treasury is None:
+            return None
+        try:
+            load = await self.treasury.ensure(NOMINAL, self.treasury.today() - timedelta(days=10))
+            day = await self.treasury.curve_on(NOMINAL)
+        except Exception as error:  # the Treasury is a fallback: it never breaks the answer
+            logger.warning("Treasury 10-year rate unavailable: %s", error)
+            return None
+        if day is None or TEN_YEARS not in day.points:
+            return None
+        return MacroRate(
+            series_id=TREASURY_SERIES,
+            label="10-Year Treasury Par Yield (US Treasury)",
+            value=day.points[TEN_YEARS],
+            unit=RATE_UNIT,
+            observation_date=day.day,
+            freshness=_TREASURY_FRESHNESS[load.status],
+            source="treasury",
+            currency=self.currency,
         )
 
     async def get_rates(self) -> MacroRatesResponse:
@@ -40,8 +83,9 @@ class FREDService(CachedRateService):
     async def get_risk_free_rate(self) -> RiskFreeRate:
         """The risk-free rate for DCFService, and where it comes from.
 
-        A rate read from FRED is used whatever its sign: a zero or negative rate is
-        a rate. Without any (no key and nothing stored, or no answer), the rate of
+        A rate is used whatever its sign: a zero or negative rate is a rate. The
+        source says who gave it (``fred_live``, ``treasury_cached``...). Without any
+        (no FRED key and no Treasury curve, or no answer), the rate of
         ``DCF_RISK_FREE_RATE`` is used.
         """
         rates = await self.get_current_rates()
@@ -49,7 +93,7 @@ class FREDService(CachedRateService):
         if rate is not None:
             return RiskFreeRate(
                 value=rate.value,
-                source=f"fred_{rate.freshness or 'cached'}",
+                source=f"{rate.source or self.source}_{rate.freshness or 'cached'}",
                 observation_date=rate.observation_date,
             )
         return RiskFreeRate(value=DEFAULT_RISK_FREE_RATE, source="env_fallback")

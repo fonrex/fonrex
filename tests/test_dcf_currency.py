@@ -226,6 +226,13 @@ class TestValuationCurrency:
         assert result.models["fcf"].upside_pct is None
         assert "no upside is computed" in result.warnings[0]
 
+    def test_the_rate_of_the_treasury_curve_is_a_dollar_rate(self):
+        rf = RiskFreeRate(Decimal("0.0509"), "treasury_cached", date(2026, 10, 16))
+        result = self._value(_company("USD", "USD", 95.0), rf=rf)
+
+        assert result.wacc.risk_free_rate_source == "treasury_cached"
+        assert result.wacc.risk_free_rate_currency == "USD"
+
     def test_the_rate_of_the_configuration_names_no_currency(self):
         rf = RiskFreeRate(Decimal("0.04"), "env_fallback")
         result = self._value(_company("EUR", "EUR", 80.0), rf=rf)

@@ -71,6 +71,24 @@ def test_format_macro_rates_metric():
     assert item["delta"] is None
 
 
+def test_the_10_year_rate_of_the_treasury_curve_is_the_same_card():
+    macro_data = {
+        "rates": [
+            {
+                "series_id": "treasury:nominal:10Y",
+                "label": "10-Year Treasury Par Yield (US Treasury)",
+                "value": Decimal("0.0509"),
+                "unit": "ratio",
+                "observation_date": date(2026, 10, 16),
+                "freshness": "cached",
+                "source": "treasury",
+            }
+        ]
+    }
+    (card,) = format_macro_rates_metric(macro_data)
+    assert (card["label"], card["value"]) == ("US 10Y Treasury (2026-10-16)", "5.09%")
+
+
 def test_format_candlestick_chart():
     records = [
         {

@@ -33,11 +33,7 @@ def fred_service(mock_db, mock_redis):
 @pytest.mark.asyncio
 async def test_get_series_from_redis(fred_service, mock_redis):
     """Test fetching a series from Redis cache."""
-    rate = MacroRate(
-        series_id="DGS10",
-        value=Decimal("0.045"),
-        observation_date=date(2026, 9, 8)
-    )
+    rate = MacroRate(series_id="DGS10", value=Decimal("0.045"), observation_date=date(2026, 9, 8))
     mock_redis.get.return_value = rate.model_dump_json()
 
     result = await fred_service._get_series("DGS10", "Test")
@@ -53,11 +49,7 @@ async def test_get_series_from_redis(fred_service, mock_redis):
 async def test_fetch_fred_series_success(mock_get, fred_service):
     """Test fetching from FRED API directly."""
     mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "observations": [
-            {"date": "2026-09-08", "value": "4.50"}
-        ]
-    }
+    mock_response.json.return_value = {"observations": [{"date": "2026-09-08", "value": "4.50"}]}
     mock_response.raise_for_status = MagicMock()
     mock_get.return_value = mock_response
 
@@ -73,18 +65,16 @@ async def test_fetch_fred_series_success(mock_get, fred_service):
 async def test_fetch_fred_series_holiday_fallback(mock_get, fred_service):
     """Test when FRED returns '.' for the most recent observation."""
     mock_resp1 = MagicMock()
-    mock_resp1.json.return_value = {
-        "observations": [{"date": "2026-09-08", "value": "."}]
-    }
-    
+    mock_resp1.json.return_value = {"observations": [{"date": "2026-09-08", "value": "."}]}
+
     mock_resp2 = MagicMock()
     mock_resp2.json.return_value = {
         "observations": [
             {"date": "2026-09-08", "value": "."},
-            {"date": "2026-09-07", "value": "4.25"}
+            {"date": "2026-09-07", "value": "4.25"},
         ]
     }
-    
+
     # Return resp1 on first call, resp2 on second call
     mock_get.side_effect = [mock_resp1, mock_resp2]
 
@@ -182,7 +172,10 @@ async def test_old_stored_rate_is_refreshed_from_fred(mock_get, stored_rates):
 
     assert rate.value == Decimal("0.0475")
     assert rate.observation_date == date(2026, 10, 2)
-    assert [row.observation_date for row in stored_rates.rows()] == [date(2026, 9, 1), date(2026, 10, 2)]
+    assert [row.observation_date for row in stored_rates.rows()] == [
+        date(2026, 9, 1),
+        date(2026, 10, 2),
+    ]
 
 
 @pytest.mark.asyncio
@@ -290,7 +283,10 @@ async def test_negative_rate_is_a_rate_not_a_missing_one(mock_get, stored_rates)
 @pytest.mark.asyncio
 async def test_rate_from_redis_is_cached(fred_service, mock_redis):
     live = MacroRate(
-        series_id="DGS10", value=Decimal("0.045"), observation_date=date(2026, 9, 8), freshness="live"
+        series_id="DGS10",
+        value=Decimal("0.045"),
+        observation_date=date(2026, 9, 8),
+        freshness="live",
     )
     mock_redis.get.return_value = live.model_dump_json()
 
@@ -326,3 +322,124 @@ async def test_no_us_rate_gives_an_empty_list(mock_get, stored_rates):
 
     assert (answer.risk_free_rate, answer.rates) == (None, [])
     mock_get.assert_not_called()
+
+
+# ── The Treasury curve when FRED gives no rate ───────────────────────────────
+#
+# FRED republishes the 10-year rate of the Treasury and needs a key. Without key,
+# or when FRED does not answer, the rate of the Treasury par yield curve is used.
+
+
+def _treasury(status="fresh", day=date(2026, 10, 16), points=None, error=None):
+    from macro.treasury_curves import CurveLoad, StoredDay
+
+    treasury = MagicMock()
+    treasury.today = MagicMock(return_value=date(2026, 10, 17))
+    treasury.ensure = AsyncMock(
+        side_effect=error, return_value=CurveLoad("nominal", status, reason=None)
+    )
+    stored = StoredDay(day, points or {"2Y": Decimal("0.0474"), "10Y": Decimal("0.0509")})
+    treasury.curve_on = AsyncMock(return_value=stored if day else None)
+    return treasury
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_without_fred_key_the_10_year_rate_of_the_treasury_curve(mock_get, stored_rates):
+    service = stored_rates.service
+    service.api_key = None
+    service.treasury = _treasury()
+
+    rates = await service.get_current_rates()
+    rate = await service.get_risk_free_rate()
+
+    assert rates.risk_free_rate.model_dump(
+        include={"series_id", "value", "source", "currency"}
+    ) == {
+        "series_id": "treasury:nominal:10Y",
+        "value": Decimal("0.0509"),
+        "source": "treasury",
+        "currency": "USD",
+    }
+    assert rates.rates == [rates.risk_free_rate]
+    assert (rate.value, rate.source, rate.observation_date) == (
+        Decimal("0.0509"),
+        "treasury_cached",
+        date(2026, 10, 16),
+    )
+    service.treasury.ensure.assert_awaited_with("nominal", date(2026, 10, 7))
+    mock_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "freshness"), [("fetched", "live"), ("failed", "stale")])
+@patch("httpx.AsyncClient.get")
+async def test_the_freshness_of_the_treasury_rate(mock_get, stored_rates, status, freshness):
+    stored_rates.service.api_key = None
+    stored_rates.service.treasury = _treasury(status)
+
+    rate = (await stored_rates.service.get_current_rates()).risk_free_rate
+
+    assert rate.freshness == freshness
+    assert (await stored_rates.service.get_risk_free_rate()).source == f"treasury_{freshness}"
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_a_stale_fred_rate_gives_way_to_a_more_recent_treasury_one(mock_get, stored_rates):
+    stored_rates.store("0.0400", date(2026, 9, 1), stored_rates.timedelta(days=30))
+    stored_rates.service.api_key = None
+    stored_rates.service.treasury = _treasury()
+
+    rate = (await stored_rates.service.get_current_rates()).risk_free_rate
+
+    assert (rate.source, rate.value) == ("treasury", Decimal("0.0509"))
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_a_stale_fred_rate_more_recent_than_the_treasury_curve_is_kept(
+    mock_get, stored_rates
+):
+    stored_rates.store("0.0400", date(2026, 10, 15), stored_rates.timedelta(days=30))
+    stored_rates.service.api_key = None
+    stored_rates.service.treasury = _treasury("failed", day=date(2026, 9, 30))
+
+    rate = (await stored_rates.service.get_current_rates()).risk_free_rate
+
+    assert (rate.source, rate.freshness, rate.value) == ("fred", "stale", Decimal("0.0400"))
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient.get")
+async def test_a_rate_of_fred_is_kept_and_the_treasury_not_asked(mock_get, stored_rates):
+    mock_get.return_value = _fred_answers("2026-10-16", "5.09")
+    stored_rates.service.treasury = _treasury()
+
+    rate = await stored_rates.service.get_risk_free_rate()
+
+    assert rate.source == "fred_live"
+    stored_rates.service.treasury.ensure.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "treasury",
+    [
+        _treasury(day=None),  # nothing stored, nothing read
+        _treasury(points={"2Y": Decimal("0.0474")}),  # a day without 10-year rate
+        _treasury(error=RuntimeError("database down")),
+    ],
+    ids=["no curve", "no 10-year rate", "error"],
+)
+@patch("httpx.AsyncClient.get")
+async def test_without_any_rate_the_configured_one(mock_get, stored_rates, treasury, monkeypatch):
+    import macro.fred_service as module
+
+    monkeypatch.setattr(module, "DEFAULT_RISK_FREE_RATE", Decimal("0.038"))
+    stored_rates.service.api_key = None
+    stored_rates.service.treasury = treasury
+
+    rate = await stored_rates.service.get_risk_free_rate()
+
+    assert (rate.value, rate.source) == (Decimal("0.038"), "env_fallback")

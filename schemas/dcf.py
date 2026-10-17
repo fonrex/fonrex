@@ -109,7 +109,9 @@ class WACCResult(BaseModel):
         description=(
             "Source of Rf: client_override; ecb_live, ecb_cached, ecb_stale (euro AAA "
             "10-year rate, for cash flows in EUR); fred_live, fred_cached, fred_stale (US "
-            "10-year Treasury rate, for cash flows in USD) — live: read now, cached: read "
+            "10-year Treasury rate read from FRED, for cash flows in USD); treasury_live, "
+            "treasury_cached, treasury_stale (the same rate read from the Treasury yield "
+            "curve, when FRED gives none) — live: read now, cached: read "
             "less than one cache lifetime ago, stale: older stored value, the source could "
             "not be read; env_fallback (DCF_RISK_FREE_RATE: no source for the currency, or "
             "nothing read)"

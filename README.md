@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="img/fonrex-logo.jpg" alt="Fonrex" width="120" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/fonrex-logo-dark.svg" />
+    <img src="img/fonrex-logo.svg" alt="Fonrex" height="64" />
+  </picture>
 </p>
 
 <h1 align="center">Fonrex</h1>

@@ -244,6 +244,7 @@ SPECIALIZED_PROVIDER_SPECS = (
     ("sec_edgar_provider", "SECEdgar", "financials.providers.sec_edgar", "SECEdgarProvider"),
     ("justetf_provider", "JustETF", "financials.providers.justetf", "JustETFProvider"),
     ("openfigi_provider", "OpenFIGI", "financials.providers.openfigi", "OpenFIGIProvider"),
+    ("treasury_provider", "Treasury", "financials.providers.treasury", "TreasuryProvider"),
     (
         "index_provider",
         "IndexConstituents",

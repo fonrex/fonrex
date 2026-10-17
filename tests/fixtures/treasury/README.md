@@ -17,21 +17,26 @@ https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily
 | `nominal_2018.csv` | same, 2018 | `2 Mo` starts on 2018-10-16: empty cells before |
 | `nominal_2002.csv` | same, 2002 | `30 Yr` stops after 2002-02-15: empty last cells after |
 | `nominal_2004.csv` | same, 2004 | No `30 Yr` column at all (2003 to 2005) |
+| `nominal_2020.csv` | same, 2020 | Rates of 0.00 (2020-03-25): a zero is a value, not a gap |
 | `nominal_1990.csv` | same, 1990 | The first year: 9 maturities, from `3 Mo` |
 | `real_2026.csv` | `daily_treasury_real_yield_curve`, 2026 | Real yields (TIPS), `5 YR` to `30 YR` |
+| `real_2021.csv` | same, 2021 | Negative real yields every day of the year |
 | `real_2003.csv` | same, 2003 | The first year of real yields: `5 YR`, `7 YR`, `10 YR` |
 | `empty_1989.csv` | `daily_treasury_yield_curve`, 1989 | A year without data: HTTP 200 and an empty body |
 
 How they were reduced, nothing else changed (quotes, decimals, line ends are as sent):
 
 - the header and a few days are kept: the latest and the earliest day of the year,
-  and the two days around the start or the end of a maturity;
+  and the two days around the start or the end of a maturity, or the day of the
+  case shown (the zero rates of 2020-03-25);
 - days stay in the order of the file, the latest first.
 
 What every file of 1990 to 2026 has in common (checked on all 37 years of both curves):
 
-- `Date` is `MM/DD/YYYY`; values are percents with two decimals, never negative,
-  never `N/A`; a maturity not published that day is an empty cell;
+- `Date` is `MM/DD/YYYY`; values are percents with two decimals, never `N/A`; a
+  maturity not published that day is an empty cell. Real yields are often negative
+  (every day of 2012 and of 2021), nominal ones reach `0.00` (2008 to 2015, 2020,
+  2021) but are never negative;
 - lines end with `\n`, the last line has none, there is no byte order mark;
 - the nominal labels are `1 Mo`, `1.5 Month`, `2 Mo`, `3 Mo`, `4 Mo`, `6 Mo`, `1 Yr`,
   `2 Yr`, `3 Yr`, `5 Yr`, `7 Yr`, `10 Yr`, `20 Yr`, `30 Yr`; the real ones are

@@ -219,7 +219,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `financials/provider_runner.py` | Parallel orchestration of fundamental providers with mappings, timeouts, `raw_providers`, and optional injection of `ValidationLayer` for real-time outlier filtering. |
 | `financials/enrichment/adapters.py` | Concrete yfinance adapters and ticker normalization injected into use cases by the HTTP router. |
 | `financials/enrichment/yfinance_enricher.py` | Deep enrichment from Yahoo: writes highlights, financial statements, earnings history, analyst ratings, ESG scores, earnings trend and shares history. |
-| `financials/providers/` | Asynchronous connectors to ZoneBourse, Google Finance, Boursorama, Barrons, WSJ, MarketWatch, MorningStar, Investing, Gurufocus, Fortuneo, BourseDirect, MSN, Investir Les Echos, YahooFinance, JustETF, SECEdgar (insider transactions, the tickers of the SEC and the XBRL facts of a company), OpenFIGI, and IndexConstituents. |
+| `financials/providers/` | Asynchronous connectors to ZoneBourse, Google Finance, Boursorama, Barrons, WSJ, MarketWatch, MorningStar, Investing, Gurufocus, Fortuneo, BourseDirect, MSN, Investir Les Echos, YahooFinance, JustETF, SECEdgar (insider transactions, the tickers of the SEC and the XBRL facts of a company), OpenFIGI, IndexConstituents, and Treasury (the daily yield curves of the US Treasury). |
 | `financials/providers/base.py` | The one HTTP layer of every provider: client creation, retries, per-provider concurrency, optional outbound proxy. |
 | `financials/providers/JustETF_provider.py` | Legacy synchronous justETF scraper, kept and hardened; it relies on `fundamental/tools/ToolsBox.py`. The API uses `financials/providers/justetf.py`. |
 | `fundamental/tools/ToolsBox.py` | Legacy helpers still used by the legacy justETF scraper and by the Google Finance to Yahoo ticker conversion. |
@@ -1199,6 +1199,7 @@ Fundamental providers are declared in `main.py` in two tuples, imported when the
 - `JustETF` – ETF metadata (fees, AUM, replication, performance)
 - `OpenFIGI` – identifier lookup (ISIN or ticker → FIGI, name, exchange code); it is loaded and no route calls it
 - `IndexConstituents` – index constituents (S&P500, CAC40, NASDAQ100, DAX)
+- `Treasury` – the daily par yield curves of the US Treasury, nominal since 1990 and real (TIPS) since 2003, one CSV file per year; it is loaded and no route calls it yet
 
 The providers of `/fundamental` return a `FinancialMetrics` Pydantic model (MorningStar returns a dictionary). By default the answer of a provider keeps the fields declared by the model and drops the extra ones the provider added; the extra fields are kept for a provider named in the `provider` parameter, and always for YahooFinance, whose extra fields feed the rendered document. The names above are the ones accepted by the `provider` parameter (in any case) and the keys of the answer.
 
@@ -1635,7 +1636,8 @@ Test coverage, by theme:
 - `tests/test_sec_routes.py`: `/sec/{ticker}/statements`, `/check` and `/refresh` on the real SEC answers (concepts and filings of each figure, an instrument without SEC filer, the SEC down with and without stored years, counts of a check), the instrument of the ticker, and the warning when `SEC_EDGAR_EMAIL` is the address of the example.
 - `tests/test_sec_check.py`: the Yahoo statements stored the way the enrichment stores them (three rows a year) checked against the real SEC answers — Apple's year dated three days apart, a gap beyond the tolerance, payments with opposite signs, a figure only Yahoo gives, another currency, the tolerance setting.
 - `tests/test_sec_statements.py`: the SEC statements of an instrument without CIK (the SEC is never asked) and the refresh delay; storing and reading the facts is tested on PostgreSQL.
-- `tests/test_sec_cik.py`: the CIK of an instrument is verified, never guessed, on the real SEC table of `tests/fixtures/sec/` — Airbus is never AAR Corp, SAP is found through its NYSE listing, classes of shares, homonyms (`Apple Hospitality REIT`), funds, reuse and retry of a stored answer, the table read with the `User-Agent` of the instance.
+- `tests/test_sec_cik.py`: the CIK of an instrument is verified, never guessed, on the real SEC table of `tests/fixtures/sec/` — Airbus is never AAR Corp, the NYSE ADR of SAP is found (`ADR on SAP SE`), classes of shares, homonyms (`Apple Hospitality REIT`), funds, reuse and retry of a stored answer, the table read with the `User-Agent` of the instance.
+- `tests/test_treasury_provider.py`: the real yield curve files of `tests/fixtures/treasury/` — the maturities added and removed over the years (`2 Mo`, `4 Mo`, `1.5 Month`, the `30 Yr` of 2002), an empty cell left out but a zero rate kept, negative real yields, a year without data, a new column or a file that is not a CSV refused, the URL of a year, a refusal and a server error.
 - `tests/test_openfigi_provider.py`: OpenFIGI lookup by ISIN, batches of 100, request body and headers with and without an API key.
 - `tests/test_index_constituents_provider.py`: parsing of the Wikipedia pages of the S&P 500 and of the CAC 40, network failure, dispatch by index.
 - `tests/test_google_url_provider.py`: not a test. It is a script to run by hand that asks the real Google Finance; pytest collects nothing from it.

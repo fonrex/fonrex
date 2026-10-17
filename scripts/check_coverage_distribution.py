@@ -65,6 +65,7 @@ MODULE_THRESHOLDS = {
     "financials/providers/Msn_provider.py": 100.0,
     "financials/providers/openfigi.py": 90.0,
     "financials/providers/sec_edgar.py": 79.0,
+    "financials/providers/treasury.py": 98.0,
     "financials/providers/wallStreetJournal_provider.py": 85.0,
     "financials/providers/yfinance_provider.py": 81.0,
     "financials/providers/ZoneBourse_provider.py": 87.0,

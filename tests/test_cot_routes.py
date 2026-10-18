@@ -403,7 +403,7 @@ class TestOpenBB:
             "Reading",
         }
         assert (first["Report date"], first["Published"]) == ("2026-10-13", "2026-10-16")
-        assert first["Reading"] in ("Extreme long", "Extreme short", "")
+        assert first["Reading"] in ("Top of window", "Bottom of window", "")
         missing = [row["Code"] for row in rows if row["Market"] == "No report stored"]
         assert "1170E1" in missing
 
@@ -427,11 +427,11 @@ def test_the_reading_of_an_index():
 
     assert [_cot_reading(v) for v in (None, 95.0, 90.0, 50.0, 10.0, 3.2)] == [
         "",
-        "Extreme long",
-        "Extreme long",
+        "Top of window",
+        "Top of window",
         "",
-        "Extreme short",
-        "Extreme short",
+        "Bottom of window",
+        "Bottom of window",
     ]
 
 

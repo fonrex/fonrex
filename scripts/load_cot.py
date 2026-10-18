@@ -7,10 +7,10 @@
     python scripts/load_cot.py --force                 # even the years up to date
 
 Legacy starts in 1986, TFF and Disaggregated in June 2006. The years up to 2016 are
-one file per report (Legacy: 23 MB, read in about a minute), then one file a year
-of 1 to 3 MB. The years up to 2016 are read once; a later past year is not read
-again once read from 15 January of the next year on, the current year only after
-COT_REFRESH_HOURS. The exit code is 1 when a year could not be read.
+one file per report (Legacy: 23 MB), then one file a year of 1 to 3 MB: the whole
+history takes about 15 to 20 minutes. The years up to 2016 are read once; a later
+past year is not read again once read from 15 January of the next year on, the
+current year only after COT_REFRESH_HOURS. The exit code is 1 when a year could not be read.
 """
 
 from __future__ import annotations

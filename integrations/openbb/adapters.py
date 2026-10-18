@@ -1125,12 +1125,14 @@ def format_cot_signals_chart(signals_obj: Any) -> Dict[str, Any]:
 
 
 def _cot_reading(index: Optional[float]) -> str:
+    """Where the net position stands in its window, not its sign: a net short position
+    can be at the top of its window (less short than ever), and the reverse."""
     if index is None:
         return ""
     if index >= 90:
-        return "Extreme long"
+        return "Top of window"
     if index <= 10:
-        return "Extreme short"
+        return "Bottom of window"
     return ""
 
 

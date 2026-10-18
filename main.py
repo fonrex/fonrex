@@ -243,6 +243,7 @@ SPECIALIZED_PROVIDER_SPECS = (
     ("justetf_provider", "JustETF", "financials.providers.justetf", "JustETFProvider"),
     ("openfigi_provider", "OpenFIGI", "financials.providers.openfigi", "OpenFIGIProvider"),
     ("treasury_provider", "Treasury", "financials.providers.treasury", "TreasuryProvider"),
+    ("cftc_provider", "CFTC", "financials.providers.cftc", "CftcProvider"),
     (
         "index_provider",
         "IndexConstituents",

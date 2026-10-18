@@ -66,8 +66,11 @@ What the full files have in common (checked on ten complete files: Legacy
   then `CRUDE OIL, LIGHT SWEET`, and is `WTI-PHYSICAL` today; `043602` went from
   `6.5-10 YEAR U.S. TREASURY NOTE` to `10-YEAR U.S. TREASURY NOTES` to
   `UST 10Y NOTE`.
-- The files of 2026 were written on 2026-10-15 (date of the inner file) and end
-  with the report of Tuesday 2026-10-13.
+- The files of 2026 end with the report of Tuesday 2026-10-13. The inner file is
+  dated Thursday 2026-10-15; the zip was put online on Friday 2026-10-16 at
+  19:27 GMT (`Last-Modified`), the usual release time of 3:30 p.m. in New York.
+- A file that does not exist (a year before the first one, or not published yet,
+  such as `deacot2027.zip`) answers `404` with an HTML page.
 
 `expected.json` gives, for each fixture, what a reading must find: the report, the
 inner file, the number of columns and lines, the lines per market, the first and

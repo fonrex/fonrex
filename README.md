@@ -96,14 +96,14 @@ documentation to an LLM, use [llms.txt](https://fonrex.io/llms.txt).
 | 📰 **News** | Deduplicated articles from several sources, per ticker and as a global feed |
 | 🛡️ **Data quality** | Range checks, cross-source consensus, a daily canary run and alerts on every provider |
 
-### Fundamentals (19 providers)
+### Fundamentals (20 providers)
 
 | Group | Providers |
 |---|---|
 | **Europe** | ZoneBourse, Boursorama, BourseDirect, Fortuneo, InvestirLesEchos |
 | **Global** | Yahoo Finance, Google Finance, MSN, MorningStar, Investing.com |
 | **US** | Barron's, WSJ, MarketWatch, Gurufocus |
-| **Specialised** | JustETF (UCITS ETFs), SEC Edgar (insider transactions), OpenFIGI, index constituents, US Treasury (yield curves) |
+| **Specialised** | JustETF (UCITS ETFs), SEC Edgar (insider transactions), OpenFIGI, index constituents, US Treasury (yield curves), CFTC (Commitments of Traders) |
 
 `GET /fundamental` returns one document in the EODHD layout. Each figure is taken from Yahoo
 (with the symbol verified for the listing, never the bare ticker), then from the stored
@@ -183,7 +183,7 @@ is in the [documentation](https://fonrex.io/docs/intro).
 ┌──────▼──────┐  ┌──────▼───────┐  ┌───────▼───────────────┐
 │   Redis 7   │  │  TimescaleDB │  │   Public sources      │
 │  cache and  │  │  PostgreSQL  │  │  Yahoo / TradingView  │
-│  pub/sub    │  │  your data   │  │  19 providers         │
+│  pub/sub    │  │  your data   │  │  20 providers         │
 └─────────────┘  └──────────────┘  └───────────────────────┘
 ```
 

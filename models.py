@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -989,6 +990,63 @@ class YieldCurveLoad(Base):
     year = Column(Integer, primary_key=True)
     fetched_at = Column(DateTime(timezone=True), nullable=False)
     days = Column(Integer, nullable=False, default=0, server_default="0")
+    first_day = Column(Date)
+    last_day = Column(Date)
+
+
+class CotWeek(Base):
+    """One line of a Commitments of Traders report: a market on a report date (CFTC).
+
+    ``market_code`` is the CFTC contract market code (``13874A``, ``20974+``,
+    ``001602``): it stays when the name of the market changes, and ``market_name``
+    is the name of that week.
+    """
+
+    __tablename__ = "cot_weeks"
+    __table_args__ = (Index("ix_cot_weeks_report_date", "report", "report_date"),)
+    report = Column(String(16), primary_key=True)  # "legacy" | "tff" | "disaggregated"
+    market_code = Column(String(6), primary_key=True)
+    report_date = Column(Date, primary_key=True)  # the Tuesday of the positions
+    market_name = Column(String(200), nullable=False)
+    contract_units = Column(String(200))
+    open_interest = Column(BigInteger, nullable=False)
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class CotPosition(Base):
+    """The positions of one type of trader on one line of a report, in contracts.
+
+    ``spreading`` is absent for the types that have none (commercial, non-reportable,
+    producers). A non-reportable position may be negative in the Legacy history.
+    """
+
+    __tablename__ = "cot_positions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["report", "market_code", "report_date"],
+            ["cot_weeks.report", "cot_weeks.market_code", "cot_weeks.report_date"],
+            name="fk_cot_positions_week",
+            ondelete="CASCADE",
+        ),
+    )
+    report = Column(String(16), primary_key=True)
+    market_code = Column(String(6), primary_key=True)
+    report_date = Column(Date, primary_key=True)
+    category = Column(String(24), primary_key=True)  # "noncommercial", "leveraged_funds", ...
+    long = Column(BigInteger, nullable=False)
+    short = Column(BigInteger, nullable=False)
+    spreading = Column(BigInteger)
+
+
+class CotLoad(Base):
+    """The last reading of one year of a report, and the file that held it."""
+
+    __tablename__ = "cot_loads"
+    report = Column(String(16), primary_key=True)
+    year = Column(Integer, primary_key=True)
+    file = Column(String(64), nullable=False)  # "deacot2026.zip", "deacot1986_2016.zip"
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    weeks = Column(Integer, nullable=False, default=0, server_default="0")
     first_day = Column(Date)
     last_day = Column(Date)
 

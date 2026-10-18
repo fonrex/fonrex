@@ -30,6 +30,7 @@ import pandas as pd
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
@@ -1825,3 +1826,198 @@ class TestTreasuryScriptOnPostgres:
         # 2025 was read after its end: only 2026 could be read again, and it is up to date.
         assert fake_network.calls("daily-treasury-rates.csv") == 4
         assert "fresh" in second_output.splitlines()[0]
+
+
+class TestCotTablesOnPostgres:
+    """Revision 025: the Commitments of Traders reports of the CFTC."""
+
+    WEEK = text("""
+        INSERT INTO cot_weeks
+            (report, market_code, report_date, market_name, contract_units, open_interest, fetched_at)
+        VALUES (:report, :code, :day, :name, :units, :oi, now())
+    """)
+    POSITION = text("""
+        INSERT INTO cot_positions (report, market_code, report_date, category, long, short, spreading)
+        VALUES (:report, :code, :day, :category, :long, :short, :spreading)
+    """)
+
+    @staticmethod
+    def _clean(connection):
+        connection.execute(text("DELETE FROM cot_positions"))
+        connection.execute(text("DELETE FROM cot_weeks"))
+        connection.execute(text("DELETE FROM cot_loads"))
+
+    def _gold(self, connection, day=date(2026, 10, 13), report="legacy"):
+        connection.execute(
+            self.WEEK,
+            {
+                "report": report,
+                "code": "088691",
+                "day": day,
+                "name": "GOLD - COMMODITY EXCHANGE INC.",
+                "units": "(CONTRACTS OF 100 TROY OUNCES)",
+                "oi": 396345,
+            },
+        )
+        for category, long, short, spreading in (
+            ("noncommercial", 245300, 37421, 45895),
+            ("commercial", 54419, 296950, None),
+            ("nonreportable", 50731, 16079, None),
+        ):
+            connection.execute(
+                self.POSITION,
+                {
+                    "report": report,
+                    "code": "088691",
+                    "day": day,
+                    "category": category,
+                    "long": long,
+                    "short": short,
+                    "spreading": spreading,
+                },
+            )
+
+    def test_a_line_and_the_positions_of_each_type_of_trader(self, engine):
+        with engine.begin() as connection:
+            self._clean(connection)
+            self._gold(connection)
+            rows = connection.execute(
+                text("""
+                    SELECT p.category, p.long - p.short AS net, p.spreading, w.open_interest
+                    FROM cot_positions p
+                    JOIN cot_weeks w USING (report, market_code, report_date)
+                    ORDER BY p.category
+                """)
+            ).all()
+            self._clean(connection)
+        assert [tuple(row) for row in rows] == [
+            ("commercial", -242531, None, 396345),
+            ("noncommercial", 207879, 45895, 396345),
+            ("nonreportable", 34652, None, 396345),
+        ]
+
+    def test_a_file_read_again_replaces_its_lines_and_their_positions(self, engine):
+        with engine.begin() as connection:
+            self._clean(connection)
+            self._gold(connection)
+            connection.execute(
+                text(
+                    "DELETE FROM cot_weeks WHERE report = 'legacy' AND report_date >= '2026-01-01'"
+                )
+            )
+            left = connection.execute(text("SELECT count(*) FROM cot_positions")).scalar()
+            self._gold(connection)
+            again = connection.execute(text("SELECT count(*) FROM cot_positions")).scalar()
+            self._clean(connection)
+        assert (left, again) == (0, 3)
+
+    def test_the_same_market_in_two_reports(self, engine):
+        with engine.begin() as connection:
+            self._clean(connection)
+            self._gold(connection, report="legacy")
+            self._gold(connection, report="disaggregated")
+            lines = connection.execute(text("SELECT count(*) FROM cot_weeks")).scalar()
+            self._clean(connection)
+        assert lines == 2
+
+    def test_a_position_without_its_line_is_refused(self, engine):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(
+                self.POSITION,
+                {
+                    "report": "legacy",
+                    "code": "13874A",
+                    "day": date(2026, 10, 13),
+                    "category": "noncommercial",
+                    "long": 1,
+                    "short": 1,
+                    "spreading": 0,
+                },
+            )
+
+    def test_negative_and_large_numbers_of_contracts(self, engine):
+        day = date(1987, 6, 30)
+        with engine.begin() as connection:
+            self._clean(connection)
+            connection.execute(
+                self.WEEK,
+                {
+                    "report": "legacy",
+                    "code": "043602",
+                    "day": day,
+                    "name": "6.5-10 YEAR U.S. TREASURY NOTE - CHICAGO BOARD OF TRADE",
+                    "units": None,
+                    "oi": 3_000_000_000,
+                },
+            )
+            connection.execute(
+                self.POSITION,
+                {
+                    "report": "legacy",
+                    "code": "043602",
+                    "day": day,
+                    "category": "nonreportable",
+                    "long": -984,
+                    "short": 1758,
+                    "spreading": None,
+                },
+            )
+            row = connection.execute(
+                text("""
+                    SELECT w.open_interest, w.contract_units, p.long
+                    FROM cot_weeks w JOIN cot_positions p USING (report, market_code, report_date)
+                """)
+            ).one()
+            self._clean(connection)
+        assert tuple(row) == (3_000_000_000, None, -984)
+
+    def test_the_dates_of_a_report_read_the_report_date_index(self, engine):
+        with engine.connect() as connection:
+            columns = (
+                connection.execute(
+                    text("""
+                    SELECT a.attname FROM pg_index i
+                    JOIN pg_class c ON c.oid = i.indexrelid
+                    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                    WHERE c.relname = 'ix_cot_weeks_report_date'
+                    ORDER BY array_position(i.indkey::int[], a.attnum::int)
+                """)
+                )
+                .scalars()
+                .all()
+            )
+        assert columns == ["report", "report_date"]
+
+    def test_the_reading_of_a_year(self, engine):
+        with engine.begin() as connection:
+            self._clean(connection)
+            connection.execute(
+                text("""
+                    INSERT INTO cot_loads (report, year, file, fetched_at)
+                    VALUES ('legacy', 2027, 'deacot2027.zip', now())
+                """)
+            )
+            row = connection.execute(
+                text("SELECT file, weeks, first_day, last_day FROM cot_loads")
+            ).one()
+            self._clean(connection)
+        assert tuple(row) == ("deacot2027.zip", 0, None, None)
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        tables = ("cot_weeks", "cot_positions", "cot_loads")
+        _alembic(database_url, "downgrade", "024")
+        with engine.connect() as connection:
+            for table in tables:
+                assert (
+                    connection.execute(
+                        text("SELECT to_regclass(:table)"), {"table": table}
+                    ).scalar()
+                    is None
+                )
+            assert connection.execute(text("SELECT to_regclass('yield_curve_points')")).scalar()
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            for table in tables:
+                assert connection.execute(
+                    text("SELECT to_regclass(:table)"), {"table": table}
+                ).scalar()

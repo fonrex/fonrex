@@ -2241,3 +2241,56 @@ class TestCotReportsOnPostgres:
                 )
             ).one()
         assert tuple(counts) == (4500, 13500)
+
+
+class TestCotScriptOnPostgres:
+    """``scripts/load_cot.py`` from the files of the CFTC to the tables."""
+
+    async def test_the_years_read_then_up_to_date_and_a_file_not_published(
+        self, database_url, engine, fake_network, monkeypatch, capsys
+    ):
+        import httpx
+
+        from scripts import load_cot
+
+        fixtures = Path(__file__).parent / "fixtures" / "cftc"
+        for name in ("deacot2025.zip", "deacot2026.zip"):
+            fake_network.get(
+                f"/history/{name}", httpx.Response(200, content=(fixtures / name).read_bytes())
+            )
+        fake_network.get("/history/fut_fin_txt_2025.zip", httpx.Response(404, text="<html></html>"))
+        monkeypatch.delenv("ASYNC_DATABASE_URL", raising=False)
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM cot_weeks"))
+            connection.execute(text("DELETE FROM cot_loads"))
+        argv = ["--report", "legacy", "tff", "--start-year", "2025", "--end-year", "2026"]
+
+        try:
+            first = await load_cot.main(argv)
+            first_output = capsys.readouterr().out
+            second = await load_cot.main(
+                ["--report", "legacy", "--start-year", "2025", "--end-year", "2026"]
+            )
+            second_output = capsys.readouterr().out
+            with engine.connect() as connection:
+                counts = connection.execute(
+                    text(
+                        "SELECT (SELECT count(*) FROM cot_weeks), (SELECT count(*) FROM cot_positions)"
+                    )
+                ).one()
+        finally:
+            with engine.begin() as connection:
+                connection.execute(text("DELETE FROM cot_weeks"))
+                connection.execute(text("DELETE FROM cot_loads"))
+
+        assert (first, second) == (1, 0)
+        assert first_output.splitlines() == [
+            "legacy        fetched  2025-01-07 → 2026-10-13  (2 years read: 2025, 2026)",
+            "tff           failed   nothing stored  (not read: 2025, 2026, the CFTC did not answer)",
+        ]
+        assert tuple(counts) == (154, 154 * 3)
+        # The CFTC did not give the TFF file of 2025: the file of 2026 was not asked.
+        assert fake_network.calls("fut_fin_txt") == 1
+        assert second_output.splitlines()[0].startswith("legacy        fresh")
+        assert fake_network.calls("deacot") == 2

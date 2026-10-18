@@ -301,3 +301,78 @@ class TestSignals:
         assert all(s.published_on.weekday() == 4 for s in result)
         last = result[-1]
         assert last.net == last.long - last.short and last.report_date == date(2025, 12, 30)
+
+
+class TestScript:
+    def test_the_three_reports_and_the_whole_history_by_default(self):
+        from scripts import load_cot
+
+        arguments = load_cot.parse_arguments([])
+        assert (arguments.report, arguments.start_year, arguments.end_year, arguments.force) == (
+            ["legacy", "tff", "disaggregated"],
+            1986,
+            None,
+            False,
+        )
+
+    def test_some_years_of_one_report(self):
+        from scripts import load_cot
+
+        arguments = load_cot.parse_arguments(
+            ["--report", "tff", "--start-year", "2020", "--end-year", "2021", "--force"]
+        )
+        assert (arguments.report, arguments.start_year, arguments.end_year, arguments.force) == (
+            ["tff"],
+            2020,
+            2021,
+            True,
+        )
+
+    @pytest.mark.parametrize(
+        "argv",
+        [["--report", "supplemental"], ["--start-year", "2026", "--end-year", "2020"]],
+    )
+    def test_refused(self, argv, capsys):
+        from scripts import load_cot
+
+        with pytest.raises(SystemExit) as stopped:
+            load_cot.parse_arguments(argv)
+        assert stopped.value.code == 2
+
+    def test_a_line_per_report(self):
+        from macro.cot_reports import ReportLoad
+        from scripts import load_cot
+
+        fetched = ReportLoad(
+            "legacy",
+            "fetched",
+            first_day=date(1986, 1, 15),
+            last_day=date(2026, 10, 13),
+            years_read=list(range(1986, 2027)),
+        )
+        fresh = ReportLoad("tff", "fresh", first_day=date(2006, 6, 13), last_day=date(2026, 10, 13))
+        failed = ReportLoad(
+            "disaggregated",
+            "failed",
+            years_read=[2017, 2018],
+            years_failed=[2019, 2020, 2021, 2022],
+            reason="the CFTC did not answer",
+        )
+
+        assert load_cot.describe(fetched) == (
+            "legacy        fetched  1986-01-15 → 2026-10-13  (41 years read: 1986–2026)"
+        )
+        assert load_cot.describe(fresh) == "tff           fresh    2006-06-13 → 2026-10-13"
+        assert load_cot.describe(failed) == (
+            "disaggregated failed   nothing stored  (2 years read: 2017, 2018)"
+            "  (not read: 2019–2022, the CFTC did not answer)"
+        )
+
+    async def test_without_database_the_script_stops(self, monkeypatch, capsys):
+        from scripts import load_cot
+
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("ASYNC_DATABASE_URL", raising=False)
+
+        assert await load_cot.main([]) == 2
+        assert "DATABASE_URL" in capsys.readouterr().err

@@ -1,0 +1,81 @@
+{
+ "MINO79WLOO247M1IL051-2025-12-31-ESEF-NL-0": [
+  {
+   "concept": "ifrs-full:Revenue",
+   "period": "2025-01-01T00:00:00/2026-01-01T00:00:00",
+   "value": "73420000000.0"
+  },
+  {
+   "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+   "period": "2025-01-01T00:00:00/2026-01-01T00:00:00",
+   "value": "5221000000.0"
+  },
+  {
+   "concept": "ifrs-full:Assets",
+   "period": "2026-01-01T00:00:00",
+   "value": "134939000000.0"
+  }
+ ],
+ "R0MUWSFPU8MPRO8K5P83-2025-12-31-ESEF-FR-1": [
+  {
+   "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+   "period": "2025-01-01T00:00:00/2026-01-01T00:00:00",
+   "value": "12225000000.0"
+  },
+  {
+   "concept": "ifrs-full:Assets",
+   "period": "2026-01-01T00:00:00",
+   "value": "2792981000000.0"
+  }
+ ],
+ "529900S21EQ1BO4ESM68-2025-12-31-ESEF-FR-0": [
+  {
+   "concept": "ifrs-full:RevenueFromContractsWithCustomers",
+   "period": "2025-01-01T00:00:00/2026-01-01T00:00:00",
+   "value": "201196000000.0"
+  },
+  {
+   "concept": "tot:RevenueFromContractsWithCustomersExcludingExciseTax",
+   "period": "2025-01-01T00:00:00/2026-01-01T00:00:00",
+   "value": "182344000000.0"
+  },
+  {
+   "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+   "period": "2025-01-01T00:00:00/2026-01-01T00:00:00",
+   "value": "13127000000.0"
+  }
+ ],
+ "52990097YFPX9J0H5D87-2021-12-31-ESEF-FR-0": [
+  {
+   "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+   "period": "2020-07-01T00:00:00/2021-07-01T00:00:00",
+   "value": "1305000000"
+  }
+ ],
+ "52990097YFPX9J0H5D87-2025-06-30-ESEF-FR-0": [
+  {
+   "concept": "ifrs-full:RevenueFromContractsWithCustomers",
+   "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+   "value": "10959000000.0"
+  }
+ ],
+ "549300DAQ1CVT6CXN342-2020-12-31-ESEF-DK-0": [
+  {
+   "concept": "ifrs-full:Revenue",
+   "period": "2020-01-01T00:00:00/2021-01-01T00:00:00",
+   "value": "126946000000"
+  },
+  {
+   "concept": "ifrs-full:ProfitLoss",
+   "period": "2020-01-01T00:00:00/2021-01-01T00:00:00",
+   "value": "42138000000"
+  }
+ ],
+ "549300DAQ1CVT6CXN342-2026-06-30-ESEF-DK-0": [
+  {
+   "concept": "ifrs-full:Revenue",
+   "period": "2026-01-01T00:00:00/2026-07-01T00:00:00",
+   "value": "175311000000.0"
+  }
+ ]
+}

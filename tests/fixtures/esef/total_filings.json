@@ -1,0 +1,285 @@
+{
+ "data": [
+  {
+   "attributes": {
+    "country": "GB",
+    "date_added": "2023-03-28 11:22:30.807282",
+    "error_count": 0,
+    "fxo_id": "529900S21EQ1BO4ESM68-2022-12-31-ESEF-GB-0",
+    "inconsistency_count": 0,
+    "json_url": "/529900S21EQ1BO4ESM68/2022-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2022-12-31.json",
+    "package_url": "/529900S21EQ1BO4ESM68/2022-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2022-12-31.zip",
+    "period_end": "2022-12-31",
+    "processed": "2023-04-19 15:22:54.451626",
+    "report_url": "/529900S21EQ1BO4ESM68/2022-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2022-12-31/reports/529900S21EQ1BO4ESM68-2022-12-31.xhtml",
+    "sha256": "d261e7773b59d80a98389a554f1d68c81fdc3a21764e75e558adbba347fd19a7",
+    "viewer_url": "/529900S21EQ1BO4ESM68/2022-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2022-12-31/reports/ixbrlviewer.html",
+    "warning_count": 0
+   },
+   "id": "4726",
+   "links": {
+    "self": "/api/filings/4726"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/529900S21EQ1BO4ESM68"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/4726/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2023-03-28 11:26:17.963670",
+    "error_count": 0,
+    "fxo_id": "529900S21EQ1BO4ESM68-2022-12-31-ESEF-FR-0",
+    "inconsistency_count": 0,
+    "json_url": "/529900S21EQ1BO4ESM68/2022-12-31/ESEF/FR/0/tot-2022-12-31AR.json",
+    "package_url": "/529900S21EQ1BO4ESM68/2022-12-31/ESEF/FR/0/tot-2022-12-31AR.zip",
+    "period_end": "2022-12-31",
+    "processed": "2023-04-19 16:24:46.569335",
+    "report_url": "/529900S21EQ1BO4ESM68/2022-12-31/ESEF/FR/0/tot-2022-12-31AR/reports/tot-2022-12-31AR.xhtml",
+    "sha256": "8de94b4688a3d5c430fb7103063ac4fc4107072d5400063550449c97c4a986e5",
+    "viewer_url": "/529900S21EQ1BO4ESM68/2022-12-31/ESEF/FR/0/tot-2022-12-31AR/reports/ixbrlviewer.html",
+    "warning_count": 0
+   },
+   "id": "4788",
+   "links": {
+    "self": "/api/filings/4788"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/529900S21EQ1BO4ESM68"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/4788/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "GB",
+    "date_added": "2024-04-02 11:37:32.574534",
+    "error_count": 0,
+    "fxo_id": "529900S21EQ1BO4ESM68-2023-12-31-ESEF-GB-0",
+    "inconsistency_count": 0,
+    "json_url": "/529900S21EQ1BO4ESM68/2023-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2023-12-31.json",
+    "package_url": "/529900S21EQ1BO4ESM68/2023-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2023-12-31.zip",
+    "period_end": "2023-12-31",
+    "processed": "2024-04-02 12:00:30.361679",
+    "report_url": "/529900S21EQ1BO4ESM68/2023-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2023-12-31/reports/529900S21EQ1BO4ESM68-2023-12-31.xhtml",
+    "sha256": "d7e3771cc67f78759457a8af2a27c56e17dd8cf946762d56570ed7d182b40f0f",
+    "viewer_url": "/529900S21EQ1BO4ESM68/2023-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2023-12-31/reports/ixbrlviewer.html",
+    "warning_count": 3
+   },
+   "id": "13088",
+   "links": {
+    "self": "/api/filings/13088"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/529900S21EQ1BO4ESM68"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/13088/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2024-04-02 11:49:08.070947",
+    "error_count": 0,
+    "fxo_id": "529900S21EQ1BO4ESM68-2023-12-31-ESEF-FR-0",
+    "inconsistency_count": 0,
+    "json_url": "/529900S21EQ1BO4ESM68/2023-12-31/ESEF/FR/0/tot-2023-12-31AR.json",
+    "package_url": "/529900S21EQ1BO4ESM68/2023-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2023-12-31.zip",
+    "period_end": "2023-12-31",
+    "processed": "2024-04-02 12:27:48.632987",
+    "report_url": "/529900S21EQ1BO4ESM68/2023-12-31/ESEF/FR/0/tot-2023-12-31AR/reports/tot-2023-12-31AR.xhtml",
+    "sha256": "7ccfef9157fb774b0c766e861ca5ffe4f6bbe52842559479a2b635b7c71eb457",
+    "viewer_url": "/529900S21EQ1BO4ESM68/2023-12-31/ESEF/FR/0/tot-2023-12-31AR/reports/ixbrlviewer.html",
+    "warning_count": 3
+   },
+   "id": "13140",
+   "links": {
+    "self": "/api/filings/13140"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/529900S21EQ1BO4ESM68"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/13140/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2025-04-15 12:06:41.269792",
+    "error_count": 0,
+    "fxo_id": "529900S21EQ1BO4ESM68-2024-12-31-ESEF-FR-0",
+    "inconsistency_count": 0,
+    "json_url": "/529900S21EQ1BO4ESM68/2024-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2024-12-31-0-FR.json",
+    "package_url": "/529900S21EQ1BO4ESM68/2024-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2024-12-31-0-FR-BIS.zip",
+    "period_end": "2024-12-31",
+    "processed": "2025-04-15 15:07:39.608205",
+    "report_url": "/529900S21EQ1BO4ESM68/2024-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2024-12-31-0-FR-BIS/reports/529900S21EQ1BO4ESM68-2024-12-31-0-FR.xhtml",
+    "sha256": "c971f5612e88c689ce1abcdf79e0853abfc3daa8a71cbad925174b46648adc8c",
+    "viewer_url": "/529900S21EQ1BO4ESM68/2024-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2024-12-31-0-FR-BIS/reports/ixbrlviewer.html",
+    "warning_count": 3
+   },
+   "id": "17670",
+   "links": {
+    "self": "/api/filings/17670"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/529900S21EQ1BO4ESM68"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/17670/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "GB",
+    "date_added": "2025-04-15 11:53:04.188344",
+    "error_count": 0,
+    "fxo_id": "529900S21EQ1BO4ESM68-2024-12-31-ESEF-GB-0",
+    "inconsistency_count": 0,
+    "json_url": "/529900S21EQ1BO4ESM68/2024-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2024-12-31.json",
+    "package_url": "/529900S21EQ1BO4ESM68/2024-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2024-12-31.zip",
+    "period_end": "2024-12-31",
+    "processed": "2025-04-15 12:55:59.711852",
+    "report_url": "/529900S21EQ1BO4ESM68/2024-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2024-12-31/reports/529900S21EQ1BO4ESM68-2024-12-31.xhtml",
+    "sha256": "e3a049be13c296d6ec3f98b21060946c0b6221e3907b20c9703545c151d6e51f",
+    "viewer_url": "/529900S21EQ1BO4ESM68/2024-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2024-12-31/reports/ixbrlviewer.html",
+    "warning_count": 3
+   },
+   "id": "17433",
+   "links": {
+    "self": "/api/filings/17433"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/529900S21EQ1BO4ESM68"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/17433/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "GB",
+    "date_added": "2026-04-07 12:01:28.224396",
+    "error_count": 0,
+    "fxo_id": "529900S21EQ1BO4ESM68-2025-12-31-ESEF-GB-0",
+    "inconsistency_count": 0,
+    "json_url": "/529900S21EQ1BO4ESM68/2025-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2025-12-31.json",
+    "package_url": "/529900S21EQ1BO4ESM68/2025-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2025-12-31.zip",
+    "period_end": "2025-12-31",
+    "processed": "2026-04-07 13:40:54.656891",
+    "report_url": "/529900S21EQ1BO4ESM68/2025-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2025-12-31/reports/529900S21EQ1BO4ESM68-2025-12-31.xhtml",
+    "sha256": "2a930b78db6a92408ff41a191589ca7bb1d4cdde48410d187e89f84c3ca01399",
+    "viewer_url": "/529900S21EQ1BO4ESM68/2025-12-31/ESEF/GB/0/529900S21EQ1BO4ESM68-2025-12-31/reports/ixbrlviewer.html",
+    "warning_count": 3
+   },
+   "id": "24224",
+   "links": {
+    "self": "/api/filings/24224"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/529900S21EQ1BO4ESM68"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/24224/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2026-04-07 12:09:24.830266",
+    "error_count": 0,
+    "fxo_id": "529900S21EQ1BO4ESM68-2025-12-31-ESEF-FR-0",
+    "inconsistency_count": 0,
+    "json_url": "/529900S21EQ1BO4ESM68/2025-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2025-12-31-1-fr.json",
+    "package_url": "/529900S21EQ1BO4ESM68/2025-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2025-12-31.zip",
+    "period_end": "2025-12-31",
+    "processed": "2026-04-07 14:48:14.562584",
+    "report_url": "/529900S21EQ1BO4ESM68/2025-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2025-12-31-1-fr/reports/529900S21EQ1BO4ESM68-2025-12-31-1-fr.xhtml",
+    "sha256": "ffe60daab4842ca6a32996fe1e29d32bc4b69e04b796d8fd084cb7dfc5a9ec02",
+    "viewer_url": "/529900S21EQ1BO4ESM68/2025-12-31/ESEF/FR/0/529900S21EQ1BO4ESM68-2025-12-31-1-fr/reports/ixbrlviewer.html",
+    "warning_count": 3
+   },
+   "id": "24364",
+   "links": {
+    "self": "/api/filings/24364"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/529900S21EQ1BO4ESM68"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/24364/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  }
+ ],
+ "jsonapi": {
+  "version": "1.0"
+ },
+ "links": {
+  "self": "https://filings.xbrl.org/api/filings?page%5Bsize%5D=100"
+ },
+ "meta": {
+  "count": 8
+ }
+}

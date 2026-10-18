@@ -1,0 +1,278 @@
+{
+ "data": [
+  {
+   "attributes": {
+    "bic": [
+     "BNPAAEADXXX",
+     "BNPAAU2SXXX",
+     "BNPABGSXXXX",
+     "BNPABHBCXXX",
+     "BNPACAMMXXX",
+     "BNPADEFFXXX",
+     "BNPAESMSXXX",
+     "BNPAFRPPXXX",
+     "BNPAGB22AGY",
+     "BNPAGB22CFL",
+     "BNPAGB22CIT",
+     "BNPAGB22EQD",
+     "BNPAGB22LIF",
+     "BNPAGB22LIM",
+     "BNPAGB22LIP",
+     "BNPAGB22PBG",
+     "BNPAGB22RTN",
+     "BNPAGB22XXX",
+     "BNPAGRA1XXX",
+     "BNPAHKHHXXX",
+     "BNPAHTP1XXX",
+     "BNPAHUHXXXX",
+     "BNPAIE2DXXX",
+     "BNPAILI1XXX",
+     "BNPAINBBXXX",
+     "BNPAITMMXXX",
+     "BNPAJPJTXXX",
+     "BNPAKRSEXXX",
+     "BNPAKWKWXXX",
+     "BNPALULSXXX",
+     "BNPAMCM1XXX",
+     "BNPAMQMXXXX",
+     "BNPAMYKAXXX",
+     "BNPANL2AXXX",
+     "BNPANOKKXXX",
+     "BNPAPLPXXXX",
+     "BNPAPTPLXXX",
+     "BNPASGSGXXX",
+     "BNPATHBKXXX",
+     "BNPATWTPXXX",
+     "BNPAUS3NXXX",
+     "BNPAVNVNXXX",
+     "BPPBCHGGXXX",
+     "BPPBGGS1XXX",
+     "FTSBDKKKXXX",
+     "FTSBROBUXXX",
+     "FTSBSESSXXX",
+     "GEBAATWWXXX",
+     "GEBACZPPXXX",
+     "PARBGB2LGMP",
+     "PARBGB2LRE2",
+     "PARBGBL1142",
+     "PARBGBL1143",
+     "PARBGBL1144",
+     "PARBGBL1145",
+     "PARBGBL1146",
+     "PARBGBL1157",
+     "PARBGBL1158",
+     "PARBGBL1159",
+     "PARBGBL1160",
+     "PARBGBL1161",
+     "PARBGBL1162",
+     "PARBGBL1163",
+     "PARBGBL1164",
+     "PARBGBL1165",
+     "PARBGBL1166",
+     "PARBGBL1167",
+     "PARBGBL1168",
+     "PARBGBL1169",
+     "PARBGBL1170",
+     "PARBGBL1171",
+     "PARBGBL1172",
+     "PARBGBL1173",
+     "PARBGBL1174",
+     "PARBGBL1175",
+     "PARBGBL1176"
+    ],
+    "conformityFlag": "CONFORMING",
+    "entity": {
+     "associatedEntity": {
+      "lei": null,
+      "name": null
+     },
+     "category": "GENERAL",
+     "creationDate": "1966-06-30T23:00:00Z",
+     "eventGroups": [
+      {
+       "events": [
+        {
+         "effectiveDate": "2023-10-31T23:00:00Z",
+         "recordedDate": "2024-08-27T13:42:12Z",
+         "status": "COMPLETED",
+         "type": "ABSORPTION",
+         "validationDocuments": "REGULATORY_FILING"
+        }
+       ],
+       "groupType": "STANDALONE"
+      },
+      {
+       "events": [
+        {
+         "effectiveDate": "2022-09-30T22:00:00Z",
+         "recordedDate": "2024-08-27T13:42:12Z",
+         "status": "COMPLETED",
+         "type": "ABSORPTION",
+         "validationDocuments": "REGULATORY_FILING"
+        }
+       ],
+       "groupType": "STANDALONE"
+      }
+     ],
+     "expiration": {
+      "date": null,
+      "reason": null
+     },
+     "headquartersAddress": {
+      "addressLines": [
+       "16 BOULEVARD DES ITALIENS"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "city": "PARIS",
+      "country": "FR",
+      "language": "fr",
+      "mailRouting": null,
+      "postalCode": "75009",
+      "region": "FR-75C"
+     },
+     "jurisdiction": "FR",
+     "legalAddress": {
+      "addressLines": [
+       "16 BOULEVARD DES ITALIENS"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "city": "PARIS",
+      "country": "FR",
+      "language": "fr",
+      "mailRouting": null,
+      "postalCode": "75009",
+      "region": "FR-75C"
+     },
+     "legalForm": {
+      "id": "K65D",
+      "other": null
+     },
+     "legalName": {
+      "language": "fr",
+      "name": "BNP PARIBAS"
+     },
+     "otherAddresses": [],
+     "otherNames": [
+      {
+       "language": "fr",
+       "name": "HELLO BANK!",
+       "type": "TRADING_OR_OPERATING_NAME"
+      }
+     ],
+     "registeredAs": "662042449",
+     "registeredAt": {
+      "id": "RA000189",
+      "other": null
+     },
+     "status": "ACTIVE",
+     "subCategory": null,
+     "successorEntities": [],
+     "successorEntity": {
+      "lei": null,
+      "name": null
+     },
+     "transliteratedOtherNames": []
+    },
+    "gem": "E100002005443",
+    "lei": "R0MUWSFPU8MPRO8K5P83",
+    "mic": [
+     "BNPL",
+     "BNPS"
+    ],
+    "ocid": "fr/662042449",
+    "qcc": "QFRD3XCYC1",
+    "registration": {
+     "corroborationLevel": "FULLY_CORROBORATED",
+     "initialRegistrationDate": "2012-12-30T23:00:00Z",
+     "lastUpdateDate": "2026-01-26T07:50:05Z",
+     "managingLou": "969500Q2MA9VBQ8BG884",
+     "nextRenewalDate": "2027-02-06T23:00:00Z",
+     "otherValidationAuthorities": [],
+     "status": "ISSUED",
+     "validatedAs": "662042449",
+     "validatedAt": {
+      "id": "RA000189",
+      "other": null
+     }
+    },
+    "spglobal": [
+     "873976"
+    ]
+   },
+   "id": "R0MUWSFPU8MPRO8K5P83",
+   "links": {
+    "self": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83"
+   },
+   "relationships": {
+    "branches": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/branches",
+      "relationship-records": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/branch-relationships"
+     }
+    },
+    "direct-children": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/direct-children",
+      "relationship-records": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/direct-child-relationships"
+     }
+    },
+    "direct-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/direct-parent-reporting-exception"
+     }
+    },
+    "field-modifications": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/field-modifications"
+     }
+    },
+    "isins": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/isins"
+     }
+    },
+    "lei-issuer": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/lei-issuer"
+     }
+    },
+    "managing-lou": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/managing-lou"
+     }
+    },
+    "ultimate-children": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/ultimate-children",
+      "relationship-records": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/ultimate-child-relationships"
+     }
+    },
+    "ultimate-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/R0MUWSFPU8MPRO8K5P83/ultimate-parent-reporting-exception"
+     }
+    }
+   },
+   "type": "lei-records"
+  }
+ ],
+ "links": {
+  "first": "https://api.gleif.org/api/v1/lei-records?filter%5Bisin%5D=FR0000131104&page%5Bnumber%5D=1&page%5Bsize%5D=15",
+  "last": "https://api.gleif.org/api/v1/lei-records?filter%5Bisin%5D=FR0000131104&page%5Bnumber%5D=1&page%5Bsize%5D=15"
+ },
+ "meta": {
+  "goldenCopy": {
+   "publishDate": "2026-10-18T08:00:00Z"
+  },
+  "pagination": {
+   "currentPage": 1,
+   "from": 1,
+   "lastPage": 1,
+   "perPage": 15,
+   "to": 1,
+   "total": 1
+  }
+ }
+}

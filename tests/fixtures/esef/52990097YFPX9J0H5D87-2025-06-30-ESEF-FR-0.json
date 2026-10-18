@@ -1,0 +1,4423 @@
+{
+ "documentInfo": {
+  "documentType": "https://xbrl.org/2021/xbrl-json",
+  "features": {
+   "xbrl:canonicalValues": true
+  },
+  "namespaces": {
+   "ifrs-full": "https://xbrl.ifrs.org/taxonomy/2024-03-27/ifrs-full",
+   "iso4217": "http://www.xbrl.org/2003/iso4217",
+   "pernod": "http://pernod-ricard.com/20250630",
+   "scheme": "http://standards.iso.org/iso/17442",
+   "xbrl": "https://xbrl.org/2021",
+   "xbrli": "http://www.xbrl.org/2003/instance"
+  },
+  "taxonomy": [
+   "http://pernod-ricard.com/20250630/pernod-2025-06-30.xsd"
+  ]
+ },
+ "facts": {
+  "f-1": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:RevenueFromContractsWithCustomers",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "11598000000.0"
+  },
+  "f-10": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:ContributionApresFraisPubliPromotionnels",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4837000000.0"
+  },
+  "f-100": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherCurrentAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "445000000.0"
+  },
+  "f-101": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentDerivativeFinancialAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "8000000.0"
+  },
+  "f-102": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentDerivativeFinancialAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "18000000.0"
+  },
+  "f-103": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2683000000.0"
+  },
+  "f-104": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1829000000.0"
+  },
+  "f-105": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentAssetsOtherThanAssetsOrDisposalGroupsClassifiedAsHeldForSaleOrAsHeldForDistributionToOwners",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "13065000000.0"
+  },
+  "f-106": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentAssetsOtherThanAssetsOrDisposalGroupsClassifiedAsHeldForSaleOrAsHeldForDistributionToOwners",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "12292000000.0"
+  },
+  "f-107": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentAssetsOrDisposalGroupsClassifiedAsHeldForSale",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "395000000.0"
+  },
+  "f-108": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentAssetsOrDisposalGroupsClassifiedAsHeldForSale",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "65000000.0"
+  },
+  "f-109": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Assets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "39185000000.0"
+  },
+  "f-11": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:SellingGeneralAndAdministrativeExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1987000000.0"
+  },
+  "f-110": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Assets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "37080000000.0"
+  },
+  "f-111": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IssuedCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "393000000.0"
+  },
+  "f-112": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IssuedCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "391000000.0"
+  },
+  "f-113": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:SharePremium",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3052000000.0"
+  },
+  "f-114": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:SharePremium",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3052000000.0"
+  },
+  "f-115": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:BeneficesNonDistribuesALExceptionDeLaPerteOuProfitDeLExerciceEtAutresElementsDuResultatGlobalCumules",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "10828000000.0"
+  },
+  "f-116": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:BeneficesNonDistribuesALExceptionDeLaPerteOuProfitDeLExerciceEtAutresElementsDuResultatGlobalCumules",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "10143000000.0"
+  },
+  "f-117": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:RetainedEarningsProfitLossForReportingPeriod",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1476000000.0"
+  },
+  "f-118": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:RetainedEarningsProfitLossForReportingPeriod",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1626000000.0"
+  },
+  "f-119": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:EquityAttributableToOwnersOfParent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "15749000000.0"
+  },
+  "f-12": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:SellingGeneralAndAdministrativeExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1886000000.0"
+  },
+  "f-120": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:EquityAttributableToOwnersOfParent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "15212000000.0"
+  },
+  "f-121": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncontrollingInterests",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1048000000.0"
+  },
+  "f-122": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncontrollingInterests",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1014000000.0"
+  },
+  "f-123": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "16797000000.0"
+  },
+  "f-124": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "16226000000.0"
+  },
+  "f-125": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherLongtermProvisions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "313000000.0"
+  },
+  "f-126": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherLongtermProvisions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "298000000.0"
+  },
+  "f-127": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentProvisionsForEmployeeBenefits",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "277000000.0"
+  },
+  "f-128": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentProvisionsForEmployeeBenefits",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "265000000.0"
+  },
+  "f-129": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DeferredTaxLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3153000000.0"
+  },
+  "f-13": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:ResultatOperationnelCourant",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3116000000.0"
+  },
+  "f-130": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DeferredTaxLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3063000000.0"
+  },
+  "f-131": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentPortionOfNoncurrentBondsIssued",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "10907000000.0"
+  },
+  "f-132": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentPortionOfNoncurrentBondsIssued",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "10339000000.0"
+  },
+  "f-133": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentLeaseLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "352000000.0"
+  },
+  "f-134": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentLeaseLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "344000000.0"
+  },
+  "f-135": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentPortionOfOtherNoncurrentBorrowings",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "133000000.0"
+  },
+  "f-136": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentPortionOfOtherNoncurrentBorrowings",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "96000000.0"
+  },
+  "f-137": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentDerivativeFinancialLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "11000000.0"
+  },
+  "f-138": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentDerivativeFinancialLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1000000.0"
+  },
+  "f-139": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "15146000000.0"
+  },
+  "f-14": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:ResultatOperationnelCourant",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2951000000.0"
+  },
+  "f-140": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "14405000000.0"
+  },
+  "f-141": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentProvisions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "158000000.0"
+  },
+  "f-142": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentProvisions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "147000000.0"
+  },
+  "f-143": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2930000000.0"
+  },
+  "f-144": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2711000000.0"
+  },
+  "f-145": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentTaxLiabilitiesCurrent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "149000000.0"
+  },
+  "f-146": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentTaxLiabilitiesCurrent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "203000000.0"
+  },
+  "f-147": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherCurrentLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1607000000.0"
+  },
+  "f-148": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherCurrentLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1555000000.0"
+  },
+  "f-149": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentBondsIssuedAndCurrentPortionOfNoncurrentBondsIssued",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1778000000.0"
+  },
+  "f-15": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherOperatingIncomeExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-392000000.0"
+  },
+  "f-150": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentBondsIssuedAndCurrentPortionOfNoncurrentBondsIssued",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1241000000.0"
+  },
+  "f-151": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentLeaseLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "96000000.0"
+  },
+  "f-152": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentLeaseLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "91000000.0"
+  },
+  "f-153": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherCurrentBorrowingsAndCurrentPortionOfOtherNoncurrentBorrowings",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "352000000.0"
+  },
+  "f-154": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherCurrentBorrowingsAndCurrentPortionOfOtherNoncurrentBorrowings",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "478000000.0"
+  },
+  "f-155": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentDerivativeFinancialLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "21000000.0"
+  },
+  "f-156": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentDerivativeFinancialLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "17000000.0"
+  },
+  "f-157": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentLiabilitiesOtherThanLiabilitiesIncludedInDisposalGroupsClassifiedAsHeldForSale",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "7091000000.0"
+  },
+  "f-158": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentLiabilitiesOtherThanLiabilitiesIncludedInDisposalGroupsClassifiedAsHeldForSale",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "6442000000.0"
+  },
+  "f-159": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:LiabilitiesIncludedInDisposalGroupsClassifiedAsHeldForSale",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "151000000.0"
+  },
+  "f-16": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherOperatingIncomeExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-208000000.0"
+  },
+  "f-160": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:LiabilitiesIncludedInDisposalGroupsClassifiedAsHeldForSale",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "7000000.0"
+  },
+  "f-161": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:EquityAndLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "39185000000.0"
+  },
+  "f-162": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:EquityAndLiabilities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "37080000000.0"
+  },
+  "f-163": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "396000000.0"
+  },
+  "f-164": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3052000000.0"
+  },
+  "f-165": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "13055000000.0"
+  },
+  "f-166": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-301000000.0"
+  },
+  "f-167": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-27000000.0"
+  },
+  "f-168": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3000000.0"
+  },
+  "f-169": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-462000000.0"
+  },
+  "f-17": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossFromOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2724000000.0"
+  },
+  "f-170": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "15717000000.0"
+  },
+  "f-171": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "998000000.0"
+  },
+  "f-172": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "16715000000.0"
+  },
+  "f-173": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-174": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-175": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1476000000.0"
+  },
+  "f-176": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "27000000.0"
+  },
+  "f-177": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "8000000.0"
+  },
+  "f-178": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "79000000.0"
+  },
+  "f-179": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-18": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossFromOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2743000000.0"
+  },
+  "f-180": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1590000000.0"
+  },
+  "f-181": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "51000000.0"
+  },
+  "f-182": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1641000000.0"
+  },
+  "f-183": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-4000000.0"
+  },
+  "f-184": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-185": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4000000.0"
+  },
+  "f-186": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-187": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-188": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-189": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-19": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:FinanceCosts",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "505000000.0"
+  },
+  "f-190": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-191": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-192": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-193": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-194": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-195": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "45000000.0"
+  },
+  "f-196": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-197": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-198": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-199": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-2": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:RevenueFromContractsWithCustomers",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "10959000000.0"
+  },
+  "f-20": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:FinanceCosts",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "584000000.0"
+  },
+  "f-200": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "45000000.0"
+  },
+  "f-201": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-202": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "45000000.0"
+  },
+  "f-203": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-204": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-205": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-476000000.0"
+  },
+  "f-206": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-207": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-208": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-209": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "143000000.0"
+  },
+  "f-21": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:FinanceIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "68000000.0"
+  },
+  "f-210": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-333000000.0"
+  },
+  "f-211": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-212": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-333000000.0"
+  },
+  "f-213": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-214": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-215": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1257000000.0"
+  },
+  "f-216": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-217": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-218": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-219": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-22": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:FinanceIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "92000000.0"
+  },
+  "f-220": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1257000000.0"
+  },
+  "f-221": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "11000000.0"
+  },
+  "f-222": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1268000000.0"
+  },
+  "f-223": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-224": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-225": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-6000000.0"
+  },
+  "f-226": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-227": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-228": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-229": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-23": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:FinanceIncomeCost",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-437000000.0"
+  },
+  "f-230": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-6000000.0"
+  },
+  "f-231": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "11000000.0"
+  },
+  "f-232": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "5000000.0"
+  },
+  "f-233": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-234": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-235": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-5000000.0"
+  },
+  "f-236": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-237": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-238": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-239": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-24": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:FinanceIncomeCost",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-492000000.0"
+  },
+  "f-240": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-5000000.0"
+  },
+  "f-241": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1000000.0"
+  },
+  "f-242": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-6000000.0"
+  },
+  "f-243": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "393000000.0"
+  },
+  "f-244": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3052000000.0"
+  },
+  "f-245": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "12836000000.0"
+  },
+  "f-246": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-275000000.0"
+  },
+  "f-247": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-19000000.0"
+  },
+  "f-248": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "82000000.0"
+  },
+  "f-249": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-319000000.0"
+  },
+  "f-25": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxExpenseContinuingOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "766000000.0"
+  },
+  "f-250": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "15749000000.0"
+  },
+  "f-251": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1048000000.0"
+  },
+  "f-252": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "16797000000.0"
+  },
+  "f-253": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "393000000.0"
+  },
+  "f-254": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3052000000.0"
+  },
+  "f-255": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "12836000000.0"
+  },
+  "f-256": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-275000000.0"
+  },
+  "f-257": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-19000000.0"
+  },
+  "f-258": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "82000000.0"
+  },
+  "f-259": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-319000000.0"
+  },
+  "f-26": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxExpenseContinuingOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "574000000.0"
+  },
+  "f-260": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "15749000000.0"
+  },
+  "f-261": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1048000000.0"
+  },
+  "f-262": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "16797000000.0"
+  },
+  "f-263": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-264": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-265": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1626000000.0"
+  },
+  "f-266": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-15000000.0"
+  },
+  "f-267": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "23000000.0"
+  },
+  "f-268": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-981000000.0"
+  },
+  "f-269": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-27": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-7000000.0"
+  },
+  "f-270": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "653000000.0"
+  },
+  "f-271": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-42000000.0"
+  },
+  "f-272": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "612000000.0"
+  },
+  "f-273": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-2000000.0"
+  },
+  "f-274": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-275": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-150000000.0"
+  },
+  "f-276": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-277": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-278": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-279": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "150000000.0"
+  },
+  "f-28": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-3000000.0"
+  },
+  "f-280": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-2000000.0"
+  },
+  "f-281": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-282": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:VariationDeCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-2000000.0"
+  },
+  "f-283": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-284": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-285": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "26000000.0"
+  },
+  "f-286": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-287": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-288": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-289": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-29": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossFromDiscontinuedOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-290": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "26000000.0"
+  },
+  "f-291": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-292": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughSharebasedPaymentTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "26000000.0"
+  },
+  "f-293": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-294": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-295": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-67000000.0"
+  },
+  "f-296": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-297": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-298": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-299": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "58000000.0"
+  },
+  "f-3": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CostOfSales",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4623000000.0"
+  },
+  "f-30": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossFromDiscontinuedOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-300": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-9000000.0"
+  },
+  "f-301": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-302": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTreasuryShareTransactions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-9000000.0"
+  },
+  "f-303": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-304": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-305": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1182000000.0"
+  },
+  "f-306": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-307": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-308": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-309": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-31": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1514000000.0"
+  },
+  "f-310": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1182000000.0"
+  },
+  "f-311": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "10000000.0"
+  },
+  "f-312": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaid",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1192000000.0"
+  },
+  "f-313": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-314": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-315": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-22000000.0"
+  },
+  "f-316": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-317": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-318": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-319": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-32": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1674000000.0"
+  },
+  "f-320": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-22000000.0"
+  },
+  "f-321": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "17000000.0"
+  },
+  "f-322": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughChangesInOwnershipInterestsInSubsidiariesThatDoNotResultInLossOfControl",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-6000000.0"
+  },
+  "f-323": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-324": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-325": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1000000.0"
+  },
+  "f-326": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-327": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-328": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-329": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-33": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossAttributableToNoncontrollingInterests",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "38000000.0"
+  },
+  "f-330": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1000000.0"
+  },
+  "f-331": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-332": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseThroughTransfersAndOtherChangesEquity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1000000.0"
+  },
+  "f-333": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "391000000.0"
+  },
+  "f-334": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:SharePremiumMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3052000000.0"
+  },
+  "f-335": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "13065000000.0"
+  },
+  "f-336": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfRemeasurementsOfDefinedBenefitPlansMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-289000000.0"
+  },
+  "f-337": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "pernod:VariationsDeJusteValeurMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4000000.0"
+  },
+  "f-338": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:ReserveOfExchangeDifferencesOnTranslationMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-899000000.0"
+  },
+  "f-339": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:TreasurySharesMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-111000000.0"
+  },
+  "f-34": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossAttributableToNoncontrollingInterests",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "48000000.0"
+  },
+  "f-340": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:EquityAttributableToOwnersOfParentMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "15212000000.0"
+  },
+  "f-341": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:NoncontrollingInterestsMember",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1014000000.0"
+  },
+  "f-342": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Equity",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "16226000000.0"
+  },
+  "f-343": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1476000000.0"
+  },
+  "f-344": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1626000000.0"
+  },
+  "f-345": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossAttributableToNoncontrollingInterests",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "38000000.0"
+  },
+  "f-346": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossAttributableToNoncontrollingInterests",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "48000000.0"
+  },
+  "f-347": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:QuotePartDuResultatNetPerteDeLinvestissementComptabiliseSelonLaMethodeDeLaMiseEnEquivalenceNetteDesDividendesRecus",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "9000000.0"
+  },
+  "f-348": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:QuotePartDuResultatNetPerteDeLinvestissementComptabiliseSelonLaMethodeDeLaMiseEnEquivalenceNetteDesDividendesRecus",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4000000.0"
+  },
+  "f-349": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForFinanceIncomeCost",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-437000000.0"
+  },
+  "f-35": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1476000000.0"
+  },
+  "f-350": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForFinanceIncomeCost",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-492000000.0"
+  },
+  "f-351": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForIncomeTaxExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "766000000.0"
+  },
+  "f-352": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForIncomeTaxExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "574000000.0"
+  },
+  "f-353": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherAdjustmentsToReconcileProfitLoss",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-354": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherAdjustmentsToReconcileProfitLoss",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-355": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "441000000.0"
+  },
+  "f-356": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "422000000.0"
+  },
+  "f-357": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForProvisions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-37000000.0"
+  },
+  "f-358": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForProvisions",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-42000000.0"
+  },
+  "f-359": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "495000000.0"
+  },
+  "f-36": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1626000000.0"
+  },
+  "f-360": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "52000000.0"
+  },
+  "f-361": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForGainsLossesOnChangeInFairValueOfDerivatives",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-5000000.0"
+  },
+  "f-362": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForGainsLossesOnChangeInFairValueOfDerivatives",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3000000.0"
+  },
+  "f-363": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForGainsLossesOnChangeInFairValueLessCostsToSellBiologicalAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "5000000.0"
+  },
+  "f-364": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForGainsLossesOnChangeInFairValueLessCostsToSellBiologicalAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4000000.0"
+  },
+  "f-365": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForLossesGainsOnDisposalOfNoncurrentAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-292000000.0"
+  },
+  "f-366": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForLossesGainsOnDisposalOfNoncurrentAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-93000000.0"
+  },
+  "f-367": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForSharebasedPayments",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "45000000.0"
+  },
+  "f-368": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdjustmentsForSharebasedPayments",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "25000000.0"
+  },
+  "f-369": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInOperationsBeforeChangesInWorkingCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3378000000.0"
+  },
+  "f-37": {
+   "decimals": 2,
+   "dimensions": {
+    "concept": "ifrs-full:BasicEarningsLossPerShare",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR/xbrli:shares"
+   },
+   "value": "5.84"
+  },
+  "f-370": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInOperationsBeforeChangesInWorkingCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3101000000.0"
+  },
+  "f-371": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInWorkingCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "768000000.0"
+  },
+  "f-372": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInWorkingCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "470000000.0"
+  },
+  "f-373": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:InterestPaidClassifiedAsOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "355000000.0"
+  },
+  "f-374": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:InterestPaidClassifiedAsOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "443000000.0"
+  },
+  "f-375": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:InterestReceivedClassifiedAsOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "19000000.0"
+  },
+  "f-376": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:InterestReceivedClassifiedAsOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "17000000.0"
+  },
+  "f-377": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxesPaidRefundClassifiedAsOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "547000000.0"
+  },
+  "f-378": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxesPaidRefundClassifiedAsOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "417000000.0"
+  },
+  "f-379": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1727000000.0"
+  },
+  "f-38": {
+   "decimals": 2,
+   "dimensions": {
+    "concept": "ifrs-full:BasicEarningsLossPerShare",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR/xbrli:shares"
+   },
+   "value": "6.47"
+  },
+  "f-380": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInOperatingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1788000000.0"
+  },
+  "f-381": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:AcquisitionDimmobilisationsCorporellesEtIncorporellesAutresQueLeGoodwill",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "773000000.0"
+  },
+  "f-382": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:AcquisitionDimmobilisationsCorporellesEtIncorporellesAutresQueLeGoodwill",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "667000000.0"
+  },
+  "f-383": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:ProduitsDesImmobilisationsCorporellesEtIncorporellesAutresQueLeGoodwill",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "8000000.0"
+  },
+  "f-384": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:ProduitsDesImmobilisationsCorporellesEtIncorporellesAutresQueLeGoodwill",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "12000000.0"
+  },
+  "f-385": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:AchatsDactifsFinanciersEtActivites",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "245000000.0"
+  },
+  "f-386": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:AchatsDactifsFinanciersEtActivites",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "174000000.0"
+  },
+  "f-387": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:CessionsDactifsFinanciersEtDactivites",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "334000000.0"
+  },
+  "f-388": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:CessionsDactifsFinanciersEtDactivites",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "308000000.0"
+  },
+  "f-389": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInInvestingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-676000000.0"
+  },
+  "f-39": {
+   "decimals": 2,
+   "dimensions": {
+    "concept": "ifrs-full:DilutedEarningsLossPerShare",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR/xbrli:shares"
+   },
+   "value": "5.83"
+  },
+  "f-390": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInInvestingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-521000000.0"
+  },
+  "f-391": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaidClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1208000000.0"
+  },
+  "f-392": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsPaidClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1201000000.0"
+  },
+  "f-393": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-394": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4000000.0"
+  },
+  "f-395": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProceedsFromBorrowingsClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2815000000.0"
+  },
+  "f-396": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProceedsFromBorrowingsClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "978000000.0"
+  },
+  "f-397": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:RepaymentsOfBorrowingsClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1357000000.0"
+  },
+  "f-398": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:RepaymentsOfBorrowingsClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2052000000.0"
+  },
+  "f-399": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:PaymentsOfLeaseLiabilitiesClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "125000000.0"
+  },
+  "f-4": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CostOfSales",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4443000000.0"
+  },
+  "f-40": {
+   "decimals": 2,
+   "dimensions": {
+    "concept": "ifrs-full:DilutedEarningsLossPerShare",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR/xbrli:shares"
+   },
+   "value": "6.45"
+  },
+  "f-400": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:PaymentsOfLeaseLiabilitiesClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "113000000.0"
+  },
+  "f-401": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:AcquisitionCessionDActionsPropres",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-334000000.0"
+  },
+  "f-402": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:AcquisitionCessionDActionsPropres",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-11000000.0"
+  },
+  "f-403": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-209000000.0"
+  },
+  "f-404": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-2396000000.0"
+  },
+  "f-405": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInCashAndCashEquivalentsDiscontinuedOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-406": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInCashAndCashEquivalentsDiscontinuedOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-407": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "842000000.0"
+  },
+  "f-408": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1129000000.0"
+  },
+  "f-409": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:EffectOfExchangeRateChangesOnCashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "232000000.0"
+  },
+  "f-41": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1514000000.0"
+  },
+  "f-410": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:EffectOfExchangeRateChangesOnCashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "275000000.0"
+  },
+  "f-411": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInCashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1074000000.0"
+  },
+  "f-412": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInCashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-854000000.0"
+  },
+  "f-413": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1609000000.0"
+  },
+  "f-414": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2683000000.0"
+  },
+  "f-415": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2683000000.0"
+  },
+  "f-416": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1829000000.0"
+  },
+  "f-42": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1674000000.0"
+  },
+  "f-43": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxGainsLossesOnRemeasurementsOfDefinedBenefitPlans",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "27000000.0"
+  },
+  "f-44": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxGainsLossesOnRemeasurementsOfDefinedBenefitPlans",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-15000000.0"
+  },
+  "f-45": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeBeforeTaxGainsLossesOnRemeasurementsOfDefinedBenefitPlans",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "32000000.0"
+  },
+  "f-46": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeBeforeTaxGainsLossesOnRemeasurementsOfDefinedBenefitPlans",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-23000000.0"
+  },
+  "f-47": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxRelatingToRemeasurementsOfDefinedBenefitPlansOfOtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "5000000.0"
+  },
+  "f-48": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxRelatingToRemeasurementsOfDefinedBenefitPlansOfOtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-8000000.0"
+  },
+  "f-49": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxGainsLossesFromInvestmentsInEquityInstruments",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "9000000.0"
+  },
+  "f-5": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:GrossProfit",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "6975000000.0"
+  },
+  "f-50": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxGainsLossesFromInvestmentsInEquityInstruments",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "23000000.0"
+  },
+  "f-51": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeBeforeTaxGainsLossesFromInvestmentsInEquityInstruments",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3000000.0"
+  },
+  "f-52": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeBeforeTaxGainsLossesFromInvestmentsInEquityInstruments",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "58000000.0"
+  },
+  "f-528": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1829000000.0"
+  },
+  "f-529": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2683000000.0"
+  },
+  "f-53": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxRelatingToInvestmentsInEquityInstrumentsOfOtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-6000000.0"
+  },
+  "f-535": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncreaseDecreaseInWorkingCapital",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "470000000.0"
+  },
+  "f-536": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProceedsFromBorrowingsClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "978000000.0"
+  },
+  "f-537": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:RepaymentsOfBorrowingsClassifiedAsFinancingActivities",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "2052000000.0"
+  },
+  "f-54": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxRelatingToInvestmentsInEquityInstrumentsOfOtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "35000000.0"
+  },
+  "f-55": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxHedgesOfNetInvestmentsInForeignOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-11000000.0"
+  },
+  "f-555": {
+   "decimals": 2,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsProposedOrDeclaredBeforeFinancialStatementsAuthorisedForIssueButNotRecognisedAsDistributionToOwners",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1185665216.5"
+  },
+  "f-556": {
+   "decimals": 2,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsProposedOrDeclaredBeforeFinancialStatementsAuthorisedForIssueButNotRecognisedAsDistributionToOwnersPerShare",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR/xbrli:shares"
+   },
+   "value": "4.7"
+  },
+  "f-557": {
+   "decimals": 2,
+   "dimensions": {
+    "concept": "ifrs-full:DividendsRecognisedAsDistributionsToOwnersPerShare",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR/xbrli:shares"
+   },
+   "value": "4.7"
+  },
+  "f-56": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxHedgesOfNetInvestmentsInForeignOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "28000000.0"
+  },
+  "f-57": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeBeforeTaxHedgesOfNetInvestmentsInForeignOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-15000000.0"
+  },
+  "f-58": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeBeforeTaxHedgesOfNetInvestmentsInForeignOperations",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "37000000.0"
+  },
+  "f-59": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxRelatingToHedgesOfNetInvestmentsInForeignOperationsOfOtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-4000000.0"
+  },
+  "f-6": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:GrossProfit",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "6516000000.0"
+  },
+  "f-60": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxRelatingToHedgesOfNetInvestmentsInForeignOperationsOfOtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "10000000.0"
+  },
+  "f-61": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxCashFlowHedges",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1000000.0"
+  },
+  "f-62": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxCashFlowHedges",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1000000.0"
+  },
+  "f-63": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeBeforeTaxCashFlowHedges",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1000000.0"
+  },
+  "f-64": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeBeforeTaxCashFlowHedges",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1000000.0"
+  },
+  "f-65": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxRelatingToCashFlowHedgesOfOtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-66": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IncomeTaxRelatingToCashFlowHedgesOfOtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-67": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxExchangeDifferencesOnTranslation",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "103000000.0"
+  },
+  "f-68": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncomeNetOfTaxExchangeDifferencesOnTranslation",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1097000000.0"
+  },
+  "f-69": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "127000000.0"
+  },
+  "f-7": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdvertisingExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1872000000.0"
+  },
+  "f-70": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-1062000000.0"
+  },
+  "f-71": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1641000000.0"
+  },
+  "f-72": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncome",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "612000000.0"
+  },
+  "f-73": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncomeAttributableToOwnersOfParent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1590000000.0"
+  },
+  "f-74": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncomeAttributableToOwnersOfParent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "653000000.0"
+  },
+  "f-75": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncomeAttributableToNoncontrollingInterests",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "51000000.0"
+  },
+  "f-76": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ComprehensiveIncomeAttributableToNoncontrollingInterests",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "-42000000.0"
+  },
+  "f-77": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IntangibleAssetsOtherThanGoodwill",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "12234000000.0"
+  },
+  "f-78": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:IntangibleAssetsOtherThanGoodwill",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "11515000000.0"
+  },
+  "f-79": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Goodwill",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "6806000000.0"
+  },
+  "f-8": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:AdvertisingExpense",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00/2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1679000000.0"
+  },
+  "f-80": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Goodwill",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "6406000000.0"
+  },
+  "f-81": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "3982000000.0"
+  },
+  "f-82": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "4206000000.0"
+  },
+  "f-83": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:InstrumentsDeCapitauxPropresEtAutresActifsFinanciersNonCourants",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "932000000.0"
+  },
+  "f-84": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:InstrumentsDeCapitauxPropresEtAutresActifsFinanciersNonCourants",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "974000000.0"
+  },
+  "f-85": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:InvestmentAccountedForUsingEquityMethod",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "58000000.0"
+  },
+  "f-86": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:InvestmentAccountedForUsingEquityMethod",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "68000000.0"
+  },
+  "f-87": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentDerivativeFinancialAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "0.0"
+  },
+  "f-88": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentDerivativeFinancialAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "36000000.0"
+  },
+  "f-89": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DeferredTaxAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1713000000.0"
+  },
+  "f-9": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "pernod:ContributionApresFraisPubliPromotionnels",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2023-07-01T00:00:00/2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "5103000000.0"
+  },
+  "f-90": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DeferredTaxAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1518000000.0"
+  },
+  "f-91": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "25725000000.0"
+  },
+  "f-92": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "24722000000.0"
+  },
+  "f-93": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Inventories",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "8255000000.0"
+  },
+  "f-94": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Inventories",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "8418000000.0"
+  },
+  "f-95": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:TradeAndOtherCurrentReceivables",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1581000000.0"
+  },
+  "f-96": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:TradeAndOtherCurrentReceivables",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "1484000000.0"
+  },
+  "f-97": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentTaxAssetsCurrent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "122000000.0"
+  },
+  "f-98": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentTaxAssetsCurrent",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2025-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "99000000.0"
+  },
+  "f-99": {
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:OtherCurrentAssets",
+    "entity": "scheme:52990097YFPX9J0H5D87",
+    "period": "2024-07-01T00:00:00",
+    "unit": "iso4217:EUR"
+   },
+   "value": "416000000.0"
+  }
+ }
+}

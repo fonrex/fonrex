@@ -1,0 +1,163 @@
+{
+ "data": [
+  {
+   "attributes": {
+    "bic": [
+     "SAPDDEFFXXX"
+    ],
+    "conformityFlag": "CONFORMING",
+    "entity": {
+     "associatedEntity": {
+      "lei": null,
+      "name": null
+     },
+     "category": "GENERAL",
+     "creationDate": "2014-07-06T22:00:00Z",
+     "eventGroups": [],
+     "expiration": {
+      "date": null,
+      "reason": null
+     },
+     "headquartersAddress": {
+      "addressLines": [
+       "Dietmar-Hopp-Allee 16"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "city": "Walldorf",
+      "country": "DE",
+      "language": "de",
+      "mailRouting": null,
+      "postalCode": "69190",
+      "region": "DE-BW"
+     },
+     "jurisdiction": "DE",
+     "legalAddress": {
+      "addressLines": [
+       "Dietmar-Hopp-Allee 16"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "city": "Walldorf",
+      "country": "DE",
+      "language": "de",
+      "mailRouting": null,
+      "postalCode": "69190",
+      "region": "DE-BW"
+     },
+     "legalForm": {
+      "id": "SGST",
+      "other": null
+     },
+     "legalName": {
+      "language": "de",
+      "name": "SAP SE"
+     },
+     "otherAddresses": [],
+     "otherNames": [],
+     "registeredAs": "HRB 719915",
+     "registeredAt": {
+      "id": "RA000296",
+      "other": null
+     },
+     "status": "ACTIVE",
+     "subCategory": null,
+     "successorEntities": [],
+     "successorEntity": {
+      "lei": null,
+      "name": null
+     },
+     "transliteratedOtherNames": []
+    },
+    "gem": null,
+    "lei": "529900D6BF99LW9R2E68",
+    "mic": null,
+    "ocid": "de/B8535_HRB719915",
+    "qcc": "QDEDFTMY3U",
+    "registration": {
+     "corroborationLevel": "FULLY_CORROBORATED",
+     "initialRegistrationDate": "2014-01-27T10:55:08Z",
+     "lastUpdateDate": "2025-12-05T13:35:00Z",
+     "managingLou": "5299000J2N45DDNE4Y28",
+     "nextRenewalDate": "2027-01-26T23:00:00Z",
+     "otherValidationAuthorities": [],
+     "status": "ISSUED",
+     "validatedAs": "HRB 719915",
+     "validatedAt": {
+      "id": "RA000296",
+      "other": null
+     }
+    },
+    "spglobal": [
+     "126475"
+    ]
+   },
+   "id": "529900D6BF99LW9R2E68",
+   "links": {
+    "self": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68"
+   },
+   "relationships": {
+    "direct-children": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/direct-children",
+      "relationship-records": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/direct-child-relationships"
+     }
+    },
+    "direct-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/direct-parent-reporting-exception"
+     }
+    },
+    "field-modifications": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/field-modifications"
+     }
+    },
+    "isins": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/isins"
+     }
+    },
+    "lei-issuer": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/lei-issuer"
+     }
+    },
+    "managing-lou": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/managing-lou"
+     }
+    },
+    "ultimate-children": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/ultimate-children",
+      "relationship-records": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/ultimate-child-relationships"
+     }
+    },
+    "ultimate-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/529900D6BF99LW9R2E68/ultimate-parent-reporting-exception"
+     }
+    }
+   },
+   "type": "lei-records"
+  }
+ ],
+ "links": {
+  "first": "https://api.gleif.org/api/v1/lei-records?filter%5Bisin%5D=DE0007164600&page%5Bnumber%5D=1&page%5Bsize%5D=15",
+  "last": "https://api.gleif.org/api/v1/lei-records?filter%5Bisin%5D=DE0007164600&page%5Bnumber%5D=1&page%5Bsize%5D=15"
+ },
+ "meta": {
+  "goldenCopy": {
+   "publishDate": "2026-10-18T08:00:00Z"
+  },
+  "pagination": {
+   "currentPage": 1,
+   "from": 1,
+   "lastPage": 1,
+   "perPage": 15,
+   "to": 1,
+   "total": 1
+  }
+ }
+}

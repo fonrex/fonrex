@@ -1,0 +1,183 @@
+{
+ "data": [
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2023-09-26 10:31:10.854054",
+    "error_count": 0,
+    "fxo_id": "52990097YFPX9J0H5D87-2023-06-30-ESEF-FR-0",
+    "inconsistency_count": 11,
+    "json_url": "/52990097YFPX9J0H5D87/2023-06-30/ESEF/FR/0/pernod-2023-06-30-fr.json",
+    "package_url": "/52990097YFPX9J0H5D87/2023-06-30/ESEF/FR/0/pernod-2023-06-30-fr.zip",
+    "period_end": "2023-06-30",
+    "processed": "2023-09-26 10:50:35.946226",
+    "report_url": "/52990097YFPX9J0H5D87/2023-06-30/ESEF/FR/0/pernod-2023-06-30-fr/reports/pernod-2023-06-30-fr.xhtml",
+    "sha256": "d345b47b7504e0432e3b4bf0f2ae879f10a23ce4983715093c5d2485c417605a",
+    "viewer_url": "/52990097YFPX9J0H5D87/2023-06-30/ESEF/FR/0/pernod-2023-06-30-fr/reports/ixbrlviewer.html",
+    "warning_count": 0
+   },
+   "id": "7919",
+   "links": {
+    "self": "/api/filings/7919"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/52990097YFPX9J0H5D87"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/7919/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2022-03-23 00:00:00",
+    "error_count": 2,
+    "fxo_id": "52990097YFPX9J0H5D87-2021-12-31-ESEF-FR-0",
+    "inconsistency_count": 18,
+    "json_url": "/52990097YFPX9J0H5D87/2021-12-31/ESEF/FR/0/pernod-2021-06-30AR.json",
+    "package_url": "/52990097YFPX9J0H5D87/2021-12-31/ESEF/FR/0/52990097YFPX9J0H5D87-2021-12-31.zip",
+    "period_end": "2021-12-31",
+    "processed": "2023-01-18 11:02:22.113741",
+    "report_url": "/52990097YFPX9J0H5D87/2021-12-31/ESEF/FR/0/pernod-2021-06-30AR/reports/pernod-2021-06-30AR.xhtml",
+    "sha256": "635561bc6d5f3b8b12a0e2f93a7c2b9d50f6e29859c00ea55ad964530c59f07e",
+    "viewer_url": "/52990097YFPX9J0H5D87/2021-12-31/ESEF/FR/0/pernod-2021-06-30AR/reports/ixbrlviewer.html",
+    "warning_count": 10
+   },
+   "id": "911",
+   "links": {
+    "self": "/api/filings/911"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/52990097YFPX9J0H5D87"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/911/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2022-09-27 00:00:00",
+    "error_count": 0,
+    "fxo_id": "52990097YFPX9J0H5D87-2022-06-30-ESEF-FR-0",
+    "inconsistency_count": 16,
+    "json_url": "/52990097YFPX9J0H5D87/2022-06-30/ESEF/FR/0/pernod-2022-06-30-fr.json",
+    "package_url": "/52990097YFPX9J0H5D87/2022-06-30/ESEF/FR/0/pernod-2022-06-30-fr.zip",
+    "period_end": "2022-06-30",
+    "processed": "2023-04-19 22:15:32.352592",
+    "report_url": "/52990097YFPX9J0H5D87/2022-06-30/ESEF/FR/0/pernod-2022-06-30-fr/reports/pernod-2022-06-30-fr.xhtml",
+    "sha256": "476d48738a4a65ab908ae9fca26af881a1904b06364f53eb913f051da69f42e0",
+    "viewer_url": "/52990097YFPX9J0H5D87/2022-06-30/ESEF/FR/0/pernod-2022-06-30-fr/reports/ixbrlviewer.html",
+    "warning_count": 3
+   },
+   "id": "912",
+   "links": {
+    "self": "/api/filings/912"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/52990097YFPX9J0H5D87"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/912/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2025-09-23 10:59:49.154325",
+    "error_count": 0,
+    "fxo_id": "52990097YFPX9J0H5D87-2025-06-30-ESEF-FR-0",
+    "inconsistency_count": 0,
+    "json_url": "/52990097YFPX9J0H5D87/2025-06-30/ESEF/FR/0/pernod-2025-06-30-1-fr.json",
+    "package_url": "/52990097YFPX9J0H5D87/2025-06-30/ESEF/FR/0/pernod-2025-06-30-1-fr.zip",
+    "period_end": "2025-06-30",
+    "processed": "2025-09-23 11:06:40.727477",
+    "report_url": "/52990097YFPX9J0H5D87/2025-06-30/ESEF/FR/0/pernod-2025-06-30-1-fr/reports/pernod-2025-06-30-1-fr.xhtml",
+    "sha256": "8944d366479fac1e401dc7efb657565754825cea509a5cd964547b50f1c6ebb0",
+    "viewer_url": "/52990097YFPX9J0H5D87/2025-06-30/ESEF/FR/0/pernod-2025-06-30-1-fr/reports/ixbrlviewer.html",
+    "warning_count": 0
+   },
+   "id": "20832",
+   "links": {
+    "self": "/api/filings/20832"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/52990097YFPX9J0H5D87"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/20832/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  },
+  {
+   "attributes": {
+    "country": "FR",
+    "date_added": "2024-10-03 10:31:36.067048",
+    "error_count": 0,
+    "fxo_id": "52990097YFPX9J0H5D87-2024-06-30-ESEF-FR-0",
+    "inconsistency_count": 0,
+    "json_url": "/52990097YFPX9J0H5D87/2024-06-30/ESEF/FR/0/pernod-2024-06-30-fr.json",
+    "package_url": "/52990097YFPX9J0H5D87/2024-06-30/ESEF/FR/0/pernod-2024-06-30-fr.zip",
+    "period_end": "2024-06-30",
+    "processed": "2024-10-03 10:45:54.956428",
+    "report_url": "/52990097YFPX9J0H5D87/2024-06-30/ESEF/FR/0/pernod-2024-06-30-fr/reports/pernod-2024-06-30-fr.xhtml",
+    "sha256": "ba689b8568f611339d6de3a4354f72238e9bdeedfd2723373fecad702df391ae",
+    "viewer_url": "/52990097YFPX9J0H5D87/2024-06-30/ESEF/FR/0/pernod-2024-06-30-fr/reports/ixbrlviewer.html",
+    "warning_count": 0
+   },
+   "id": "16329",
+   "links": {
+    "self": "/api/filings/16329"
+   },
+   "relationships": {
+    "entity": {
+     "links": {
+      "related": "/api/entities/52990097YFPX9J0H5D87"
+     }
+    },
+    "validation_messages": {
+     "links": {
+      "related": "/api/filings/16329/validation_messages"
+     }
+    }
+   },
+   "type": "filing"
+  }
+ ],
+ "jsonapi": {
+  "version": "1.0"
+ },
+ "links": {
+  "self": "https://filings.xbrl.org/api/filings?page%5Bsize%5D=100"
+ },
+ "meta": {
+  "count": 5
+ }
+}

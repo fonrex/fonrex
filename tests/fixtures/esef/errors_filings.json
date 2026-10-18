@@ -1,0 +1,12 @@
+{
+ "errors": [
+  {
+   "detail": "'property' object has no attribute 'desc'",
+   "status": "500",
+   "title": "Unknown error"
+  }
+ ],
+ "jsonapi": {
+  "version": "1.0"
+ }
+}

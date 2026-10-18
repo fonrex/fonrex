@@ -1,0 +1,169 @@
+{
+ "data": [
+  {
+   "attributes": {
+    "bic": [
+     "AIRBNL22XXX"
+    ],
+    "conformityFlag": "CONFORMING",
+    "entity": {
+     "associatedEntity": {
+      "lei": null,
+      "name": null
+     },
+     "category": "GENERAL",
+     "creationDate": "1998-12-29T00:00:00Z",
+     "eventGroups": [],
+     "expiration": {
+      "date": null,
+      "reason": null
+     },
+     "headquartersAddress": {
+      "addressLines": [
+       "MENDELWEG 30"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "city": "LEIDEN",
+      "country": "NL",
+      "language": "en",
+      "mailRouting": null,
+      "postalCode": "2333CS",
+      "region": "NL-ZH"
+     },
+     "jurisdiction": "NL",
+     "legalAddress": {
+      "addressLines": [
+       "MENDELWEG 30"
+      ],
+      "addressNumber": null,
+      "addressNumberWithinBuilding": null,
+      "city": "LEIDEN",
+      "country": "NL",
+      "language": "en",
+      "mailRouting": null,
+      "postalCode": "2333CS",
+      "region": "NL-ZH"
+     },
+     "legalForm": {
+      "id": "BBEB",
+      "other": null
+     },
+     "legalName": {
+      "language": "en",
+      "name": "AIRBUS SE"
+     },
+     "otherAddresses": [],
+     "otherNames": [
+      {
+       "language": "en",
+       "name": "AIRBUS GROUP SE",
+       "type": "PREVIOUS_LEGAL_NAME"
+      }
+     ],
+     "registeredAs": "24288945",
+     "registeredAt": {
+      "id": "RA000463",
+      "other": null
+     },
+     "status": "ACTIVE",
+     "subCategory": null,
+     "successorEntities": [],
+     "successorEntity": {
+      "lei": null,
+      "name": null
+     },
+     "transliteratedOtherNames": []
+    },
+    "gem": null,
+    "lei": "MINO79WLOO247M1IL051",
+    "mic": null,
+    "ocid": "nl/24288945",
+    "qcc": "QNLXY3FWAM",
+    "registration": {
+     "corroborationLevel": "FULLY_CORROBORATED",
+     "initialRegistrationDate": "2012-06-06T15:51:29Z",
+     "lastUpdateDate": "2025-10-23T10:49:10Z",
+     "managingLou": "213800WAVVOPS85N2205",
+     "nextRenewalDate": "2026-12-12T00:00:00Z",
+     "otherValidationAuthorities": [],
+     "status": "ISSUED",
+     "validatedAs": "24288945",
+     "validatedAt": {
+      "id": "RA000463",
+      "other": null
+     }
+    },
+    "spglobal": [
+     "561001"
+    ]
+   },
+   "id": "MINO79WLOO247M1IL051",
+   "links": {
+    "self": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051"
+   },
+   "relationships": {
+    "direct-children": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/direct-children",
+      "relationship-records": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/direct-child-relationships"
+     }
+    },
+    "direct-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/direct-parent-reporting-exception"
+     }
+    },
+    "field-modifications": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/field-modifications"
+     }
+    },
+    "isins": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/isins"
+     }
+    },
+    "lei-issuer": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/lei-issuer"
+     }
+    },
+    "managing-lou": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/managing-lou"
+     }
+    },
+    "ultimate-children": {
+     "links": {
+      "related": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/ultimate-children",
+      "relationship-records": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/ultimate-child-relationships"
+     }
+    },
+    "ultimate-parent": {
+     "links": {
+      "reporting-exception": "https://api.gleif.org/api/v1/lei-records/MINO79WLOO247M1IL051/ultimate-parent-reporting-exception"
+     }
+    }
+   },
+   "type": "lei-records"
+  }
+ ],
+ "links": {
+  "first": "https://api.gleif.org/api/v1/lei-records?filter%5Bisin%5D=NL0000235190&page%5Bnumber%5D=1&page%5Bsize%5D=15",
+  "last": "https://api.gleif.org/api/v1/lei-records?filter%5Bisin%5D=NL0000235190&page%5Bnumber%5D=1&page%5Bsize%5D=15"
+ },
+ "meta": {
+  "goldenCopy": {
+   "publishDate": "2026-10-18T08:00:00Z"
+  },
+  "pagination": {
+   "currentPage": 1,
+   "from": 1,
+   "lastPage": 1,
+   "perPage": 15,
+   "to": 1,
+   "total": 1
+  }
+ }
+}

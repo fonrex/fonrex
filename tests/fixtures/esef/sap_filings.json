@@ -1,0 +1,12 @@
+{
+ "data": [],
+ "jsonapi": {
+  "version": "1.0"
+ },
+ "links": {
+  "self": "https://filings.xbrl.org/api/filings?page%5Bsize%5D=100"
+ },
+ "meta": {
+  "count": 0
+ }
+}

@@ -588,6 +588,133 @@
       }
     ]
   },
+  "fonrex_cot_positioning": {
+    "name": "Fonrex COT Positioning",
+    "description": "CFTC Commitments of Traders: net position of a type of trader in a futures market (the speculators by default) and its COT index (0 to 100 over a window of weeks), report by report; last 3 years by default",
+    "category": "Macro",
+    "type": "chart",
+    "endpoint": "openbb/cot/signals/chart",
+    "gridData": { "w": 12, "h": 12 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "market",
+        "value": "13874A",
+        "label": "Market",
+        "type": "text",
+        "description": "CFTC contract market code (GET /cot/markets lists them)",
+        "options": [
+          { "label": "E-mini S&P 500 (13874A)", "value": "13874A" },
+          { "label": "Nasdaq mini (209742)", "value": "209742" },
+          { "label": "UST 10-year note (043602)", "value": "043602" },
+          { "label": "Euro (099741)", "value": "099741" },
+          { "label": "VIX futures (1170E1)", "value": "1170E1" },
+          { "label": "WTI crude oil (067651)", "value": "067651" },
+          { "label": "Gold (088691)", "value": "088691" },
+          { "label": "Corn (002602)", "value": "002602" }
+        ]
+      },
+      {
+        "paramName": "report",
+        "value": "tff",
+        "label": "Report",
+        "type": "text",
+        "description": "Legacy (every market since 1986), TFF (financial markets since 2006) or Disaggregated (commodities since 2006)",
+        "options": [
+          { "label": "Traders in Financial Futures", "value": "tff" },
+          { "label": "Disaggregated (commodities)", "value": "disaggregated" },
+          { "label": "Legacy", "value": "legacy" }
+        ]
+      },
+      {
+        "paramName": "category",
+        "value": "",
+        "label": "Type of trader",
+        "type": "text",
+        "description": "Empty: the speculators of the report (leveraged funds, managed money, non-commercial)",
+        "options": [
+          { "label": "Speculators of the report", "value": "" },
+          { "label": "Leveraged funds (TFF)", "value": "leveraged_funds" },
+          { "label": "Asset managers (TFF)", "value": "asset_manager" },
+          { "label": "Dealers (TFF)", "value": "dealer" },
+          { "label": "Managed money (Disaggregated)", "value": "managed_money" },
+          { "label": "Producers / merchants (Disaggregated)", "value": "producer_merchant" },
+          { "label": "Swap dealers (Disaggregated)", "value": "swap_dealer" },
+          { "label": "Non-commercial (Legacy)", "value": "noncommercial" },
+          { "label": "Commercial (Legacy)", "value": "commercial" }
+        ]
+      },
+      {
+        "paramName": "window",
+        "value": 156,
+        "label": "Window (weeks)",
+        "type": "number",
+        "description": "Weeks of the COT index window (156: three years)"
+      },
+      {
+        "paramName": "start",
+        "value": "",
+        "label": "Start",
+        "type": "date",
+        "description": "First report date (3 years ago when empty)"
+      }
+    ]
+  },
+  "fonrex_cot_extremes": {
+    "name": "Fonrex COT Extremes",
+    "description": "CFTC Commitments of Traders: latest positioning of the key markets of a report, the most extreme first (COT index near 0 or 100), with the net position, its share of the open interest and its weekly change",
+    "category": "Macro",
+    "type": "table",
+    "endpoint": "openbb/cot/extremes",
+    "gridData": { "w": 12, "h": 12 },
+    "source": ["Fonrex"],
+    "params": [
+      {
+        "paramName": "report",
+        "value": "tff",
+        "label": "Report",
+        "type": "text",
+        "description": "Legacy (every market since 1986), TFF (financial markets since 2006) or Disaggregated (commodities since 2006)",
+        "options": [
+          { "label": "Traders in Financial Futures", "value": "tff" },
+          { "label": "Disaggregated (commodities)", "value": "disaggregated" },
+          { "label": "Legacy", "value": "legacy" }
+        ]
+      },
+      {
+        "paramName": "market",
+        "value": "",
+        "label": "Markets",
+        "type": "text",
+        "description": "CFTC contract market codes separated by commas (the key markets of the report when empty)"
+      },
+      {
+        "paramName": "category",
+        "value": "",
+        "label": "Type of trader",
+        "type": "text",
+        "description": "Empty: the speculators of the report (leveraged funds, managed money, non-commercial)",
+        "options": [
+          { "label": "Speculators of the report", "value": "" },
+          { "label": "Leveraged funds (TFF)", "value": "leveraged_funds" },
+          { "label": "Asset managers (TFF)", "value": "asset_manager" },
+          { "label": "Dealers (TFF)", "value": "dealer" },
+          { "label": "Managed money (Disaggregated)", "value": "managed_money" },
+          { "label": "Producers / merchants (Disaggregated)", "value": "producer_merchant" },
+          { "label": "Swap dealers (Disaggregated)", "value": "swap_dealer" },
+          { "label": "Non-commercial (Legacy)", "value": "noncommercial" },
+          { "label": "Commercial (Legacy)", "value": "commercial" }
+        ]
+      },
+      {
+        "paramName": "window",
+        "value": 156,
+        "label": "Window (weeks)",
+        "type": "number",
+        "description": "Weeks of the COT index window (156: three years)"
+      }
+    ]
+  },
   "fonrex_factor_exposure": {
     "name": "Fonrex Factor Exposure",
     "description": "Exposure of a listing to the Fama/French factors (Kenneth French Data Library): alpha, betas with t-stats, R², on returns in US dollars",

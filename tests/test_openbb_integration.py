@@ -87,7 +87,7 @@ def test_widgets_json_is_valid_json(client):
 # Test: all documented endpoints have widgets
 # ──────────────────────────────────────────────────────────────────────
 
-# The 21 Fonrex endpoints that must be covered by widgets (via /openbb/ adapters)
+# The Fonrex endpoints that must be covered by widgets (via /openbb/ adapters)
 DOCUMENTED_ENDPOINTS = [
     "openbb/fundamental",
     "openbb/fundamental/deep",
@@ -112,6 +112,8 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/macro/indicators/{indicator}/chart",
     "openbb/macro/treasury/curve/chart",
     "openbb/macro/treasury/series/chart",
+    "openbb/cot/signals/chart",
+    "openbb/cot/extremes",
     "openbb/factors/exposure/{ticker}",
     "openbb/factors/{dataset}/chart",
     "openbb/sec/{ticker}/check",

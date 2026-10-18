@@ -1065,3 +1065,97 @@ def format_treasury_series_chart(series_obj: Any) -> Dict[str, Any]:
             }
         ]
     return {"data": traces, "layout": layout}
+
+
+COT_REPORT_LABELS = {
+    "legacy": "Legacy",
+    "tff": "Traders in Financial Futures",
+    "disaggregated": "Disaggregated",
+}
+
+
+def format_cot_signals_chart(signals_obj: Any) -> Dict[str, Any]:
+    """The positioning of one type of trader in one market as a Plotly figure.
+
+    The net position (contracts, left axis, with a zero line) and the COT index
+    (0 to 100, right axis, dotted) report by report; the index starts once the
+    market has reports over the whole window.
+    """
+    data = _to_dict(signals_obj)
+    signals = [_to_dict(signal) for signal in data.get("signals") or []]
+    days = [_to_plain_value(signal.get("date")) for signal in signals]
+    category = _to_dict(data.get("category"))
+    window = data.get("window_weeks")
+    report = COT_REPORT_LABELS.get(data.get("report"), data.get("report"))
+    return {
+        "data": [
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": f"Net position, {category.get('label', '')}",
+                "x": days,
+                "y": [signal.get("net") for signal in signals],
+                "fill": "tozeroy",
+            },
+            {
+                "type": "scatter",
+                "mode": "lines",
+                "name": f"COT index ({window} weeks)",
+                "x": days,
+                "y": [signal.get("cot_index") for signal in signals],
+                "yaxis": "y2",
+                "line": {"dash": "dot"},
+            },
+        ],
+        "layout": {
+            "title": f"{data.get('name')} — {category.get('label')} (CFTC, {report})",
+            "xaxis": {"rangeslider": {"visible": False}},
+            "yaxis": {"title": "Net position (contracts)", "zeroline": True},
+            "yaxis2": {
+                "title": "COT index",
+                "overlaying": "y",
+                "side": "right",
+                "range": [0, 100],
+                "showgrid": False,
+            },
+            "legend": {"orientation": "h"},
+            "margin": {"l": 60, "r": 50, "t": 40, "b": 40},
+        },
+    }
+
+
+def _cot_reading(index: Optional[float]) -> str:
+    if index is None:
+        return ""
+    if index >= 90:
+        return "Extreme long"
+    if index <= 10:
+        return "Extreme short"
+    return ""
+
+
+def format_cot_extremes_table(extremes_obj: Any) -> List[Dict[str, Any]]:
+    """The latest report of several markets as AgGrid rows, the most extreme first."""
+    data = _to_dict(extremes_obj)
+    rows: List[Dict[str, Any]] = []
+    for item in data.get("markets") or []:
+        item = _to_dict(item)
+        signal = _to_dict(item.get("signal"))
+        share = signal.get("net_share")
+        index = signal.get("cot_index")
+        rows.append(
+            {
+                "Market": item.get("name"),
+                "Code": item.get("market"),
+                "Report date": _to_plain_value(signal.get("date")),
+                "Published": _to_plain_value(signal.get("published_on")),
+                "Net": signal.get("net"),
+                "Net % OI": None if share is None else round(share * 100, 2),
+                "Change": signal.get("change"),
+                "COT index": index,
+                "Reading": _cot_reading(index),
+            }
+        )
+    for code in data.get("missing") or []:
+        rows.append({"Market": "No report stored", "Code": code})
+    return rows

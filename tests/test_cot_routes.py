@@ -353,6 +353,88 @@ class TestRefresh:
         assert client.post("/cot/refresh", params=params).status_code == 422
 
 
+class TestOpenBB:
+    def test_the_positioning_of_the_leveraged_funds_by_default(self, client, reports):
+        response = client.get("/openbb/cot/signals/chart", params={"start": ""})
+
+        assert response.status_code == 200
+        figure = response.json()
+        net, index = figure["data"]
+        assert net["name"] == "Net position, Leveraged funds"
+        assert index["name"] == "COT index (156 weeks)" and index["yaxis"] == "y2"
+        assert net["x"][-1] == "2026-10-13" and len(net["x"]) == len(index["y"]) == 8
+        assert figure["layout"]["title"] == (
+            "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE — Leveraged funds "
+            "(CFTC, Traders in Financial Futures)"
+        )
+        assert figure["layout"]["yaxis2"]["range"] == [0, 100]
+        assert reports.asked[0][:2] == ("ensure", "tff")
+
+    def test_another_market_report_and_type_of_trader(self, client):
+        figure = client.get(
+            "/openbb/cot/signals/chart",
+            params={
+                "market": "067651",
+                "report": "disaggregated",
+                "category": "swap_dealer",
+                "window": 4,
+            },
+        ).json()
+        net, index = figure["data"]
+        assert net["name"] == "Net position, Swap dealers"
+        assert net["y"][-1] == 126747 - 605225
+        assert index["y"][-1] is not None
+
+    def test_the_most_extreme_markets_as_a_table(self, client):
+        rows = client.get("/openbb/cot/extremes", params={"window": 4}).json()
+
+        found = [row for row in rows if row["Market"] != "No report stored"]
+        assert {row["Code"] for row in found} == {"13874A", "043602", "099741"}
+        first = found[0]
+        assert set(first) == {
+            "Market",
+            "Code",
+            "Report date",
+            "Published",
+            "Net",
+            "Net % OI",
+            "Change",
+            "COT index",
+            "Reading",
+        }
+        assert (first["Report date"], first["Published"]) == ("2026-10-13", "2026-10-16")
+        assert first["Reading"] in ("Extreme long", "Extreme short", "")
+        missing = [row["Code"] for row in rows if row["Market"] == "No report stored"]
+        assert "1170E1" in missing
+
+    def test_some_markets_of_a_report(self, client):
+        rows = client.get(
+            "/openbb/cot/extremes",
+            params={"report": "disaggregated", "market": "088691, 067651", "category": ""},
+        ).json()
+        assert sorted(row["Code"] for row in rows) == ["067651", "088691"]
+        gold = next(row for row in rows if row["Code"] == "088691")
+        assert gold["Net % OI"] == pytest.approx(100 * (124747 - 17658) / 396345, abs=0.01)
+
+    def test_refusals_are_those_of_the_routes(self, client):
+        bad_market = client.get("/openbb/cot/signals/chart", params={"market": "S&P"})
+        bad_start = client.get("/openbb/cot/signals/chart?start=yesterday")
+        assert (bad_market.status_code, bad_start.status_code) == (422, 422)
+
+
+def test_the_reading_of_an_index():
+    from integrations.openbb.adapters import _cot_reading
+
+    assert [_cot_reading(v) for v in (None, 95.0, 90.0, 50.0, 10.0, 3.2)] == [
+        "",
+        "Extreme long",
+        "Extreme long",
+        "",
+        "Extreme short",
+        "Extreme short",
+    ]
+
+
 class TestWithoutDatabase:
     def test_the_routes_answer_503(self, client):
         app.state.cot_reports = None

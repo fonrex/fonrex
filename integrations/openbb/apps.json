@@ -308,6 +308,22 @@
             "w": 12,
             "h": 12,
             "state": { "params": { "tenor": "10Y-2Y" } }
+          },
+          {
+            "i": "fonrex_cot_positioning",
+            "x": 0,
+            "y": 38,
+            "w": 12,
+            "h": 12,
+            "state": { "params": { "market": "13874A", "report": "tff" } }
+          },
+          {
+            "i": "fonrex_cot_extremes",
+            "x": 12,
+            "y": 38,
+            "w": 12,
+            "h": 12,
+            "state": { "params": { "report": "tff" } }
           }
         ]
       }

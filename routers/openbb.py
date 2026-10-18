@@ -20,6 +20,8 @@ from historical.ingestion_service import HistoricalIngestionService
 from integrations.openbb.adapters import (
     format_batch_quotes_table,
     format_candlestick_chart,
+    format_cot_extremes_table,
+    format_cot_signals_chart,
     format_dcf_compare_table,
     format_dcf_sensitivity_table,
     format_dcf_table,
@@ -40,6 +42,7 @@ from integrations.openbb.adapters import (
     format_treasury_series_chart,
 )
 from routers.assets import get_eod
+from routers.cot import get_cot_extremes, get_cot_reports, get_cot_signals
 from routers.dependencies import (
     get_cache_service,
     get_database_service,
@@ -539,6 +542,53 @@ async def get_openbb_treasury_series_chart(
         tenor=[tenor], curve=curve, start=_widget_date(start, "start"), end=None, service=service
     )
     return format_treasury_series_chart(res)
+
+
+@router.get("/cot/signals/chart")
+async def get_openbb_cot_signals_chart(
+    market: str = Query("13874A", description="CFTC contract market code"),
+    report: str = Query("tff", pattern="^(legacy|tff|disaggregated)$"),
+    category: Optional[str] = Query(
+        None, description="Type of trader (the speculators of the report when empty)"
+    ),
+    window: int = Query(156, ge=1, le=520, description="Weeks of the COT index window"),
+    start: Optional[str] = Query(None, description="First report date (3 years ago when empty)"),
+    service=Depends(get_cot_reports),
+) -> Dict[str, Any]:
+    """Return the net position and the COT index of one market as a Plotly chart."""
+    res = await get_cot_signals(
+        market=market,
+        report=report,
+        category=category.strip() if category and category.strip() else None,
+        window=window,
+        start=_widget_date(start, "start"),
+        end=None,
+        service=service,
+    )
+    return format_cot_signals_chart(res)
+
+
+@router.get("/cot/extremes")
+async def get_openbb_cot_extremes(
+    report: str = Query("tff", pattern="^(legacy|tff|disaggregated)$"),
+    market: Optional[str] = Query(
+        None, description="CFTC contract market codes, separated by commas (key markets when empty)"
+    ),
+    category: Optional[str] = Query(
+        None, description="Type of trader (the speculators of the report when empty)"
+    ),
+    window: int = Query(156, ge=1, le=520, description="Weeks of the COT index window"),
+    service=Depends(get_cot_reports),
+) -> List[Dict[str, Any]]:
+    """Return the latest positioning of several markets as an AgGrid table, most extreme first."""
+    res = await get_cot_extremes(
+        report=report,
+        market=[market] if market and market.strip() else None,
+        category=category.strip() if category and category.strip() else None,
+        window=window,
+        service=service,
+    )
+    return format_cot_extremes_table(res)
 
 
 @router.get("/dcf/{ticker}")

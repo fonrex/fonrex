@@ -58,6 +58,7 @@ from realtime.connection_manager import ConnectionManager
 from realtime.worker import RealtimePriceWorker
 from routers.admin import router as admin_router
 from routers.assets import router as assets_router
+from routers.cot import router as cot_router
 from routers.factors import router as factors_router
 from routers.fundamentals import router as fundamentals_router
 from routers.historical import router as historical_router
@@ -119,6 +120,7 @@ app.include_router(fundamentals_router)
 app.include_router(specialized_router)
 app.include_router(realtime_router)
 app.include_router(macro_router)
+app.include_router(cot_router)
 app.include_router(factors_router)
 app.include_router(sec_router)
 

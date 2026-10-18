@@ -1,0 +1,348 @@
+{
+  "deacot2026.zip": {
+    "report": "legacy",
+    "inner_file": "annual.txt",
+    "columns": 129,
+    "rows": 50,
+    "markets": {
+      "004603": 2,
+      "043602": 8,
+      "067651": 8,
+      "088691": 8,
+      "099741": 8,
+      "13874A": 8,
+      "20974+": 8
+    },
+    "first_day": "2026-08-25",
+    "last_day": "2026-10-13",
+    "values": {
+      "13874A@2026-10-13": {
+        "name": "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE",
+        "open_interest": 1931607,
+        "noncommercial_long": 224804,
+        "noncommercial_short": 365799,
+        "noncommercial_spreading": 41038,
+        "commercial_long": 1421756,
+        "commercial_short": 1387089,
+        "nonreportable_long": 244009,
+        "nonreportable_short": 137681
+      },
+      "088691@2026-10-13": {
+        "name": "GOLD - COMMODITY EXCHANGE INC.",
+        "open_interest": 396345,
+        "noncommercial_long": 245300,
+        "noncommercial_short": 37421,
+        "noncommercial_spreading": 45895,
+        "commercial_long": 54419,
+        "commercial_short": 296950,
+        "nonreportable_long": 50731,
+        "nonreportable_short": 16079
+      },
+      "20974+@2026-09-29": {
+        "name": "NASDAQ-100 Consolidated - CHICAGO MERCANTILE EXCHANGE",
+        "open_interest": 283950,
+        "noncommercial_long": 78652,
+        "noncommercial_short": 33256,
+        "noncommercial_spreading": 13780,
+        "commercial_long": 144608,
+        "commercial_short": 204176,
+        "nonreportable_long": 46911,
+        "nonreportable_short": 32738
+      }
+    }
+  },
+  "deacot2025.zip": {
+    "report": "legacy",
+    "inner_file": "annual.txt",
+    "columns": 129,
+    "rows": 104,
+    "markets": {
+      "088691": 52,
+      "13874A": 52
+    },
+    "first_day": "2025-01-07",
+    "last_day": "2025-12-30",
+    "values": {
+      "13874A@2025-12-30": {
+        "name": "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE",
+        "open_interest": 1936495,
+        "noncommercial_long": 224927,
+        "noncommercial_short": 319342,
+        "noncommercial_spreading": 48030,
+        "commercial_long": 1399156,
+        "commercial_short": 1429066,
+        "nonreportable_long": 264382,
+        "nonreportable_short": 140057
+      }
+    }
+  },
+  "deacot1986_2016.zip": {
+    "report": "legacy",
+    "inner_file": "FUT86_16.txt",
+    "columns": 129,
+    "rows": 21,
+    "markets": {
+      "043602": 10,
+      "063731": 1,
+      "088691": 10
+    },
+    "first_day": "1986-01-15",
+    "last_day": "2016-12-27",
+    "values": {
+      "088691@1986-01-15": {
+        "name": "GOLD - COMMODITY EXCHANGE INC.",
+        "open_interest": 148186,
+        "noncommercial_long": 18589,
+        "noncommercial_short": 7706,
+        "noncommercial_spreading": 12038,
+        "commercial_long": 80962,
+        "commercial_short": 89990,
+        "nonreportable_long": 36597,
+        "nonreportable_short": 38452
+      },
+      "043602@1987-06-30": {
+        "name": "6.5-10 YEAR U.S. TREASURY NOTE - CHICAGO BOARD OF TRADE",
+        "open_interest": 65632,
+        "noncommercial_long": 4873,
+        "noncommercial_short": 3851,
+        "noncommercial_spreading": 220,
+        "commercial_long": 61523,
+        "commercial_short": 59803,
+        "nonreportable_long": -984,
+        "nonreportable_short": 1758
+      },
+      "063731@1995-04-04": {
+        "name": "CHEDDAR CHEESE - COFFEE, SUGAR & COCOA EXCHANGE",
+        "open_interest": 272,
+        "noncommercial_long": 0,
+        "noncommercial_short": 0,
+        "noncommercial_spreading": 0,
+        "commercial_long": 186,
+        "commercial_short": 101,
+        "nonreportable_long": 86,
+        "nonreportable_short": 171
+      }
+    }
+  },
+  "fut_fin_txt_2026.zip": {
+    "report": "tff",
+    "inner_file": "FinFutYY.txt",
+    "columns": 87,
+    "rows": 24,
+    "markets": {
+      "043602": 8,
+      "099741": 8,
+      "13874A": 8
+    },
+    "first_day": "2026-08-25",
+    "last_day": "2026-10-13",
+    "values": {
+      "13874A@2026-10-13": {
+        "name": "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE",
+        "open_interest": 1931607,
+        "dealer_long": 200960,
+        "dealer_short": 803318,
+        "dealer_spreading": 49131,
+        "asset_manager_long": 1110384,
+        "asset_manager_short": 194549,
+        "asset_manager_spreading": 96043,
+        "leveraged_funds_long": 121404,
+        "leveraged_funds_short": 530130,
+        "leveraged_funds_spreading": 46956,
+        "other_reportable_long": 62418,
+        "other_reportable_short": 73497,
+        "other_reportable_spreading": 302,
+        "nonreportable_long": 244009,
+        "nonreportable_short": 137681,
+        "traders_dealer_long": 39
+      },
+      "043602@2026-10-13": {
+        "name": "UST 10Y NOTE - CHICAGO BOARD OF TRADE",
+        "open_interest": 5819512,
+        "dealer_long": 109711,
+        "dealer_short": 742524,
+        "dealer_spreading": 22273,
+        "asset_manager_long": 3672796,
+        "asset_manager_short": 774234,
+        "asset_manager_spreading": 716640,
+        "leveraged_funds_long": 489362,
+        "leveraged_funds_short": 2695299,
+        "leveraged_funds_spreading": 146827,
+        "other_reportable_long": 232815,
+        "other_reportable_short": 338163,
+        "other_reportable_spreading": 75,
+        "nonreportable_long": 429013,
+        "nonreportable_short": 383477,
+        "traders_dealer_long": 19
+      }
+    }
+  },
+  "fin_fut_txt_2006_2016.zip": {
+    "report": "tff",
+    "inner_file": "F_TFF_2006_2016.txt",
+    "columns": 87,
+    "rows": 7,
+    "markets": {
+      "090741": 2,
+      "13874A": 5
+    },
+    "first_day": "2006-06-13",
+    "last_day": "2016-12-27",
+    "values": {
+      "13874A@2006-06-13": {
+        "name": "E-MINI S&P 500 STOCK INDEX - CHICAGO MERCANTILE EXCHANGE",
+        "open_interest": 2042655,
+        "dealer_long": 296029,
+        "dealer_short": 691304,
+        "dealer_spreading": 355316,
+        "asset_manager_long": 370566,
+        "asset_manager_short": 169268,
+        "asset_manager_spreading": 68268,
+        "leveraged_funds_long": 224534,
+        "leveraged_funds_short": 388325,
+        "leveraged_funds_spreading": 137123,
+        "other_reportable_long": 15899,
+        "other_reportable_short": 51448,
+        "other_reportable_spreading": 18209,
+        "nonreportable_long": 556711,
+        "nonreportable_short": 163394,
+        "traders_dealer_long": 26
+      },
+      "13874A@2012-12-24": {
+        "name": "E-MINI S&P 500 STOCK INDEX - CHICAGO MERCANTILE EXCHANGE",
+        "open_interest": 2763921,
+        "dealer_long": 209390,
+        "dealer_short": 849270,
+        "dealer_spreading": 20731,
+        "asset_manager_long": 1427753,
+        "asset_manager_short": 589283,
+        "asset_manager_spreading": 200366,
+        "leveraged_funds_long": 408411,
+        "leveraged_funds_short": 753720,
+        "leveraged_funds_spreading": 52237,
+        "other_reportable_long": 144111,
+        "other_reportable_short": 113363,
+        "other_reportable_spreading": 4942,
+        "nonreportable_long": 295980,
+        "nonreportable_short": 180009,
+        "traders_dealer_long": 39
+      },
+      "090741@2010-07-20": {
+        "name": "CANADIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE",
+        "open_interest": 83317,
+        "dealer_long": 5207,
+        "dealer_short": 44130,
+        "dealer_spreading": 829,
+        "asset_manager_long": 8632,
+        "asset_manager_short": 8196,
+        "asset_manager_spreading": 228,
+        "leveraged_funds_long": 20662,
+        "leveraged_funds_short": 13187,
+        "leveraged_funds_spreading": 993,
+        "other_reportable_long": 8526,
+        "other_reportable_short": 147,
+        "other_reportable_spreading": 14,
+        "nonreportable_long": 38226,
+        "nonreportable_short": 15593,
+        "traders_dealer_long": 4
+      }
+    }
+  },
+  "fut_disagg_txt_2026.zip": {
+    "report": "disaggregated",
+    "inner_file": "f_year.txt",
+    "columns": 191,
+    "rows": 24,
+    "markets": {
+      "001602": 8,
+      "067651": 8,
+      "088691": 8
+    },
+    "first_day": "2026-08-25",
+    "last_day": "2026-10-13",
+    "values": {
+      "067651@2026-10-13": {
+        "name": "WTI-PHYSICAL - NEW YORK MERCANTILE EXCHANGE",
+        "open_interest": 1900179,
+        "producer_merchant_long": 660971,
+        "producer_merchant_short": 307828,
+        "swap_dealer_long": 126747,
+        "swap_dealer_short": 605225,
+        "swap_dealer_spreading": 140911,
+        "managed_money_long": 171973,
+        "managed_money_short": 131399,
+        "managed_money_spreading": 286687,
+        "other_reportable_long": 172680,
+        "other_reportable_short": 112911,
+        "other_reportable_spreading": 260071,
+        "nonreportable_long": 80139,
+        "nonreportable_short": 55147
+      },
+      "088691@2026-10-13": {
+        "name": "GOLD - COMMODITY EXCHANGE INC.",
+        "open_interest": 396345,
+        "producer_merchant_long": 18386,
+        "producer_merchant_short": 36823,
+        "swap_dealer_long": 13976,
+        "swap_dealer_short": 238070,
+        "swap_dealer_spreading": 22057,
+        "managed_money_long": 124747,
+        "managed_money_short": 17658,
+        "managed_money_spreading": 33557,
+        "other_reportable_long": 120553,
+        "other_reportable_short": 19763,
+        "other_reportable_spreading": 12338,
+        "nonreportable_long": 50731,
+        "nonreportable_short": 16079
+      }
+    }
+  },
+  "fut_disagg_txt_hist_2006_2016.zip": {
+    "report": "disaggregated",
+    "inner_file": "F_Disagg06_16.txt",
+    "columns": 191,
+    "rows": 6,
+    "markets": {
+      "067651": 3,
+      "088691": 3
+    },
+    "first_day": "2006-06-13",
+    "last_day": "2016-12-27",
+    "values": {
+      "067651@2006-06-13": {
+        "name": "CRUDE OIL, LIGHT SWEET - NEW YORK MERCANTILE EXCHANGE",
+        "open_interest": 1044276,
+        "producer_merchant_long": 258629,
+        "producer_merchant_short": 347756,
+        "swap_dealer_long": 156931,
+        "swap_dealer_short": 92458,
+        "swap_dealer_spreading": 181783,
+        "managed_money_long": 105155,
+        "managed_money_short": 95457,
+        "managed_money_spreading": 123283,
+        "other_reportable_long": 67912,
+        "other_reportable_short": 40058,
+        "other_reportable_spreading": 97270,
+        "nonreportable_long": 53313,
+        "nonreportable_short": 66211
+      },
+      "067651@2008-12-22": {
+        "name": "CRUDE OIL, LIGHT SWEET - NEW YORK MERCANTILE EXCHANGE",
+        "open_interest": 1135539,
+        "producer_merchant_long": 143620,
+        "producer_merchant_short": 296056,
+        "swap_dealer_long": 155293,
+        "swap_dealer_short": 73546,
+        "swap_dealer_spreading": 251710,
+        "managed_money_long": 120959,
+        "managed_money_short": 67710,
+        "managed_money_spreading": 181239,
+        "other_reportable_long": 94706,
+        "other_reportable_short": 75385,
+        "other_reportable_spreading": 126575,
+        "nonreportable_long": 61437,
+        "nonreportable_short": 63318
+      }
+    }
+  }
+}

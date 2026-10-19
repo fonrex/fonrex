@@ -1213,6 +1213,82 @@ class TestSecCikOnPostgres:
         assert [tuple(row) for row in rows] == [(88, None, "0001000184", NOT_FOUND, False, True, 1)]
 
 
+class TestEsefLeiOnPostgres:
+    """``financials.esef_lei``: the LEI kept in the ``LEI`` mapping of the instrument."""
+
+    async def test_found_then_reused_then_switched_off(self, database_url, engine):
+        import json
+
+        from financials.esef_lei import FOUND_BY_ISIN, NOT_FOUND, LeiResolver, SqlLeiStore
+        from financials.providers.esef import parse_lei_records
+
+        airbus = parse_lei_records(
+            json.loads(
+                (PROJECT_ROOT / "tests" / "fixtures" / "esef" / "airbus_gleif.json").read_text()
+            )
+        )
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin, quote_type)
+                    VALUES (91, 'AIR', 'Airbus SE', 'EUR', true, 'NL0000235190', 'EQUITY'),
+                           (92, 'CW8', 'Amundi MSCI World', 'EUR', true, 'LU1681043599', 'ETF');
+                """)
+            )
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        source = AsyncMock(return_value=airbus)
+        resolver = LeiResolver(SqlLeiStore(async_sessionmaker(async_engine)), source)
+        try:
+            found = await resolver.resolve(91)
+            again = await resolver.resolve(91)
+            fund = await resolver.resolve(92)
+            with engine.begin() as connection:
+                stored = connection.execute(
+                    text("""
+                        SELECT provider_ticker, provider_url, source, is_active,
+                               last_verified_at IS NOT NULL
+                        FROM asset_mappings WHERE provider_name = 'LEI' AND asset_id = 91
+                    """)
+                ).one()
+            # A LEI no longer confirmed by GLEIF is switched off.
+            source.return_value = []
+            lost = await resolver.resolve(91, refresh=True)
+            missing = await resolver.resolve(999)
+        finally:
+            await async_engine.dispose()
+
+        assert found.lei == again.lei == "MINO79WLOO247M1IL051"
+        assert found.origin == FOUND_BY_ISIN
+        assert (
+            source.await_count == 2
+        )  # the second reading is the stored LEI; the fund is not asked
+        assert fund.lei is None and missing.lei is None
+        assert tuple(stored) == (
+            "MINO79WLOO247M1IL051",
+            "https://search.gleif.org/#/record/MINO79WLOO247M1IL051",
+            FOUND_BY_ISIN,
+            True,
+            True,
+        )
+        assert lost.lei is None and lost.origin == NOT_FOUND
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT asset_id, asset_listing_id, provider_ticker, source, is_active,
+                           last_verified_at IS NULL, failure_count
+                    FROM asset_mappings WHERE provider_name = 'LEI' ORDER BY asset_id
+                """)
+            ).all()
+            connection.execute(text("DELETE FROM asset_mappings WHERE asset_id IN (91, 92)"))
+            connection.execute(text("DELETE FROM assets WHERE id IN (91, 92)"))
+        # One row for the instrument (no listing), kept with the last LEI, switched off.
+        assert [tuple(row) for row in rows] == [
+            (91, None, "MINO79WLOO247M1IL051", NOT_FOUND, False, True, 1)
+        ]
+
+
 class TestXbrlFactsOnPostgres:
     """Revision 023: the facts of the XBRL filings of the SEC."""
 

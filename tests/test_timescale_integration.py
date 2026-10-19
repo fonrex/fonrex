@@ -16,11 +16,13 @@ A temporary database is created next to the one named in the URL and dropped at
 the end; the database of the URL itself is never touched.
 """
 
+import json
 import os
 import subprocess
 import sys
 import time
 import uuid
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -2252,6 +2254,320 @@ class TestEsefTablesOnPostgres:
                 assert connection.execute(
                     text("SELECT to_regclass(:table)"), {"table": table}
                 ).scalar()
+
+
+class _FakeEsef:
+    """filings.xbrl.org answering with the real index and filings of ``tests/fixtures/esef/``.
+
+    A filing of the index without a file among the fixtures is not given (``None``),
+    as when filings.xbrl.org does not answer; ``refuse`` makes a filing unreadable.
+    """
+
+    FIXTURES = Path(__file__).parent / "fixtures" / "esef"
+
+    def __init__(self, key: str, lei: str):
+        from financials.providers.esef import parse_filings
+
+        self.lei = lei
+        self.listed = list(
+            parse_filings(
+                json.loads((self.FIXTURES / f"{key}_filings.json").read_text()), lei
+            ).filings
+        )
+        self.asked: list[str] = []
+        self.refuse: set[str] = set()
+        self.listing = AsyncMock(side_effect=lambda lei: self.listed)
+
+    async def filings(self, lei):
+        return await self.listing(lei)
+
+    async def report(self, filing):
+        from financials.providers.esef import EsefError, parse_xbrl_json
+
+        self.asked.append(filing.fxo_id)
+        if filing.fxo_id in self.refuse:
+            raise EsefError(f"{filing.fxo_id}: not an xBRL-JSON document")
+        path = self.FIXTURES / f"{filing.fxo_id}.json"
+        if not path.exists():
+            return None
+        return parse_xbrl_json(path.read_bytes(), filing.lei, filing.fxo_id)
+
+
+class TestEsefStatementsOnPostgres:
+    """``financials/esef_statements.py`` on the real filings of ``tests/fixtures/esef/``."""
+
+    NOW = datetime(2026, 10, 19, 9, 0, tzinfo=timezone.utc)
+    AIRBUS = "MINO79WLOO247M1IL051"
+    PERNOD = "52990097YFPX9J0H5D87"
+    NOVO = "549300DAQ1CVT6CXN342"
+
+    @pytest.fixture
+    async def statements(self, database_url, engine):
+        from financials.esef_lei import FOUND_BY_ISIN, LeiResolution
+        from financials.esef_statements import EsefStatements
+
+        with engine.begin() as connection:
+            TestEsefTablesOnPostgres._clean(connection)
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        clock = {"now": self.NOW}
+
+        def build(key: str, lei: str, name: str):
+            provider = _FakeEsef(key, lei)
+            resolver = MagicMock()
+            resolver.resolve = AsyncMock(
+                return_value=LeiResolution(lei, origin=FOUND_BY_ISIN, legal_name=name)
+            )
+            service = EsefStatements(
+                async_sessionmaker(async_engine), provider, resolver, now=lambda: clock["now"]
+            )
+            return service, provider
+
+        yield build, clock
+        await async_engine.dispose()
+        with engine.begin() as connection:
+            TestEsefTablesOnPostgres._clean(connection)
+
+    def _filings(self, engine):
+        with engine.connect() as connection:
+            return {
+                row.fxo_id[21:]: row
+                for row in connection.execute(
+                    text("""
+                        SELECT fxo_id, read_status, read_reason, report_end, facts,
+                               breakdowns, conflicts, listed_period_end, read_at
+                        FROM esef_filings ORDER BY fxo_id
+                    """)
+                )
+            }
+
+    async def test_airbus_read_stored_and_made_into_annual_statements(self, statements, engine):
+        build, _ = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+
+        load = await service.refresh(1)
+        _, years = await service.annual(1, refresh=False)
+
+        # 2022 to 2024 are listed but their files are not among the fixtures: not given.
+        assert load.status == "failed"
+        assert "2022-12-31-ESEF-NL-0" in load.reason
+        assert [fxo_id[21:] for fxo_id in load.read] == [
+            "2021-12-31-ESEF-NL-0",
+            "2025-12-31-ESEF-NL-0",
+        ]
+        assert (load.entity_name, load.filings, load.last_report_end) == (
+            "AIRBUS SE",
+            5,
+            date(2025, 12, 31),
+        )
+        assert load.facts > 400
+        assert [(y.period_end, y.currency) for y in years] == [
+            (date(2025, 12, 31), "EUR"),
+            (date(2024, 12, 31), "EUR"),
+            (date(2021, 12, 31), "EUR"),
+            (date(2020, 12, 31), "EUR"),
+        ]
+        latest, previous = years[0], years[1]
+        assert latest.value("revenue") == Decimal("73420000000")
+        assert latest.value("net_income") == Decimal("5221000000")
+        assert latest.value("total_assets") == Decimal("134939000000")
+        assert latest.value("eps_diluted") == Decimal("6.6")
+        # The comparative year of the 2025 filing, named after it.
+        assert previous.figures["revenue"].accession == f"{self.AIRBUS}-2025-12-31-ESEF-NL-0"
+        assert previous.figures["revenue"].form == "ESEF"
+
+        rows = self._filings(engine)
+        read = rows["2025-12-31-ESEF-NL-0"]
+        assert (read.read_status, read.report_end, read.facts, read.breakdowns) == (
+            "read",
+            date(2025, 12, 31),
+            269,
+            171,
+        )
+        assert rows["2023-12-31-ESEF-NL-0"].read_status is None
+
+    async def test_a_recent_reading_is_not_asked_again_and_a_later_one_reads_what_was_not_given(
+        self, statements
+    ):
+        build, clock = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        await service.refresh(1)
+        first = list(provider.asked)
+
+        fresh = await service.refresh(1)
+        clock["now"] = self.NOW + timedelta(days=2)
+        provider.asked.clear()
+        later = await service.refresh(1)
+
+        assert fresh.status == "fresh" and provider.listing.await_count == 2
+        assert len(first) == 5
+        # Read once: only the filings never given are asked again.
+        assert [fxo_id[21:] for fxo_id in provider.asked] == [
+            "2022-12-31-ESEF-NL-0",
+            "2023-12-31-ESEF-NL-0",
+            "2024-12-31-ESEF-NL-0",
+        ]
+        assert later.read == ()
+
+    async def test_force_reads_every_filing_again(self, statements):
+        build, _ = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        await service.refresh(1)
+        provider.asked.clear()
+        load = await service.refresh(1, force=True)
+        assert len(provider.asked) == 5
+        assert len(load.read) == 2
+
+    async def test_the_period_comes_from_the_facts_and_a_june_fiscal_year(self, statements, engine):
+        build, _ = statements
+        service, _ = build("pernod", self.PERNOD, "PERNOD RICARD")
+        await service.refresh(1)
+        _, years = await service.annual(1, refresh=False)
+
+        listed_december = self._filings(engine)["2021-12-31-ESEF-FR-0"]
+        assert listed_december.listed_period_end == date(2021, 12, 31)
+        assert listed_december.report_end == date(2021, 6, 30)
+        assert years[0].period_end == date(2025, 6, 30)
+        assert years[0].value("revenue") == Decimal("10959000000")
+        assert years[0].figures["revenue"].concept == "RevenueFromContractsWithCustomers"
+        assert date(2021, 6, 30) in [y.period_end for y in years]
+
+    async def test_half_years_are_stored_but_make_no_fiscal_year(self, statements, engine):
+        build, _ = statements
+        service, _ = build("novo", self.NOVO, "NOVO NORDISK A/S")
+        load = await service.refresh(1)
+        _, years = await service.annual(1, refresh=False)
+
+        assert load.last_report_end == date(2026, 6, 30)
+        assert [y.period_end for y in years] == [
+            date(2020, 12, 31),
+            date(2019, 12, 31),
+            date(2018, 12, 31),
+        ]
+        assert years[0].currency == "DKK"
+        # No minority interests: the profit of the group.
+        assert years[0].value("net_income") == Decimal("42138000000")
+        assert years[0].figures["net_income"].concept == "ProfitLoss"
+        assert years[0].value("total_equity") == Decimal("63325000000")
+        with engine.connect() as connection:
+            half_year = connection.execute(
+                text("""
+                    SELECT value FROM esef_facts
+                    WHERE concept = 'Revenue' AND period_end = DATE '2026-06-30'
+                      AND duration_days = 181
+                """)
+            ).scalar_one()
+        assert half_year == Decimal("175311000000")
+
+    async def test_a_refused_filing_and_one_without_file_are_not_asked_again(
+        self, statements, engine
+    ):
+        build, clock = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        refused, missing = (f"{self.AIRBUS}-{year}-12-31-ESEF-NL-0" for year in (2025, 2024))
+        provider.refuse.add(refused)
+        provider.listed = [
+            replace(f, json_url=None) if f.fxo_id == missing else f for f in provider.listed
+        ]
+
+        load = await service.refresh(1)
+        clock["now"] = self.NOW + timedelta(days=2)
+        provider.asked.clear()
+        await service.refresh(1)
+
+        assert load.refused == {refused: f"EsefError: {refused}: not an xBRL-JSON document"}
+        rows = self._filings(engine)
+        assert (
+            rows["2025-12-31-ESEF-NL-0"].read_status,
+            rows["2024-12-31-ESEF-NL-0"].read_status,
+        ) == (
+            "refused",
+            "missing",
+        )
+        assert rows["2025-12-31-ESEF-NL-0"].read_reason.startswith("EsefError:")
+        assert refused not in provider.asked and missing not in provider.asked
+
+        # A new file for the refused filing is read again.
+        provider.refuse.clear()
+        provider.listed = [
+            replace(f, sha256="a new file") if f.fxo_id == refused else f for f in provider.listed
+        ]
+        clock["now"] = self.NOW + timedelta(days=4)
+        load = await service.refresh(1)
+        assert refused in load.read
+
+    async def test_an_index_not_read_keeps_what_was_stored(self, statements):
+        from financials.providers.esef import EsefError
+
+        build, clock = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        await service.refresh(1)
+        clock["now"] = self.NOW + timedelta(days=2)
+        provider.listing.side_effect = None
+        provider.listing.return_value = None
+        not_answered = await service.refresh(1)
+        provider.listing.side_effect = EsefError("filings.xbrl.org: not a JSON:API answer")
+        not_read = await service.refresh(1)
+        _, years = await service.annual(1, refresh=False)
+
+        assert not_answered.status == not_read.status == "failed"
+        assert not_answered.reason == "EsefError: filings.xbrl.org did not answer"
+        assert not_read.reason == "EsefError: filings.xbrl.org: not a JSON:API answer"
+        assert not_read.last_report_end == date(2025, 12, 31)
+        assert len(years) == 4
+
+    async def test_every_filing_given_is_a_complete_reading(self, statements):
+        build, _ = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        provider.listed = [f for f in provider.listed if f.listed_period_end.year in (2021, 2025)]
+        load = await service.refresh(1)
+        assert (load.status, load.reason, len(load.read)) == ("fetched", None, 2)
+
+    async def test_a_filing_without_any_number_is_refused(self, statements, engine):
+        from financials.providers.esef import EsefReport
+
+        build, _ = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        provider.listed = provider.listed[:1]
+        empty = EsefReport(provider.listed[0].fxo_id, self.AIRBUS, (), 12, (), ())
+        provider.report = AsyncMock(return_value=empty)
+        load = await service.refresh(1)
+        row = next(iter(self._filings(engine).values()))
+        assert load.refused == {empty.fxo_id: "no number in the filing"}
+        assert (row.read_status, row.read_reason) == ("refused", "no number in the filing")
+
+    async def test_an_index_never_read(self, statements):
+        build, _ = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        provider.listing.side_effect = None
+        provider.listing.return_value = None
+        load = await service.refresh(1)
+        assert (load.status, load.lei, load.facts) == ("failed", self.AIRBUS, 0)
+
+    async def test_a_company_never_read(self, statements):
+        build, _ = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        load, years = await service.annual(1, refresh=False)
+        assert (load.status, load.lei, load.reason, years) == (
+            "failed",
+            self.AIRBUS,
+            "never read from filings.xbrl.org",
+            [],
+        )
+        provider.listing.assert_not_awaited()
+
+    async def test_the_filings_of_a_company(self, statements):
+        build, _ = statements
+        service, _ = build("airbus", self.AIRBUS, "AIRBUS SE")
+        await service.refresh(1)
+        assert [row.listed_period_end.year for row in await service.filings(self.AIRBUS)] == [
+            2025,
+            2024,
+            2023,
+            2022,
+            2021,
+        ]
 
 
 class TestCotReportsOnPostgres:

@@ -1,0 +1,194 @@
+"""``financials/esef_statements.py`` without database: the choices made before any query.
+
+Storing the filings and their values, and reading the annual statements back, are
+tested on PostgreSQL (``tests/test_timescale_integration.py``) with the real filings of
+``tests/fixtures/esef/``. No test reaches GLEIF or filings.xbrl.org.
+"""
+
+import json
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from financials.esef_lei import LeiResolution
+from financials.esef_statements import (
+    ESEF_FORM,
+    MISSING,
+    READ,
+    REFUSED,
+    EsefStatements,
+    StoredFiling,
+    fact_row,
+    filings_to_read,
+    is_annual,
+)
+from financials.providers.esef import parse_filings
+from financials.xbrl_mapping import COLUMNS_BY_NAME, IFRS
+
+FIXTURES = Path(__file__).parent / "fixtures" / "esef"
+TOTAL = "529900S21EQ1BO4ESM68"
+BNP = "R0MUWSFPU8MPRO8K5P83"
+
+
+def filings(key: str, lei: str):
+    return list(
+        parse_filings(json.loads((FIXTURES / f"{key}_filings.json").read_text()), lei).filings
+    )
+
+
+def service(resolution=LeiResolution(None, "The instrument has no ISIN"), **options):
+    resolver, provider = MagicMock(), MagicMock()
+    resolver.resolve = AsyncMock(return_value=resolution)
+    provider.filings = AsyncMock()
+    provider.report = AsyncMock()
+    return EsefStatements(None, provider, resolver, **options), provider, resolver
+
+
+class TestFilingsToRead:
+    def test_one_filing_per_period_the_one_processed_last(self):
+        chosen = filings_to_read(filings("total", TOTAL), {})
+        # One per language in the index: the French ones were processed last.
+        assert [f.fxo_id for f in chosen] == [
+            f"{TOTAL}-{year}-12-31-ESEF-FR-0" for year in (2022, 2023, 2024, 2025)
+        ]
+
+    def test_the_second_version_of_a_filing(self):
+        chosen = [f.fxo_id[21:] for f in filings_to_read(filings("bnp", BNP), {})]
+        assert chosen == [
+            "2021-12-31-ESEF-FR-0",
+            "2022-12-31-ESEF-FR-1",
+            "2023-12-31-ESEF-FR-1",
+            "2024-12-31-ESEF-FR-1",
+            "2025-12-31-ESEF-FR-1",
+        ]
+
+    def test_a_filing_read_is_not_read_again(self):
+        listed = filings("total", TOTAL)
+        stored = {
+            f.fxo_id: StoredFiling(f.fxo_id, f.sha256, status)
+            for f, status in zip(
+                listed, [READ, REFUSED, MISSING, READ, READ, READ, READ, READ], strict=True
+            )
+        }
+        assert filings_to_read(listed, stored) == []
+
+    def test_a_filing_listed_but_never_read_is_read(self):
+        listed = filings("total", TOTAL)
+        stored = {f.fxo_id: StoredFiling(f.fxo_id, f.sha256, None) for f in listed}
+        assert len(filings_to_read(listed, stored)) == 4
+
+    def test_a_filing_whose_file_changed_is_read_again(self):
+        listed = filings("total", TOTAL)
+        stored = {f.fxo_id: StoredFiling(f.fxo_id, f.sha256, READ) for f in listed}
+        changed = f"{TOTAL}-2024-12-31-ESEF-FR-0"
+        stored[changed] = StoredFiling(changed, "an older file", READ)
+        assert [f.fxo_id for f in filings_to_read(listed, stored)] == [changed]
+
+    def test_force_reads_every_period_again(self):
+        listed = filings("total", TOTAL)
+        stored = {f.fxo_id: StoredFiling(f.fxo_id, f.sha256, READ) for f in listed}
+        assert len(filings_to_read(listed, stored, force=True)) == 4
+
+    def test_a_filing_without_date_of_processing_or_period(self):
+        listed = filings("total", TOTAL)
+        undated = [replace(f, processed=None, listed_period_end=None) for f in listed[:2]]
+        # Without period, each filing is its own period; without date, the name decides.
+        assert [f.fxo_id for f in filings_to_read(undated, {})] == sorted(f.fxo_id for f in undated)
+
+
+class TestAnnualFacts:
+    @pytest.mark.parametrize(
+        ("days", "annual"), [(0, True), (365, True), (366, True), (181, False), (90, False)]
+    )
+    def test_what_makes_the_annual_statements(self, days, annual):
+        assert is_annual(days) is annual
+
+    def test_a_stored_value_as_the_mapping_reads_it(self):
+        stored = SimpleNamespace(
+            lei=TOTAL,
+            taxonomy="ifrs-full",
+            concept="RevenueFromContractsWithCustomers",
+            unit="USD",
+            period_end=date(2025, 12, 31),
+            duration_days=365,
+            period_start=date(2025, 1, 1),
+            value=Decimal("201196000000"),
+            fxo_id=f"{TOTAL}-2025-12-31-ESEF-FR-0",
+            report_end=date(2025, 12, 31),
+        )
+        row = fact_row(stored)
+        assert (row.cik, row.accession, row.form, row.filed) == (
+            TOTAL,
+            stored.fxo_id,
+            ESEF_FORM,
+            date(2025, 12, 31),
+        )
+        assert row.key == (
+            "ifrs-full",
+            "RevenueFromContractsWithCustomers",
+            "USD",
+            stored.period_end,
+            365,
+        )
+
+
+class TestMapping:
+    @pytest.mark.parametrize(
+        ("column", "concepts"),
+        [
+            ("revenue", ("Revenue", "RevenueFromContractsWithCustomers", "RevenueFromSaleOfGoods")),
+            ("net_income", ("ProfitLossAttributableToOwnersOfParent", "ProfitLoss")),
+            ("total_equity", ("EquityAttributableToOwnersOfParent", "Equity")),
+        ],
+    )
+    def test_the_ifrs_concepts_of_european_filings(self, column, concepts):
+        ifrs = tuple(c for t, c in COLUMNS_BY_NAME[column].concepts if t == IFRS)
+        # The share of the owners of the parent first: the group total only without it.
+        assert ifrs == concepts
+
+
+class TestWithoutLei:
+    async def test_filings_xbrl_org_is_never_asked(self):
+        statements, provider, resolver = service()
+        load = await statements.refresh(7)
+        assert (load.status, load.lei, load.reason) == (
+            "no_lei",
+            None,
+            "The instrument has no ISIN",
+        )
+        resolver.resolve.assert_awaited_once_with(7, refresh=False)
+        provider.filings.assert_not_awaited()
+
+    async def test_recheck_asks_gleif_again(self):
+        statements, _, resolver = service()
+        await statements.refresh(7, recheck_lei=True)
+        resolver.resolve.assert_awaited_once_with(7, refresh=True)
+
+    async def test_no_fiscal_years_whether_read_or_not(self):
+        statements, provider, _ = service()
+        assert await statements.annual(7) == (await statements.refresh(7), [])
+        load, years = await statements.annual(7, refresh=False)
+        assert (load.status, years) == ("no_lei", [])
+        provider.filings.assert_not_awaited()
+
+
+class TestRefreshDelay:
+    def test_follows_the_environment(self, monkeypatch):
+        monkeypatch.setenv("ESEF_REFRESH_HOURS", "72")
+        assert service()[0].refresh_after == timedelta(hours=72)
+
+    def test_an_unusable_value_keeps_a_day(self, monkeypatch):
+        monkeypatch.setenv("ESEF_REFRESH_HOURS", "0")
+        assert service()[0].refresh_after == timedelta(hours=24)
+
+    def test_a_reading_without_time_zone_is_in_utc(self):
+        now = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
+        statements = service(now=lambda: now)[0]
+        assert statements._is_recent(datetime(2026, 10, 19, 1, 0))
+        assert not statements._is_recent(datetime(2026, 10, 18, 1, 0))
+        assert not statements._is_recent(None)

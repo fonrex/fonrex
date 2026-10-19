@@ -81,7 +81,9 @@ COLUMNS: tuple[Column, ...] = (
             "SalesRevenueNet",
             "RevenuesNetOfInterestExpense",
         ),
-        ("Revenue", "RevenueFromSaleOfGoods"),
+        # IFRS 15 revenue is tagged either way: Airbus and Novo Nordisk use "Revenue",
+        # TotalEnergies and Pernod Ricard "RevenueFromContractsWithCustomers".
+        ("Revenue", "RevenueFromContractsWithCustomers", "RevenueFromSaleOfGoods"),
     ),
     _column("gross_profit", "income", ("GrossProfit",), ("GrossProfit",)),
     _column(
@@ -90,8 +92,13 @@ COLUMNS: tuple[Column, ...] = (
         ("OperatingIncomeLoss",),
         ("ProfitLossFromOperatingActivities",),
     ),
+    # A company without minority interests may tag only the profit of the group
+    # (Novo Nordisk): it is then the profit of the owners of the parent.
     _column(
-        "net_income", "income", ("NetIncomeLoss",), ("ProfitLossAttributableToOwnersOfParent",)
+        "net_income",
+        "income",
+        ("NetIncomeLoss",),
+        ("ProfitLossAttributableToOwnersOfParent", "ProfitLoss"),
     ),
     _column(
         "eps_basic", "income", ("EarningsPerShareBasic",), ("BasicEarningsLossPerShare",), PER_SHARE
@@ -148,7 +155,7 @@ COLUMNS: tuple[Column, ...] = (
         "total_equity",
         "balance",
         ("StockholdersEquity",),
-        ("EquityAttributableToOwnersOfParent",),
+        ("EquityAttributableToOwnersOfParent", "Equity"),
     ),
     _column(
         "cash_and_equivalents",

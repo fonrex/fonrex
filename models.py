@@ -11,6 +11,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -957,6 +958,92 @@ class SecCompanyLoad(Base):
     entity_name = Column(String(255))
     fetched_at = Column(DateTime(timezone=True), nullable=False)
     last_filed = Column(Date)  # the latest filing among the facts kept
+    facts = Column(Integer, nullable=False, default=0, server_default="0")
+
+
+class EsefFiling(Base):
+    """A filing of the index of filings.xbrl.org, and what its last reading found.
+
+    ``listed_period_end`` is the period the index gives the filing: it can be wrong.
+    ``report_end`` is the last day of the latest period of its facts, the true period
+    of the filing, known once it is read. ``read_status`` is ``read``, ``refused``
+    (a file that could not be read: ``read_reason`` says why) or ``missing`` (no
+    xBRL-JSON, or not given); ``NULL`` until a reading.
+    """
+
+    __tablename__ = "esef_filings"
+    __table_args__ = (
+        CheckConstraint(
+            "read_status IN ('read', 'refused', 'missing')", name="ck_esef_filings_read_status"
+        ),
+        Index("ix_esef_filings_lei", "lei", "report_end"),
+    )
+    fxo_id = Column(String(100), primary_key=True)  # "529900S21EQ1BO4ESM68-2025-12-31-ESEF-FR-0"
+    lei = Column(String(20), nullable=False)
+    listed_period_end = Column(Date)
+    country = Column(String(2))
+    json_url = Column(String(500))
+    viewer_url = Column(String(500))
+    report_url = Column(String(500))
+    package_url = Column(String(500))
+    error_count = Column(Integer)
+    warning_count = Column(Integer)
+    inconsistency_count = Column(Integer)
+    added = Column(DateTime(timezone=True))
+    processed = Column(DateTime(timezone=True))
+    sha256 = Column(String(64))
+    listed_at = Column(DateTime(timezone=True), nullable=False)
+    read_at = Column(DateTime(timezone=True))
+    read_status = Column(String(12))
+    read_reason = Column(String(500))
+    report_end = Column(Date)
+    facts = Column(Integer, nullable=False, default=0, server_default="0")
+    breakdowns = Column(Integer, nullable=False, default=0, server_default="0")
+    conflicts = Column(Integer, nullable=False, default=0, server_default="0")
+
+
+class EsefFact(Base):
+    """One value of an ESEF filing: a concept of a company, in a unit, for a period.
+
+    ``taxonomy`` is the prefix of the concept in the filing: ``ifrs-full``, or an
+    extension of the company (``tot``, ``bnpp``). A period is its last day and its
+    length in days (0 for a balance). The value of the latest filing is kept (a
+    restatement replaces the earlier one); ``fxo_id`` names it, ``report_end`` orders
+    the filings.
+    """
+
+    __tablename__ = "esef_facts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["fxo_id"],
+            ["esef_filings.fxo_id"],
+            name="fk_esef_facts_filing",
+            ondelete="CASCADE",
+        ),
+        Index("ix_esef_facts_fxo_id", "fxo_id"),
+    )
+    lei = Column(String(20), primary_key=True)
+    taxonomy = Column(String(40), primary_key=True)  # "ifrs-full" | "tot" | ...
+    concept = Column(String(255), primary_key=True)  # "Revenue", "Assets", ...
+    unit = Column(String(40), primary_key=True)  # "EUR", "EUR/shares", "shares"
+    period_end = Column(Date, primary_key=True)
+    duration_days = Column(Integer, primary_key=True)
+    period_start = Column(Date)  # NULL for a balance at a date
+    value = Column(Numeric(28, 6), nullable=False)
+    decimals = Column(Integer)
+    fxo_id = Column(String(100), nullable=False)
+    report_end = Column(Date, nullable=False)
+
+
+class EsefEntityLoad(Base):
+    """The last reading of the ESEF filings of one company."""
+
+    __tablename__ = "esef_entity_loads"
+    lei = Column(String(20), primary_key=True)
+    entity_name = Column(String(255))
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    filings = Column(Integer, nullable=False, default=0, server_default="0")
+    last_report_end = Column(Date)
     facts = Column(Integer, nullable=False, default=0, server_default="0")
 
 

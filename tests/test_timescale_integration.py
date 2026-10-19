@@ -2099,6 +2099,161 @@ class TestCotTablesOnPostgres:
                 ).scalar()
 
 
+class TestEsefTablesOnPostgres:
+    """Revision 026: the ESEF filings of European listed companies."""
+
+    LEI = "MINO79WLOO247M1IL051"
+    FILING = text("""
+        INSERT INTO esef_filings (fxo_id, lei, listed_period_end, country, listed_at, report_end)
+        VALUES (:fxo_id, :lei, :listed, 'NL', now(), :report_end)
+    """)
+    # The rule the storage follows: the value of the latest filing is kept.
+    FACT = text("""
+        INSERT INTO esef_facts
+            (lei, taxonomy, concept, unit, period_end, duration_days, period_start, value,
+             decimals, fxo_id, report_end)
+        VALUES (:lei, 'ifrs-full', 'Revenue', 'EUR', DATE '2024-12-31', 366, DATE '2024-01-01',
+                :value, -6, :fxo_id, :report_end)
+        ON CONFLICT (lei, taxonomy, concept, unit, period_end, duration_days)
+        DO UPDATE SET value = EXCLUDED.value, decimals = EXCLUDED.decimals,
+                      fxo_id = EXCLUDED.fxo_id, report_end = EXCLUDED.report_end
+        WHERE EXCLUDED.report_end >= esef_facts.report_end
+    """)
+
+    @staticmethod
+    def _clean(connection):
+        connection.execute(text("DELETE FROM esef_facts"))
+        connection.execute(text("DELETE FROM esef_filings"))
+        connection.execute(text("DELETE FROM esef_entity_loads"))
+
+    def _filing(self, connection, year: int) -> str:
+        fxo_id = f"{self.LEI}-{year}-12-31-ESEF-NL-0"
+        connection.execute(
+            self.FILING,
+            {
+                "fxo_id": fxo_id,
+                "lei": self.LEI,
+                "listed": date(year, 12, 31),
+                "report_end": date(year, 12, 31),
+            },
+        )
+        return fxo_id
+
+    def _revenue(self, connection, fxo_id: str, value: int, year: int) -> None:
+        connection.execute(
+            self.FACT,
+            {"lei": self.LEI, "value": value, "fxo_id": fxo_id, "report_end": date(year, 12, 31)},
+        )
+
+    def _stored(self, connection):
+        return tuple(connection.execute(text("SELECT value, fxo_id FROM esef_facts")).one())
+
+    def test_a_restatement_replaces_the_value_and_an_older_filing_does_not(self, engine):
+        with engine.begin() as connection:
+            self._clean(connection)
+            first, restated = self._filing(connection, 2024), self._filing(connection, 2025)
+            self._revenue(connection, first, 69_230_000_000, 2024)
+            self._revenue(connection, restated, 69_300_000_000, 2025)
+            after_restatement = self._stored(connection)
+            self._revenue(connection, first, 69_230_000_000, 2024)
+            after_reading_the_older_again = self._stored(connection)
+            self._clean(connection)
+        assert after_restatement == (Decimal("69300000000.000000"), restated)
+        assert after_reading_the_older_again == after_restatement
+
+    def test_the_values_go_with_their_filing(self, engine):
+        with engine.begin() as connection:
+            self._clean(connection)
+            filing = self._filing(connection, 2025)
+            self._revenue(connection, filing, 73_420_000_000, 2025)
+            connection.execute(text("DELETE FROM esef_filings WHERE fxo_id = :f"), {"f": filing})
+            left = connection.execute(text("SELECT count(*) FROM esef_facts")).scalar()
+            self._clean(connection)
+        assert left == 0
+
+    def test_a_value_needs_its_filing(self, engine):
+        with pytest.raises(IntegrityError, match="fk_esef_facts_filing"):
+            with engine.begin() as connection:
+                self._clean(connection)
+                self._revenue(connection, f"{self.LEI}-2025-12-31-ESEF-NL-0", 1, 2025)
+
+    def test_a_reading_status_is_one_of_three(self, engine):
+        with engine.begin() as connection:
+            self._clean(connection)
+            filing = self._filing(connection, 2025)
+            for status in ("read", "refused", "missing", None):
+                connection.execute(
+                    text("UPDATE esef_filings SET read_status = :s WHERE fxo_id = :f"),
+                    {"s": status, "f": filing},
+                )
+            row = connection.execute(
+                text("SELECT facts, breakdowns, conflicts, read_at FROM esef_filings")
+            ).one()
+            self._clean(connection)
+        assert tuple(row) == (0, 0, 0, None)
+        with pytest.raises(IntegrityError, match="ck_esef_filings_read_status"):
+            with engine.begin() as connection:
+                filing = self._filing(connection, 2025)
+                connection.execute(
+                    text("UPDATE esef_filings SET read_status = 'done' WHERE fxo_id = :f"),
+                    {"f": filing},
+                )
+
+    def test_the_reading_of_a_company(self, engine):
+        with engine.begin() as connection:
+            self._clean(connection)
+            connection.execute(
+                text("INSERT INTO esef_entity_loads (lei, fetched_at) VALUES (:lei, now())"),
+                {"lei": self.LEI},
+            )
+            row = connection.execute(
+                text("SELECT entity_name, filings, last_report_end, facts FROM esef_entity_loads")
+            ).one()
+            self._clean(connection)
+        assert tuple(row) == (None, 0, None, 0)
+
+    @pytest.mark.parametrize(
+        ("index", "expected"),
+        [("ix_esef_filings_lei", ["lei", "report_end"]), ("ix_esef_facts_fxo_id", ["fxo_id"])],
+    )
+    def test_the_indexes(self, engine, index, expected):
+        with engine.connect() as connection:
+            columns = (
+                connection.execute(
+                    text("""
+                    SELECT a.attname FROM pg_index i
+                    JOIN pg_class c ON c.oid = i.indexrelid
+                    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                    WHERE c.relname = :index
+                    ORDER BY array_position(i.indkey::int[], a.attnum::int)
+                """),
+                    {"index": index},
+                )
+                .scalars()
+                .all()
+            )
+        assert columns == expected
+
+    def test_downgrade_drops_the_tables_and_upgrade_creates_them(self, database_url, engine):
+        tables = ("esef_filings", "esef_facts", "esef_entity_loads")
+        _alembic(database_url, "downgrade", "025")
+        with engine.connect() as connection:
+            for table in tables:
+                assert (
+                    connection.execute(
+                        text("SELECT to_regclass(:table)"), {"table": table}
+                    ).scalar()
+                    is None
+                )
+            assert connection.execute(text("SELECT to_regclass('cot_weeks')")).scalar()
+        _alembic(database_url, "upgrade", "head")
+        with engine.connect() as connection:
+            for table in tables:
+                assert connection.execute(
+                    text("SELECT to_regclass(:table)"), {"table": table}
+                ).scalar()
+
+
 class TestCotReportsOnPostgres:
     """``macro/cot_reports.py`` on the real CFTC files of ``tests/fixtures/cftc/``."""
 

@@ -25,6 +25,7 @@ does not publish (a bank has no operating income) stays ``None``.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -39,6 +40,9 @@ TAXONOMIES = (US_GAAP, IFRS)
 # Forms of the annual reports: domestic (10-K), foreign (20-F), Canadian (40-F), amended.
 ANNUAL_FORMS = frozenset({"10-K", "10-K/A", "10-KT", "20-F", "20-F/A", "40-F", "40-F/A"})
 FISCAL_YEAR_DAYS = (350, 380)
+
+# The accession number of a filing of the SEC: "0000320193-25-000079".
+_ACCESSION = re.compile(r"\d{10}-\d{2}-\d{6}")
 
 MONEY = "money"
 PER_SHARE = "per_share"
@@ -375,8 +379,13 @@ class Figure:
     filed: date
 
     @property
-    def filing_url(self) -> str:
-        """The index of the filing on EDGAR."""
+    def filing_url(self) -> str | None:
+        """The index of the filing on EDGAR; ``None`` for a filing that is not the SEC's.
+
+        An ESEF filing (``fxo_id``) has its own links, kept in ``esef_filings``.
+        """
+        if not _ACCESSION.fullmatch(self.accession):
+            return None
         return (
             "https://www.sec.gov/Archives/edgar/data/"
             f"{int(self.accession.split('-')[0])}/{self.accession.replace('-', '')}/"

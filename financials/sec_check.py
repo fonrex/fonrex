@@ -88,6 +88,7 @@ class FigureCheck:
     difference: Decimal | None = None  # (yahoo - sec) / |sec|, on amounts for payments
     concept: str | None = None
     filing_url: str | None = None
+    accession: str | None = None  # the filing of the figure (an fxo_id for ESEF)
 
 
 @dataclass
@@ -136,7 +137,11 @@ def _compare_figure(
     sec = figure.value if figure else None
     yahoo = _decimal(yahoo_value)
     statement = COLUMNS_BY_NAME[column].statement
-    origin = {"concept": figure.concept, "filing_url": figure.filing_url} if figure else {}
+    origin = (
+        {"concept": figure.concept, "filing_url": figure.filing_url, "accession": figure.accession}
+        if figure
+        else {}
+    )
     if sec is None and yahoo is None:
         return None
     if yahoo is None:
@@ -168,6 +173,8 @@ def compare(
     sec_years: Iterable[SecFiscalYear],
     yahoo_years: Iterable[Any],
     tolerance: Decimal | None = None,
+    *,
+    filed_with: str = "the SEC filing",
 ) -> list[YearCheck]:
     """Check each fiscal year filed with the SEC against the Yahoo year ending with it.
 
@@ -191,7 +198,7 @@ def compare(
             continue
         if check.yahoo_currency and check.yahoo_currency.upper() != sec_year.currency.upper():
             check.note = (
-                f"Yahoo gives this year in {check.yahoo_currency}, the SEC filing in "
+                f"Yahoo gives this year in {check.yahoo_currency}, {filed_with} in "
                 f"{sec_year.currency}: not compared"
             )
             checks.append(check)
@@ -215,9 +222,18 @@ class SecCheckResult:
 class SecCheck:
     """The check of an instrument: its SEC filings against its stored Yahoo statements."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession], statements: Any) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        statements: Any,
+        *,
+        filed_with: str = "the SEC filing",
+    ) -> None:
+        """``statements`` gives the annual statements filed (``SecStatements`` or
+        ``EsefStatements``); ``filed_with`` names them in the notes."""
         self.session_factory = session_factory
         self.statements = statements
+        self.filed_with = filed_with
 
     async def yahoo_years(self, asset_id: int) -> list[Any]:
         """The annual statements stored from Yahoo, by fiscal year (three rows a year)."""
@@ -242,5 +258,12 @@ class SecCheck:
         if not sec_years:
             return SecCheckResult(load, tolerance, [])
         return SecCheckResult(
-            load, tolerance, compare(sec_years, await self.yahoo_years(asset_id), tolerance)
+            load,
+            tolerance,
+            compare(
+                sec_years,
+                await self.yahoo_years(asset_id),
+                tolerance,
+                filed_with=self.filed_with,
+            ),
         )

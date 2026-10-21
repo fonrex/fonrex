@@ -139,7 +139,7 @@ Finance, deduplicated by URL and by title similarity.
 
 | Tool | What you get |
 |---|---|
-| **[OpenBB Workspace](integrations/openbb/README.md)** | Your instance as a data source: quotes, fundamentals, DCF, technical charts, news, macro rates, futures positioning and factors in ready-made dashboards — 28 available widgets |
+| **[OpenBB Workspace](integrations/openbb/README.md)** | Your instance as a data source: quotes, fundamentals, DCF, technical charts, news, macro rates, futures positioning and factors in ready-made dashboards — 29 available widgets |
 | **[Google Sheets](fonrex-sheets-connector/README.md)** | Fundamentals, DCF values and indicators in a spreadsheet, with a read-only key |
 | **Python & Jupyter** | Plain REST and JSON with `httpx` or `requests` and pandas — see the [notebook guide](https://fonrex.io/docs/guides/python-jupyter) |
 | **[Zipline](docs/zipline-bundle.md)** | A data bundle reading your stored prices, for backtests |

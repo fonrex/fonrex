@@ -21,6 +21,7 @@ from financials.esef_statements import (
     MISSING,
     READ,
     REFUSED,
+    EsefLoad,
     EsefStatements,
     StoredFiling,
     fact_row,
@@ -192,3 +193,48 @@ class TestRefreshDelay:
         assert statements._is_recent(datetime(2026, 10, 19, 1, 0))
         assert not statements._is_recent(datetime(2026, 10, 18, 1, 0))
         assert not statements._is_recent(None)
+
+
+class TestScript:
+    def test_the_arguments(self):
+        from scripts import load_esef
+
+        assert vars(load_esef.parse_arguments([])) == {
+            "ticker": None,
+            "force": False,
+            "recheck_lei": False,
+        }
+        arguments = load_esef.parse_arguments(
+            ["--ticker", "AIR.PA", "TTE.PA", "--force", "--recheck-lei"]
+        )
+        assert (arguments.ticker, arguments.force, arguments.recheck_lei) == (
+            ["AIR.PA", "TTE.PA"],
+            True,
+            True,
+        )
+
+    def test_a_line_per_share(self):
+        from scripts import load_esef
+
+        lei = "MINO79WLOO247M1IL051"
+        read = EsefLoad(
+            "fetched",
+            lei,
+            "AIRBUS SE",
+            None,
+            5,
+            date(2025, 12, 31),
+            532,
+            read=(f"{lei}-2021-12-31-ESEF-NL-0", f"{lei}-2025-12-31-ESEF-NL-0"),
+            refused={f"{lei}-2023-12-31-ESEF-NL-0": "EsefError: not JSON"},
+        )
+        assert load_esef.describe("AIR.PA", read) == (
+            f"AIR.PA         fetched   {lei}  5 filings, 532 values, last period 2025-12-31"
+            f"  (2 read)  (refused: {lei}-2023-12-31-ESEF-NL-0)"
+        )
+        assert load_esef.describe(
+            "SAP.DE", EsefLoad("failed", "529900D6BF99LW9R2E68", reason="down")
+        ) == ("SAP.DE         failed    529900D6BF99LW9R2E68  0 filings, nothing stored  (down)")
+        assert load_esef.describe(
+            "CW8.PA", EsefLoad("no_lei", reason="ETF files no annual report")
+        ) == ("CW8.PA         no LEI    ETF files no annual report")

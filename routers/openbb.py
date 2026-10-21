@@ -25,6 +25,7 @@ from integrations.openbb.adapters import (
     format_dcf_compare_table,
     format_dcf_sensitivity_table,
     format_dcf_table,
+    format_esef_check_table,
     format_etf_details_table,
     format_factor_exposure_table,
     format_factor_returns_chart,
@@ -51,6 +52,7 @@ from routers.dependencies import (
     get_redis_client,
     get_technical_service,
 )
+from routers.esef import check_statements_against_esef, get_esef_check, get_esef_statements
 from routers.factors import (
     get_factor_exposure,
     get_factor_exposure_of_listing,
@@ -460,6 +462,20 @@ async def get_openbb_sec_check(
         ticker=ticker, years=years, isin=None, statements=statements, checker=checker
     )
     return format_sec_check_table(res)
+
+
+@router.get("/esef/{ticker}/check")
+async def get_openbb_esef_check(
+    ticker: str,
+    years: Optional[int] = Query(3, ge=1, le=30),
+    statements=Depends(get_esef_statements),
+    checker=Depends(get_esef_check),
+) -> List[Dict[str, Any]]:
+    """Return the check of the Yahoo statements against the ESEF filings as an AgGrid table."""
+    res = await check_statements_against_esef(
+        ticker=ticker, years=years, isin=None, statements=statements, checker=checker
+    )
+    return format_esef_check_table(res)
 
 
 @router.get("/factors/{dataset}/chart")

@@ -2570,6 +2570,96 @@ class TestEsefStatementsOnPostgres:
         ]
 
 
+class TestEsefScriptOnPostgres:
+    """``scripts/load_esef.py`` from GLEIF and filings.xbrl.org to the tables."""
+
+    LEI = "MINO79WLOO247M1IL051"
+
+    async def test_the_shares_of_the_catalogue_read_then_up_to_date(
+        self, database_url, engine, fake_network, monkeypatch, capsys
+    ):
+        import httpx
+
+        from scripts import load_esef
+
+        fixtures = Path(__file__).parent / "fixtures" / "esef"
+
+        def answer(name: str) -> httpx.Response:
+            return httpx.Response(200, content=(fixtures / name).read_bytes())
+
+        fake_network.get("filter%5Bisin%5D=NL0000235190", answer("airbus_gleif.json"))
+        # The ISIN of TotalEnergies under another name in the catalogue: not confirmed.
+        fake_network.get("filter%5Bisin%5D=FR0000120271", answer("total_gleif.json"))
+        fake_network.get(f"/api/entities/{self.LEI}/filings", answer("airbus_filings.json"))
+        fake_network.get(
+            "airbus-2021-12-31-en.json", answer(f"{self.LEI}-2021-12-31-ESEF-NL-0.json")
+        )
+        fake_network.get(
+            f"{self.LEI}-2025-12-31-1-en.json", answer(f"{self.LEI}-2025-12-31-ESEF-NL-0.json")
+        )
+        fake_network.get(f"/{self.LEI}/", httpx.Response(404, text="Not Found"))
+        # The other shares the database holds: unknown to GLEIF.
+        fake_network.get("api.gleif.org", httpx.Response(200, json={"data": []}))
+        monkeypatch.delenv("ASYNC_DATABASE_URL", raising=False)
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        with engine.begin() as connection:
+            TestEsefTablesOnPostgres._clean(connection)
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin, quote_type)
+                    VALUES (95, 'AIR', 'Airbus SE', 'EUR', true, 'NL0000235190', 'EQUITY'),
+                           (96, 'TOT', 'Total', 'EUR', true, 'FR0000120271', 'EQUITY'),
+                           (97, 'CW8', 'Amundi MSCI World', 'EUR', true, 'LU1681043599', 'ETF'),
+                           (98, 'NOISIN', 'No ISIN SA', 'EUR', true, NULL, 'EQUITY');
+                """)
+            )
+
+        try:
+            first = await load_esef.main([])
+            first_output = capsys.readouterr().out
+            second = await load_esef.main([])
+            second_output = capsys.readouterr().out
+            unknown = await load_esef.main(["--ticker", "NOPE"])
+            unknown_output = capsys.readouterr().out
+            with engine.connect() as connection:
+                stored = connection.execute(
+                    text("""
+                        SELECT (SELECT count(*) FROM esef_filings),
+                               (SELECT count(*) FROM esef_filings WHERE read_status = 'read'),
+                               (SELECT count(*) > 400 FROM esef_facts),
+                               (SELECT provider_ticker FROM asset_mappings
+                                WHERE provider_name = 'LEI' AND asset_id = 95)
+                    """)
+                ).one()
+        finally:
+            with engine.begin() as connection:
+                TestEsefTablesOnPostgres._clean(connection)
+                connection.execute(text("DELETE FROM asset_mappings WHERE provider_name = 'LEI'"))
+                connection.execute(text("DELETE FROM assets WHERE id BETWEEN 95 AND 98"))
+
+        # Airbus: 2022 to 2024 not given (404), so the reading is not complete.
+        assert (first, second, unknown) == (1, 0, 1)
+        lines = {line.split()[0]: line for line in first_output.splitlines()}
+        assert lines["AIR"].startswith(f"AIR            failed    {self.LEI}  5 filings, ")
+        assert "last period 2025-12-31  (2 read)  (not given by filings.xbrl.org:" in lines["AIR"]
+        assert lines["TOT"].startswith(
+            "TOT            no LEI    No GLEIF entity named like 'Total'"
+        )
+        # The ETF and the share without ISIN are not even listed.
+        assert "CW8" not in lines and "NOISIN" not in lines
+        assert first_output.splitlines()[-1].endswith(", 1 failed")
+        assert tuple(stored) == (5, 2, True, self.LEI)
+        # Read less than ESEF_REFRESH_HOURS ago: nothing asked again.
+        second_lines = {line.split()[0]: line for line in second_output.splitlines()}
+        assert second_lines["AIR"].startswith(f"AIR            fresh     {self.LEI}")
+        assert fake_network.calls("filter%5Bisin%5D=NL0000235190") == 1
+        assert fake_network.calls("/api/entities/") == 1
+        assert unknown_output.splitlines() == [
+            "NOPE           unknown   not in the catalogue",
+            "1 shares: 0 read, 0 without LEI, 0 failed, 1 unknown",
+        ]
+
+
 class TestCotReportsOnPostgres:
     """``macro/cot_reports.py`` on the real CFTC files of ``tests/fixtures/cftc/``."""
 

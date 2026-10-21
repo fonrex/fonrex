@@ -930,9 +930,61 @@ SEC_STATUS_LABELS = {
 _SEC_STATUS_ORDER = {"mismatch": 0, "missing_yahoo": 1, "missing_sec": 2, "match": 3}
 
 
-def _sec_note_row(year: Optional[str], note: str) -> Dict[str, Any]:
-    columns = ("SEC", "Yahoo", "Gap", "Concept", "Filing")
+ESEF_STATUS_LABELS = {
+    "mismatch": "Mismatch",
+    "missing_yahoo": "Missing at Yahoo",
+    "missing_esef": "Not in the ESEF filing",
+    "match": "Match",
+}
+_ESEF_STATUS_ORDER = {"mismatch": 0, "missing_yahoo": 1, "missing_esef": 2, "match": 3}
+
+
+def _note_row(year: Optional[str], note: str, source: str) -> Dict[str, Any]:
+    columns = (source, "Yahoo", "Gap", "Concept", "Filing")
     return {"Year": year, "Figure": "—", "Status": note, **dict.fromkeys(columns)}
+
+
+def _check_rows(
+    check_obj: Any,
+    *,
+    source: str,
+    value_key: str,
+    link_key: str,
+    labels: Dict[str, str],
+    order: Dict[str, int],
+    nothing: str,
+) -> List[Dict[str, Any]]:
+    """A check of the Yahoo statements against filed ones, as AgGrid rows: one row per
+    fiscal year and figure, the gaps first; ``Gap`` is (Yahoo - filed) / filed, in percent."""
+    data = _to_dict(check_obj)
+    rows: List[Dict[str, Any]] = []
+    for year in data.get("years") or []:
+        year = _to_dict(year)
+        label = str(year.get("period_end"))
+        if year.get("note"):
+            rows.append(_note_row(label, year["note"], source))
+            continue
+        figures = sorted(
+            (_to_dict(figure) for figure in year.get("figures") or []),
+            key=lambda figure: order.get(figure.get("status"), 9),
+        )
+        for figure in figures:
+            difference = figure.get("difference")
+            rows.append(
+                {
+                    "Year": label,
+                    "Figure": SEC_FIGURE_NAMES.get(figure.get("column"), figure.get("column")),
+                    "Status": labels.get(figure.get("status"), figure.get("status")),
+                    source: _to_plain_value(figure.get(value_key)),
+                    "Yahoo": _to_plain_value(figure.get("yahoo")),
+                    "Gap": None if difference is None else f"{float(difference) * 100:+.2f}%",
+                    "Concept": figure.get("concept"),
+                    "Filing": figure.get(link_key),
+                }
+            )
+    if not rows:
+        rows.append(_note_row(None, nothing, source))
+    return rows
 
 
 def format_sec_check_table(check_obj: Any) -> List[Dict[str, Any]]:
@@ -941,35 +993,32 @@ def format_sec_check_table(check_obj: Any) -> List[Dict[str, Any]]:
     One row per fiscal year and figure, the gaps first. ``Gap`` is (Yahoo - SEC) / SEC,
     in percent; ``Filing`` links to the filing on EDGAR.
     """
-    data = _to_dict(check_obj)
-    rows: List[Dict[str, Any]] = []
-    for year in data.get("years") or []:
-        year = _to_dict(year)
-        label = str(year.get("period_end"))
-        if year.get("note"):
-            rows.append(_sec_note_row(label, year["note"]))
-            continue
-        figures = sorted(
-            (_to_dict(figure) for figure in year.get("figures") or []),
-            key=lambda figure: _SEC_STATUS_ORDER.get(figure.get("status"), 9),
-        )
-        for figure in figures:
-            difference = figure.get("difference")
-            rows.append(
-                {
-                    "Year": label,
-                    "Figure": SEC_FIGURE_NAMES.get(figure.get("column"), figure.get("column")),
-                    "Status": SEC_STATUS_LABELS.get(figure.get("status"), figure.get("status")),
-                    "SEC": _to_plain_value(figure.get("sec")),
-                    "Yahoo": _to_plain_value(figure.get("yahoo")),
-                    "Gap": None if difference is None else f"{float(difference) * 100:+.2f}%",
-                    "Concept": figure.get("concept"),
-                    "Filing": figure.get("filing_url"),
-                }
-            )
-    if not rows:
-        rows.append(_sec_note_row(None, "No fiscal year filed with the SEC"))
-    return rows
+    return _check_rows(
+        check_obj,
+        source="SEC",
+        value_key="sec",
+        link_key="filing_url",
+        labels=SEC_STATUS_LABELS,
+        order=_SEC_STATUS_ORDER,
+        nothing="No fiscal year filed with the SEC",
+    )
+
+
+def format_esef_check_table(check_obj: Any) -> List[Dict[str, Any]]:
+    """The check of the Yahoo statements against the ESEF filings as AgGrid rows.
+
+    One row per fiscal year and figure, the gaps first. ``Gap`` is (Yahoo - ESEF) / ESEF,
+    in percent; ``Filing`` opens the filing in the viewer of filings.xbrl.org.
+    """
+    return _check_rows(
+        check_obj,
+        source="ESEF",
+        value_key="esef",
+        link_key="viewer_url",
+        labels=ESEF_STATUS_LABELS,
+        order=_ESEF_STATUS_ORDER,
+        nothing="No fiscal year filed in ESEF",
+    )
 
 
 _OFFSET_NAME = re.compile(r"^\d{1,3}[DWMY]$")

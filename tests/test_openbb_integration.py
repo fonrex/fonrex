@@ -117,6 +117,7 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/factors/exposure/{ticker}",
     "openbb/factors/{dataset}/chart",
     "openbb/sec/{ticker}/check",
+    "openbb/esef/{ticker}/check",
 ]
 
 

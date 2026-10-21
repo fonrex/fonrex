@@ -362,3 +362,68 @@ def test_without_the_check_the_check_route_is_unavailable(services):
         app.state.esef_statements, app.state.esef_check = services[0], None
         assert test_client.get("/esef/AIR.PA/check").status_code == 503
         assert test_client.get("/esef/AIR.PA/statements").status_code == 200
+
+
+class TestOpenBB:
+    def test_one_row_per_figure_the_gaps_first(self, client, services):
+        response = client.get("/openbb/esef/AIR.PA/check", params={"years": 1})
+
+        assert response.status_code == 200
+        rows = response.json()
+        assert {row["Year"] for row in rows} == {"2025-12-31"}
+        assert rows[0] == {
+            "Year": "2025-12-31",
+            "Figure": "Net income",
+            "Status": "Mismatch",
+            "ESEF": 5221000000,
+            "Yahoo": 5000000000,
+            "Gap": "-4.23%",
+            "Concept": "ProfitLossAttributableToOwnersOfParent",
+            "Filing": VIEWER,
+        }
+        assert rows[1]["Status"] == "Missing at Yahoo"
+        assert rows[-1]["Status"] == "Match" and rows[-1]["Figure"] == "Revenue"
+        services[1].check.assert_awaited_once_with(7)
+
+    def test_three_years_by_default(self, client):
+        rows = client.get("/openbb/esef/AIR.PA/check").json()
+        assert {row["Year"] for row in rows} == {"2025-12-31", "2024-12-31"}
+
+    def test_a_figure_not_in_the_filing_and_a_year_not_compared(self):
+        from integrations.openbb.adapters import format_esef_check_table
+
+        rows = format_esef_check_table(
+            {
+                "years": [
+                    {"period_end": "2025-12-31", "note": "not compared", "figures": []},
+                    {
+                        "period_end": "2024-12-31",
+                        "figures": [
+                            {"column": "shares_basic", "status": "missing_esef", "yahoo": 7.9e8}
+                        ],
+                    },
+                ]
+            }
+        )
+        assert rows[0] == {
+            "Year": "2025-12-31",
+            "Figure": "—",
+            "Status": "not compared",
+            "ESEF": None,
+            "Yahoo": None,
+            "Gap": None,
+            "Concept": None,
+            "Filing": None,
+        }
+        assert (rows[1]["Figure"], rows[1]["Status"], rows[1]["ESEF"]) == (
+            "Shares (basic)",
+            "Not in the ESEF filing",
+            None,
+        )
+        assert format_esef_check_table({"years": []})[0]["Status"] == "No fiscal year filed in ESEF"
+
+    def test_an_instrument_without_esef_filer(self, client, services):
+        services[1].check.return_value = SecCheckResult(
+            EsefLoad("no_lei", reason="no ISIN"), Decimal("0.01"), []
+        )
+        assert client.get("/openbb/esef/CW8.PA/check").status_code == 404

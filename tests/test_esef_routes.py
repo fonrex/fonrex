@@ -18,7 +18,7 @@ import routers.esef as esef_routes
 from database.price_series import PriceSeries
 from financials.esef_statements import EsefLoad, fact_row, is_annual
 from financials.providers.esef import parse_xbrl_json
-from financials.sec_check import SecCheckResult, compare
+from financials.sec_check import ESEF_NOT_COMPARED, SecCheckResult, compare
 from financials.xbrl_mapping import annual_statements
 from main import app
 
@@ -102,11 +102,18 @@ def services(monkeypatch):
             net_income=Decimal("5000000000"),
         )
     ]
+    checker.not_compared = dict(ESEF_NOT_COMPARED)
     checker.check = AsyncMock(
         return_value=SecCheckResult(
             FRESH,
             Decimal("0.01"),
-            compare(YEARS, yahoo, Decimal("0.01"), filed_with="the ESEF filing"),
+            compare(
+                YEARS,
+                yahoo,
+                Decimal("0.01"),
+                filed_with="the ESEF filing",
+                not_compared=ESEF_NOT_COMPARED,
+            ),
         )
     )
 
@@ -208,7 +215,15 @@ class TestCheck:
         assert response.status_code == 200
         body = response.json()
         assert body["tolerance"] == 0.01
-        assert set(body["not_compared"]) == {"cash_and_equivalents", "total_equity"}
+        assert set(body["not_compared"]) == {
+            "cash_and_equivalents",
+            "total_equity",
+            "operating_income",
+            "interest_expense",
+            "capex",
+        }
+        compared = {f["column"] for year in body["years"] for f in year["figures"]}
+        assert not compared & {"operating_income", "interest_expense", "capex"}
         latest = body["years"][0]
         assert (latest["period_end"], latest["yahoo_period_end"]) == ("2025-12-31", "2025-12-31")
         figures = {figure["column"]: figure for figure in latest["figures"]}
@@ -427,3 +442,31 @@ class TestOpenBB:
             EsefLoad("no_lei", reason="no ISIN"), Decimal("0.01"), []
         )
         assert client.get("/openbb/esef/CW8.PA/check").status_code == 404
+
+
+class TestWarnings:
+    def test_a_figure_left_out_is_said_in_the_statements_and_the_check(self, client, services):
+        from copy import deepcopy
+
+        years = deepcopy(YEARS)
+        years[0].figures.pop("eps_basic")
+        years[0].warnings.append("eps_basic 265 left out: an error of scale in the filing")
+        services[0].annual.return_value = (FRESH, years)
+        yahoo = [SimpleNamespace(period_end=date(2025, 12, 31), currency="EUR", eps_basic=6.6)]
+        services[1].check.return_value = SecCheckResult(
+            FRESH,
+            Decimal("0.01"),
+            compare(years[:1], yahoo, Decimal("0.01"), not_compared=ESEF_NOT_COMPARED),
+        )
+
+        statements = client.get("/esef/AIR.PA/statements").json()
+        check = client.get("/esef/AIR.PA/check").json()
+        rows = client.get("/openbb/esef/AIR.PA/check").json()
+
+        warning = "eps_basic 265 left out: an error of scale in the filing"
+        assert statements["years"][0]["warnings"] == [warning]
+        assert statements["years"][1]["warnings"] == []
+        assert check["years"][0]["warnings"] == [warning]
+        eps = next(f for f in check["years"][0]["figures"] if f["column"] == "eps_basic")
+        assert eps["status"] == "missing_esef"
+        assert rows[0]["Status"] == warning and rows[0]["Figure"] == "—"

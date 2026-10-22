@@ -58,6 +58,10 @@ class EsefFigure(BaseModel):
 class EsefFiscalYear(BaseModel):
     period_end: date
     currency: str
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Figures of the filing left out as not plausible (an error of scale), and why.",
+    )
     figures: Dict[str, EsefFigure] = Field(
         ...,
         description=(
@@ -104,6 +108,10 @@ class EsefYearCheck(BaseModel):
     mismatch: int = 0
     missing_yahoo: int = 0
     missing_esef: int = 0
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Figures of the filing left out as not plausible, and why.",
+    )
     figures: List[EsefFigureCheck]
 
 

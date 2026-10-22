@@ -399,6 +399,8 @@ class FiscalYear:
     period_end: date
     currency: str
     figures: dict[str, Figure] = field(default_factory=dict)
+    # A figure left out because it is not plausible, and why (ESEF: an error of scale).
+    warnings: list[str] = field(default_factory=list)
 
     def value(self, column: str) -> Decimal | None:
         figure = self.figures.get(column)

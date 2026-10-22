@@ -964,6 +964,8 @@ def _check_rows(
         if year.get("note"):
             rows.append(_note_row(label, year["note"], source))
             continue
+        for warning in year.get("warnings") or []:
+            rows.append(_note_row(label, warning, source))
         figures = sorted(
             (_to_dict(figure) for figure in year.get("figures") or []),
             key=lambda figure: order.get(figure.get("status"), 9),

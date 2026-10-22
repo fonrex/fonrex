@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from database.price_series import resolve_price_series_async
 from financials.esef_statements import EsefLoad, EsefStatements
-from financials.sec_check import MISSING_SEC, NOT_COMPARED, SecCheck
+from financials.sec_check import MISSING_SEC, SecCheck
 from schemas.esef import (
     EsefCheckResponse,
     EsefFigure,
@@ -116,6 +116,7 @@ async def get_esef_statements_of_instrument(
             EsefFiscalYear(
                 period_end=year.period_end,
                 currency=year.currency,
+                warnings=list(year.warnings),
                 figures={
                     column: EsefFigure(
                         value=float(figure.value),
@@ -158,7 +159,7 @@ async def check_statements_against_esef(
         lei=result.load.lei,
         entity_name=result.load.entity_name,
         tolerance=float(result.tolerance),
-        not_compared=dict(NOT_COMPARED),
+        not_compared=dict(checker.not_compared),
         load=_load_info(result.load),
         years=[
             EsefYearCheck(
@@ -171,6 +172,7 @@ async def check_statements_against_esef(
                 mismatch=year.count("mismatch"),
                 missing_yahoo=year.count("missing_yahoo"),
                 missing_esef=year.count(MISSING_SEC),
+                warnings=list(year.warnings),
                 figures=[
                     EsefFigureCheck(
                         column=figure.column,

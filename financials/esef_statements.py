@@ -29,6 +29,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Protocol
 
 from sqlalchemy import func, select
@@ -45,6 +46,10 @@ from settings import env_int
 logger = logging.getLogger(__name__)
 
 ESEF_FORM = "ESEF"
+# Earnings per share whose ratio to the profit is this many times the one of the other
+# years: an error of scale in the filing (AB InBev tagged 265 for 2.65 in 2023).
+PER_SHARE_COLUMNS = ("eps_basic", "eps_diluted")
+SCALE_GAP = Decimal(20)
 _CHUNK = 2000
 
 READ = "read"
@@ -149,6 +154,46 @@ def fact_row(fact: StoredFact) -> FactRow:
         filed=fact.report_end,
         frame=None,
     )
+
+
+def _median(values: list[Decimal]) -> Decimal:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def check_per_share(years: list[FiscalYear]) -> list[FiscalYear]:
+    """Leave out the earnings per share of a year whose scale the other years refute.
+
+    Earnings per share divided by the profit is about one over the number of shares,
+    which changes slowly. A year whose ratio is ``SCALE_GAP`` times larger or smaller
+    than the median of the other years (three at least) holds an error of scale: the
+    figure is left out and the year says why in ``warnings``.
+    """
+    for column in PER_SHARE_COLUMNS:
+        ratios = {
+            year.period_end: abs(year.value(column) / year.value("net_income"))
+            for year in years
+            if year.value(column) and year.value("net_income")
+        }
+        if len(ratios) < 4:
+            continue
+        for year in years:
+            ratio = ratios.get(year.period_end)
+            if ratio is None:
+                continue
+            others = _median([value for end, value in ratios.items() if end != year.period_end])
+            gap = max(ratio / others, others / ratio)
+            if gap >= SCALE_GAP:
+                figure = year.figures.pop(column)
+                year.warnings.append(
+                    f"{column} {figure.value.normalize()} left out: its ratio to the net income "
+                    f"is {gap:.0f} times the one of the other years (an error of scale in the "
+                    "filing)"
+                )
+    return years
 
 
 def _reason(error: Exception) -> str:
@@ -279,7 +324,7 @@ class EsefStatements:
                 load = self._as_load("fresh", stored)
         if load.lei is None:
             return load, []
-        return load, annual_statements(await self.stored_rows(load.lei))
+        return load, check_per_share(annual_statements(await self.stored_rows(load.lei)))
 
     async def stored_rows(self, lei: str) -> list[FactRow]:
         """The stored values of a company that make annual statements."""

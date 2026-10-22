@@ -42,7 +42,7 @@ from financials.esef_lei import LeiResolver, SqlLeiStore
 from financials.esef_statements import EsefStatements
 from financials.providers.sec_edgar import uses_default_contact
 from financials.router import router as financials_router
-from financials.sec_check import SecCheck
+from financials.sec_check import ESEF_NOT_COMPARED, SecCheck
 from financials.sec_cik import SecCikResolver, SqlCikStore
 from financials.sec_statements import SecStatements
 from financials.service import FinancialsAggregator
@@ -508,7 +508,10 @@ async def startup_event(application: FastAPI):
             lei_resolver = LeiResolver(SqlLeiStore(session_factory), esef_provider.lei_records)
             state.esef_statements = EsefStatements(session_factory, esef_provider, lei_resolver)
             state.esef_check = SecCheck(
-                session_factory, state.esef_statements, filed_with="the ESEF filing"
+                session_factory,
+                state.esef_statements,
+                filed_with="the ESEF filing",
+                not_compared=ESEF_NOT_COMPARED,
             )
             logger.info("🇪🇺 ESEF filings started")
         else:

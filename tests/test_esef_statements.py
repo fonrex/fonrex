@@ -298,3 +298,84 @@ class TestScriptStops:
         lines = capsys.readouterr().out.splitlines()
         # 14 errors, a share without LEI, then 20 errors: stopped at the 35th share.
         assert lines[-1].startswith("Stopped at S035")
+
+
+class TestEarningsPerShare:
+    """AB InBev tagged its 2023 earnings per share 265 for 2.65 (US dollars)."""
+
+    @staticmethod
+    def years(eps_by_year, profit=Decimal("6000000000")):
+        from financials.xbrl_mapping import Figure, FiscalYear
+
+        def figure(value):
+            return Figure(Decimal(value), "ifrs-full", "c", "USD", "f", "ESEF", date(2025, 12, 31))
+
+        result = []
+        for year, eps in eps_by_year.items():
+            fiscal_year = FiscalYear(date(year, 12, 31), "USD")
+            fiscal_year.figures["net_income"] = figure(profit)
+            if eps is not None:
+                fiscal_year.figures["eps_basic"] = figure(eps)
+                fiscal_year.figures["eps_diluted"] = figure(eps)
+            result.append(fiscal_year)
+        return result
+
+    def test_an_error_of_scale_is_left_out_and_said(self):
+        from financials.esef_statements import check_per_share
+
+        years = check_per_share(
+            self.years({2025: "3.10", 2024: "2.86", 2023: "265", 2022: "2.98", 2021: "2.65"})
+        )
+        wrong = next(year for year in years if year.period_end.year == 2023)
+        assert "eps_basic" not in wrong.figures and "eps_diluted" not in wrong.figures
+        assert wrong.figures["net_income"]
+        assert wrong.warnings[0] == (
+            "eps_basic 265 left out: its ratio to the net income is 91 times the one of the "
+            "other years (an error of scale in the filing)"
+        )
+        assert all(not year.warnings for year in years if year.period_end.year != 2023)
+
+    def test_years_that_change_much_but_not_in_scale_are_kept(self):
+        from financials.esef_statements import check_per_share
+
+        # A loss year, a profit halved, shares bought back: within a factor of 20.
+        years = self.years({2025: "4.0", 2024: "-1.5", 2023: "2.0", 2022: "6.0"})
+        years[1].figures["net_income"] = (
+            years[1]
+            .figures["net_income"]
+            .__class__(
+                Decimal("-2200000000"), "ifrs-full", "c", "USD", "f", "ESEF", date(2025, 12, 31)
+            )
+        )
+        assert all(not year.warnings for year in check_per_share(years))
+
+    def test_too_few_years_to_judge(self):
+        from financials.esef_statements import check_per_share
+
+        years = check_per_share(self.years({2025: "3.10", 2024: "265", 2023: "2.98"}))
+        assert all("eps_basic" in year.figures for year in years)
+
+    def test_years_without_earnings_per_share_or_profit(self):
+        from financials.esef_statements import check_per_share
+
+        years = self.years({2025: "3.1", 2024: None, 2023: "2.9", 2022: "300", 2021: "2.7"})
+        del years[4].figures["net_income"]
+        checked = check_per_share(years)
+        # 2021 has no profit, 2024 no EPS: three ratios only, nothing judged.
+        assert all(not year.warnings for year in checked)
+
+    def test_an_even_number_of_other_years(self):
+        from financials.esef_statements import check_per_share
+
+        years = check_per_share(
+            self.years({2025: "3", 2024: "3.2", 2023: "300", 2022: "2.8", 2021: "3.1", 2020: "2.9"})
+        )
+        assert [year.period_end.year for year in years if year.warnings] == [2023]
+
+    def test_a_year_without_earnings_per_share_among_others(self):
+        from financials.esef_statements import check_per_share
+
+        years = check_per_share(
+            self.years({2025: "3", 2024: None, 2023: "300", 2022: "2.8", 2021: "3.1", 2020: "2.9"})
+        )
+        assert [year.period_end.year for year in years if year.warnings] == [2023]

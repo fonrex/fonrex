@@ -55,6 +55,9 @@ _CHUNK = 2000
 READ = "read"
 REFUSED = "refused"
 MISSING = "missing"
+# The reason kept on a filing the site did not give: its status stays empty, so that it
+# is asked again at the next listing of the index, not at every answer in between.
+NOT_GIVEN = "not given by filings.xbrl.org"
 
 
 class LeiResolverPort(Protocol):
@@ -230,6 +233,8 @@ class EsefStatements:
     ) -> EsefLoad:
         """Read the filings of the company of an instrument, unless read recently.
 
+        A company read less than ``ESEF_REFRESH_HOURS`` ago is not listed again, but
+        its filings still to read (never given, or set to be read again) are read.
         ``force`` lists the filings again and reads every one of them again;
         ``recheck_lei`` asks GLEIF for the LEI again.
         """
@@ -239,7 +244,23 @@ class EsefStatements:
         lei = resolution.lei
         load = await self._load(lei)
         if load is not None and not force and self._is_recent(load.fetched_at):
-            return self._as_load("fresh", load)
+            known = await self._known_filings(lei)
+            stored = {
+                filing.fxo_id: StoredFiling(filing.fxo_id, filing.sha256, status)
+                for filing, status, _ in known
+            }
+            reasons = {filing.fxo_id: reason for filing, _, reason in known}
+            # The filings the site did not give wait for the next listing of the index.
+            pending = [
+                filing
+                for filing in filings_to_read([filing for filing, _, _ in known], stored)
+                if reasons.get(filing.fxo_id) != NOT_GIVEN
+            ]
+            if not pending:
+                return self._as_load("fresh", load)
+            return await self._read_all(
+                lei, resolution, load, [filing for filing, _, _ in known], pending, listed=False
+            )
 
         try:
             filings = await self.provider.filings(lei)
@@ -251,8 +272,26 @@ class EsefStatements:
             return self._as_load("failed", load, lei=lei, reason=reason)
 
         stored = await self._list(lei, filings)
+        pending = filings_to_read(filings, stored, force=force)
+        return await self._read_all(lei, resolution, load, filings, pending, listed=True)
+
+    async def _read_all(
+        self,
+        lei: str,
+        resolution: LeiResolution,
+        load: EsefEntityLoad | None,
+        filings: list[Filing],
+        pending: list[Filing],
+        *,
+        listed: bool,
+    ) -> EsefLoad:
+        """Read the pending filings and record the reading of the company.
+
+        ``listed`` says whether the index was read now: if not, the time of the last
+        listing is kept, so that the index is still listed again once it is old.
+        """
         read, refused, not_given = [], {}, []
-        for filing in filings_to_read(filings, stored, force=force):
+        for filing in pending:
             outcome = await self._read(filing)
             if outcome == READ:
                 read.append(filing.fxo_id)
@@ -261,7 +300,7 @@ class EsefStatements:
             elif outcome != MISSING:
                 refused[filing.fxo_id] = outcome
 
-        fetched_at = self._now()
+        fetched_at = self._now() if listed or load is None else load.fetched_at
         async with self.session_factory() as session:
             async with session.begin():
                 count = (
@@ -356,6 +395,33 @@ class EsefStatements:
 
     # ── Storage ──────────────────────────────────────────────────────────────
 
+    async def _known_filings(self, lei: str) -> list[tuple[Filing, str | None, str | None]]:
+        """The filings of a company as last listed, with their reading status and reason."""
+        rows = await self.filings(lei)
+        return [
+            (
+                Filing(
+                    fxo_id=row.fxo_id,
+                    lei=row.lei,
+                    listed_period_end=row.listed_period_end,
+                    country=row.country,
+                    json_url=row.json_url,
+                    viewer_url=row.viewer_url,
+                    report_url=row.report_url,
+                    package_url=row.package_url,
+                    error_count=row.error_count,
+                    warning_count=row.warning_count,
+                    inconsistency_count=row.inconsistency_count,
+                    added=_aware(row.added),
+                    processed=_aware(row.processed),
+                    sha256=row.sha256,
+                ),
+                row.read_status,
+                row.read_reason,
+            )
+            for row in rows
+        ]
+
     async def _load(self, lei: str) -> EsefEntityLoad | None:
         async with self.session_factory() as session:
             return await session.get(EsefEntityLoad, lei)
@@ -433,6 +499,7 @@ class EsefStatements:
             await self._mark(filing.fxo_id, REFUSED, reason)
             return reason
         if report is None:
+            await self._mark(filing.fxo_id, None, NOT_GIVEN)
             return None
         if not report.facts:
             reason = "no number in the filing"
@@ -441,7 +508,7 @@ class EsefStatements:
         await self._store(filing, report)
         return READ
 
-    async def _mark(self, fxo_id: str, status: str, reason: str | None) -> None:
+    async def _mark(self, fxo_id: str, status: str | None, reason: str | None) -> None:
         async with self.session_factory() as session:
             async with session.begin():
                 row = await session.get(EsefFiling, fxo_id)

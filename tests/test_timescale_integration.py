@@ -2509,6 +2509,49 @@ class TestEsefStatementsOnPostgres:
         ]
         assert later.read == ()
 
+    async def test_a_recent_reading_still_reads_a_filing_set_to_be_read_again(
+        self, statements, engine
+    ):
+        build, clock = statements
+        service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")
+        await service.refresh(1)
+        listed_at = self._filings(engine)
+        # The filing of 2021 set to be read again by hand, as after a correction.
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    UPDATE esef_filings
+                    SET read_status = NULL, read_reason = 'a fact of None'
+                    WHERE fxo_id LIKE '%2021-12-31-ESEF-NL-0'
+                """)
+            )
+        clock["now"] = self.NOW + timedelta(hours=1)
+        provider.asked.clear()
+
+        load = await service.refresh(1)
+        again = await service.refresh(1)
+
+        # Read without listing the index again; the filings not given wait for it.
+        assert provider.listing.await_count == 1
+        assert [fxo_id[21:] for fxo_id in provider.asked] == ["2021-12-31-ESEF-NL-0"]
+        assert (load.status, [fxo_id[21:] for fxo_id in load.read]) == (
+            "fetched",
+            ["2021-12-31-ESEF-NL-0"],
+        )
+        assert load.fetched_at == self.NOW and load.filings == 5
+        assert again.status == "fresh"
+        rows = self._filings(engine)
+        assert (
+            rows["2021-12-31-ESEF-NL-0"].read_status,
+            rows["2021-12-31-ESEF-NL-0"].read_reason,
+        ) == (
+            "read",
+            None,
+        )
+        assert rows["2023-12-31-ESEF-NL-0"].read_status is None
+        assert rows["2023-12-31-ESEF-NL-0"].read_reason == "not given by filings.xbrl.org"
+        assert listed_at["2023-12-31-ESEF-NL-0"].read_reason == "not given by filings.xbrl.org"
+
     async def test_force_reads_every_filing_again(self, statements):
         build, _ = statements
         service, provider = build("airbus", self.AIRBUS, "AIRBUS SE")

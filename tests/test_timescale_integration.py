@@ -2293,6 +2293,105 @@ class _FakeEsef:
         return parse_xbrl_json(path.read_bytes(), filing.lei, filing.fxo_id)
 
 
+class TestEsefLongPrefixesOnPostgres:
+    """Revision 027: the prefix of an extension longer than 40 characters."""
+
+    PREFIX = "ecclesiasticalinsuranceofficepubliclimitedcompany"  # 50 characters
+
+    @staticmethod
+    def _lengths(engine):
+        with engine.connect() as connection:
+            return dict(
+                connection.execute(
+                    text("""
+                        SELECT column_name, character_maximum_length
+                        FROM information_schema.columns
+                        WHERE table_name = 'esef_facts' AND column_name IN ('taxonomy', 'unit')
+                    """)
+                ).all()
+            )
+
+    def test_a_long_prefix_is_stored(self, engine):
+        lei = "213800E5HL2O1FU4I690"
+        fxo_id = f"{lei}-2024-12-31-ESEF-GB-0"
+        with engine.begin() as connection:
+            TestEsefTablesOnPostgres._clean(connection)
+            connection.execute(
+                text("""
+                    INSERT INTO esef_filings (fxo_id, lei, listed_at) VALUES (:f, :lei, now());
+                    INSERT INTO esef_facts
+                        (lei, taxonomy, concept, unit, period_end, duration_days, value,
+                         fxo_id, report_end)
+                    VALUES (:lei, :prefix, 'InsuranceServiceResultBeforeReinsuranceContractsHeld',
+                            :unit, DATE '2024-12-31', 366, 1, :f, DATE '2024-12-31');
+                """),
+                {"f": fxo_id, "lei": lei, "prefix": self.PREFIX, "unit": f"GBP/{self.PREFIX}:x"},
+            )
+            stored = connection.execute(text("SELECT taxonomy FROM esef_facts")).scalar_one()
+            TestEsefTablesOnPostgres._clean(connection)
+        assert stored == self.PREFIX
+
+    def test_027_gives_255_characters_and_its_downgrade_40(self, database_url, engine):
+        _alembic(database_url, "downgrade", "026")
+        before = self._lengths(engine)
+        _alembic(database_url, "upgrade", "027")
+        after = self._lengths(engine)
+        _alembic(database_url, "upgrade", "head")
+        assert before == {"taxonomy": 40, "unit": 40}
+        assert after == {"taxonomy": 255, "unit": 255}
+
+
+class TestEsefTextKeysOnPostgres:
+    """Revision 028: the names of the values of an ESEF filing have no length limit."""
+
+    def test_a_concept_longer_than_255_characters_is_stored(self, engine):
+        lei = "529900JEHFM47DYY3S57"
+        fxo_id = f"{lei}-2021-12-31-ESEF-LU-0"
+        concept = "DisclosureOf" + "VeryDetailedInformation" * 15  # 357 characters
+        with engine.begin() as connection:
+            TestEsefTablesOnPostgres._clean(connection)
+            connection.execute(
+                text("""
+                    INSERT INTO esef_filings (fxo_id, lei, listed_at) VALUES (:f, :lei, now());
+                    INSERT INTO esef_facts
+                        (lei, taxonomy, concept, unit, period_end, duration_days, value,
+                         fxo_id, report_end)
+                    VALUES (:lei, 'erf', :concept, :unit, DATE '2021-12-31', 365, 1, :f,
+                            DATE '2021-12-31');
+                """),
+                {"f": fxo_id, "lei": lei, "concept": concept, "unit": "EUR/" + "erf:x" * 60},
+            )
+            stored = connection.execute(text("SELECT length(concept) FROM esef_facts")).scalar()
+            types = dict(
+                connection.execute(
+                    text("""
+                        SELECT column_name, data_type FROM information_schema.columns
+                        WHERE table_name = 'esef_facts'
+                          AND column_name IN ('taxonomy', 'concept', 'unit')
+                    """)
+                ).all()
+            )
+            TestEsefTablesOnPostgres._clean(connection)
+        assert stored == len(concept) == 357
+        assert types == {"taxonomy": "text", "concept": "text", "unit": "text"}
+
+    def test_downgrade_gives_back_255_characters(self, database_url, engine):
+        _alembic(database_url, "downgrade", "027")
+        with engine.connect() as connection:
+            lengths = dict(
+                connection.execute(
+                    text("""
+                        SELECT column_name, character_maximum_length
+                        FROM information_schema.columns
+                        WHERE table_name = 'esef_facts'
+                          AND column_name IN ('taxonomy', 'concept', 'unit')
+                    """)
+                ).all()
+            )
+        _alembic(database_url, "upgrade", "head")
+        assert lengths == {"taxonomy": 255, "concept": 255, "unit": 255}
+
+
 class TestEsefStatementsOnPostgres:
     """``financials/esef_statements.py`` on the real filings of ``tests/fixtures/esef/``."""
 
@@ -2658,6 +2757,43 @@ class TestEsefScriptOnPostgres:
             "NOPE           unknown   not in the catalogue",
             "1 shares: 0 read, 0 without LEI, 0 failed, 1 unknown",
         ]
+
+    async def test_an_error_on_one_share_does_not_stop_the_others(
+        self, database_url, engine, monkeypatch, capsys
+    ):
+        from financials.esef_statements import EsefLoad
+        from scripts import load_esef
+
+        async def refresh(self, asset_id, force=False, *, recheck_lei=False):
+            if asset_id == 95:
+                raise RuntimeError("value too long for type character varying(40)\n[SQL: ...]")
+            return EsefLoad("no_lei", reason="An issuer of JP files no ESEF report")
+
+        monkeypatch.setattr(load_esef.EsefStatements, "refresh", refresh)
+        monkeypatch.delenv("ASYNC_DATABASE_URL", raising=False)
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin, quote_type)
+                    VALUES (95, 'AIR', 'Airbus SE', 'EUR', true, 'NL0000235190', 'EQUITY'),
+                           (96, 'TOYOTA', 'Toyota', 'JPY', true, 'JP3633400001', 'EQUITY');
+                """)
+            )
+        try:
+            code = await load_esef.main([])
+            output = capsys.readouterr().out
+        finally:
+            with engine.begin() as connection:
+                connection.execute(text("DELETE FROM assets WHERE id IN (95, 96)"))
+
+        lines = {line.split()[0]: line for line in output.splitlines()}
+        assert code == 1
+        assert lines["AIR"] == (
+            "AIR            error     RuntimeError: value too long for type character varying(40)"
+        )
+        assert lines["TOYOTA"].startswith("TOYOTA         no LEI    An issuer of JP")
+        assert ", 1 failed" in output.splitlines()[-1]
 
 
 class TestCotReportsOnPostgres:

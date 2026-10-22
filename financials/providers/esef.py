@@ -58,6 +58,9 @@ SOURCE = "ESEF annual reports, filings.xbrl.org (XBRL International); LEI from G
 USER_AGENT = "Fonrex (+https://github.com/fonrex/fonrex)"
 
 XBRL_JSON = "https://xbrl.org/2021/xbrl-json"
+# The candidate recommendation of xBRL-JSON, of the same layout: the filings converted
+# before 2021 (Krka, Slovenia) still name it.
+XBRL_JSON_TYPES = frozenset({XBRL_JSON, "https://xbrl.org/CR/2021-02-03/xbrl-json"})
 LEI_SCHEME = "http://standards.iso.org/iso/17442"
 ISO4217 = "http://www.xbrl.org/2003/iso4217"
 XBRLI = "http://www.xbrl.org/2003/instance"
@@ -103,10 +106,19 @@ def parse_lei_records(payload: Any) -> list[LeiRecord]:
         legal_name = _text((entity.get("legalName") or {}).get("name"))
         if legal_name is None:
             raise EsefError(f"GLEIF: the entity {lei} has no legal name")
+        # The other names, and the names written in Latin letters of an entity named in
+        # another script (a Greek company has its legal name in Greek).
+        others = list(entity.get("otherNames") or []) + list(
+            entity.get("transliteratedOtherNames") or []
+        )
         other_names = tuple(
-            name
-            for name in (_text(other.get("name")) for other in entity.get("otherNames") or [])
-            if name is not None
+            dict.fromkeys(
+                name
+                for name in (
+                    _text(other.get("name")) for other in others if isinstance(other, dict)
+                )
+                if name is not None
+            )
         )
         registration = (item.get("attributes") or {}).get("registration") or {}
         records.append(
@@ -252,7 +264,7 @@ def parse_xbrl_json(content: bytes | str, lei: str, fxo_id: str) -> EsefReport:
     if not isinstance(document, dict):
         raise EsefError(f"{fxo_id}: not an xBRL-JSON document")
     info = document.get("documentInfo")
-    if not isinstance(info, dict) or info.get("documentType") != XBRL_JSON:
+    if not isinstance(info, dict) or info.get("documentType") not in XBRL_JSON_TYPES:
         found = info.get("documentType") if isinstance(info, dict) else None
         raise EsefError(f"{fxo_id}: not an xBRL-JSON document ({found!r})")
     namespaces = info.get("namespaces")
@@ -268,9 +280,10 @@ def parse_xbrl_json(content: bytes | str, lei: str, fxo_id: str) -> EsefReport:
         dimensions = raw.get("dimensions") if isinstance(raw, dict) else None
         if not isinstance(dimensions, dict):
             raise EsefError(f"{where}: no dimensions")
-        _check_entity(dimensions.get("entity"), namespaces, lei, where)
         if not dimensions.get("unit"):
-            continue  # a text: the notes, the names, the dates
+            # A text (the notes, the names, the dates), or a footnote, which has no entity.
+            continue
+        _check_entity(dimensions.get("entity"), namespaces, lei, where)
         if set(dimensions) - _CORE_DIMENSIONS:
             breakdowns += 1
             continue
@@ -453,6 +466,9 @@ class EsefProvider(BaseFinancialProvider):
     timeout = 120.0
     # filings.xbrl.org states no limit but asks to be used with care.
     _semaphore = asyncio.Semaphore(2)
+    # GLEIF answers 429 to a client asking too fast: wait 2, 4 and 8 seconds.
+    max_retries = 4
+    retry_delay = 2.0
 
     def _headers(self, accept: str) -> dict:
         return {"User-Agent": USER_AGENT, "Accept": accept}
@@ -472,7 +488,10 @@ class EsefProvider(BaseFinancialProvider):
         return None if payload is None else parse_lei_records(payload)
 
     async def filings(self, lei: str) -> list[Filing] | None:
-        """Every filing of ``lei`` in the index (``None`` when it could not be read whole)."""
+        """Every filing of ``lei`` in the index (``None`` when it could not be read whole).
+
+        A LEI the index does not know (``404``) has no filing: ``[]``.
+        """
         if not _LEI.fullmatch(lei or ""):
             raise EsefError(f"{lei!r} is not a LEI")
         url: str | None = f"{FILINGS_URL}/api/entities/{lei}/filings"
@@ -484,11 +503,26 @@ class EsefProvider(BaseFinancialProvider):
                 raise EsefError(
                     f"filings.xbrl.org: {lei} has more than {MAX_PAGES} pages of filings"
                 )
-            payload = await self._get_json(
-                url, headers=self._headers("application/vnd.api+json"), params=params
-            )
-            if payload is None:
+            try:
+                async with self._session() as client:
+                    response = await client.get(
+                        url,
+                        params=params,
+                        headers=lambda: self._headers("application/vnd.api+json"),
+                    )
+            except httpx.HTTPError as error:
+                logger.warning("[%s] GET %s failed: %s", self.name, url, error)
                 return None
+            if response.status_code == 404 and pages == 0:
+                # A LEI the index does not know: the company filed nothing it collected.
+                return []
+            if response.status_code != 200:
+                logger.warning("[%s] GET %s → %d", self.name, url, response.status_code)
+                return None
+            try:
+                payload = response.json()
+            except ValueError as error:
+                raise EsefError(f"filings.xbrl.org: the filings of {lei} are not JSON") from error
             page = parse_filings(payload, lei)
             pages += 1
             filings.extend(page.filings)

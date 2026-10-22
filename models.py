@@ -1023,9 +1023,10 @@ class EsefFact(Base):
         Index("ix_esef_facts_fxo_id", "fxo_id"),
     )
     lei = Column(String(20), primary_key=True)
-    taxonomy = Column(String(40), primary_key=True)  # "ifrs-full" | "tot" | ...
-    concept = Column(String(255), primary_key=True)  # "Revenue", "Assets", ...
-    unit = Column(String(40), primary_key=True)  # "EUR", "EUR/shares", "shares"
+    # Text: a company names the concepts and units of its extension as it wishes (028).
+    taxonomy = Column(Text, primary_key=True)  # "ifrs-full", or an extension: "tot"
+    concept = Column(Text, primary_key=True)  # "Revenue", "Assets", ...
+    unit = Column(Text, primary_key=True)  # "EUR", "EUR/shares", "shares"
     period_end = Column(Date, primary_key=True)
     duration_days = Column(Integer, primary_key=True)
     period_start = Column(Date)  # NULL for a balance at a date

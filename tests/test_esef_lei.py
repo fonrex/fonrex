@@ -73,6 +73,18 @@ class TestNames:
             ("Enel S.p.A.", "ENEL - SPA"),
             ("Volvo AB (publ)", "AB Volvo"),
             ("LVMH Moët Hennessy - Louis Vuitton SE", "LVMH MOET HENNESSY-LOUIS VUITTON"),
+            # Names of the first reading of a real catalogue.
+            ("Octava SA", "OCTAVA SPÓŁKA AKCYJNA"),
+            ("Broedrene A & O Johansen A/S Class B", "BRØDRENE A. & O. JOHANSEN A/S"),
+            ("Broendbyernes IF Fodbold A/S", "BRØNDBYERNES I.F. FODBOLD A/S"),
+            ("HF Company SA", "H.F.COMPANY"),
+            ("Klea Holding SA", "KLEAHOLDING"),
+            ("Groupe Entreprendre SA", "ENTREPRENDRE"),
+            ("A G Barr PLC", "A.G. BARR P.L.C."),
+            ("Dont Nod Entertainment SA", "DON'T NOD ENTERTAINMENT"),
+            ("Mexedia SpA SB", "Mexedia Societa' Per Azioni - Societa' Benefit"),
+            ("B.P. Marsh & Partners PLC", "B.P.MARSH & PARTNERS PLC"),
+            ("Tallink Grupp", "AS TALLINK GRUPP"),
             (
                 "Air Liquide",
                 "L'AIR LIQUIDE SOCIETE ANONYME POUR L'ETUDE ET L'EXPLOITATION DES PROCEDES "
@@ -91,10 +103,16 @@ class TestNames:
             ("Air France-KLM", "L'AIR LIQUIDE SOCIETE ANONYME"),
             ("SA", "AIRBUS SE"),
             (None, "AIRBUS SE"),
+            ("Buccaneer Energy PLC", "NOSTRA TERRA OIL AND GAS COMPANY PLC"),
+            ("Bank AG", "AG BARR"),
+            ("Klea", "KLEAHOLDING"),
         ],
     )
     def test_another_company(self, ours, theirs):
         assert not same_entity(ours, record(theirs))
+
+    def test_a_name_made_of_legal_forms_only_is_no_name(self):
+        assert not same_entity("Airbus SE", record("S.A.", "N.V."))
 
     def test_one_of_the_other_names(self):
         assert same_entity("Total", record("TotalEnergies SE", "TOTAL S.A."))
@@ -164,6 +182,36 @@ class TestResolution:
         assert resolution.lei is None and "no ISIN" in resolution.reason
         source.assert_not_awaited()
         assert store.remembered == []
+
+    @pytest.mark.parametrize(
+        "isin", ["JP3633400001", "US0378331005", "CA92707Y1088", "KYG226921008", "CH0012005267"]
+    )
+    async def test_an_issuer_outside_esef_is_not_asked(self, isin):
+        lei_resolver, store, source = resolver(instrument(isin=isin))
+        resolution = await lei_resolver.resolve(1)
+        assert resolution.reason == (
+            f"An issuer of {isin[:2]} files no ESEF report: GLEIF is not asked about it"
+        )
+        source.assert_not_awaited()
+        assert store.remembered == []
+
+    @pytest.mark.parametrize("isin", ["GB00B6XZKY75", "NO0010096985", "PLNFI0800016"])
+    async def test_the_united_kingdom_and_the_european_economic_area_are_asked(self, isin):
+        lei_resolver, _, source = resolver(instrument(isin=isin), [])
+        await lei_resolver.resolve(1)
+        source.assert_awaited_once_with(isin)
+
+    async def test_a_lei_set_by_hand_outside_esef_is_kept(self):
+        by_hand = instrument(
+            "Novartis AG",
+            isin="CH0012005267",
+            stored_lei="5493007HSCDAFOOUWG35",
+            stored_source=SET_BY_HAND,
+            stored_active=True,
+        )
+        lei_resolver, _, source = resolver(by_hand)
+        assert (await lei_resolver.resolve(1)).lei == "5493007HSCDAFOOUWG35"
+        source.assert_not_awaited()
 
     @pytest.mark.parametrize("quote_type", ["ETF", "MUTUALFUND", "INDEX", " etf "])
     async def test_a_fund_files_no_annual_report(self, quote_type):

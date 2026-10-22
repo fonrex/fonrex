@@ -530,3 +530,65 @@ class TestProvider:
         )
         with pytest.raises(EsefError, match="not of"):
             await EsefProvider().report(filing(f"{TOTAL}-2025-12-31-ESEF-FR-0"))
+
+
+# ── What the first reading of a real catalogue showed ────────────────────────
+
+
+class TestFirstCatalogueReading:
+    async def test_a_lei_the_index_does_not_know_has_no_filing(self, fake_network):
+        fake_network.get(FILINGS_PART, httpx.Response(404, text="Not Found"))
+        assert await EsefProvider().filings(AIRBUS) == []
+        assert fake_network.calls("filings.xbrl.org") == 1  # 404 is not tried again
+
+    async def test_a_second_page_not_found_is_a_reading_not_done(self, fake_network):
+        first = payload("airbus_filings.json")
+        first["links"]["next"] = f"{FILINGS_URL}/api/entities/{AIRBUS}/filings?page%5Bnumber%5D=2"
+        fake_network.get("page%5Bnumber%5D=2", httpx.Response(404, text="Not Found"))
+        fake_network.get(FILINGS_PART, json_response(first))
+        assert await EsefProvider().filings(AIRBUS) is None
+
+    async def test_an_index_that_is_not_json(self, fake_network):
+        fake_network.get(FILINGS_PART, httpx.Response(200, text="<html>maintenance</html>"))
+        with pytest.raises(EsefError, match="not JSON"):
+            await EsefProvider().filings(AIRBUS)
+
+    async def test_gleif_asking_to_wait_is_asked_again(self, fake_network):
+        fake_network.get(
+            GLEIF_PART,
+            httpx.Response(429, text="Too Many Requests"),
+            json_response(payload("airbus_gleif.json")),
+        )
+        (record,) = await EsefProvider().lei_records("NL0000235190")
+        assert record.lei == AIRBUS
+        assert fake_network.backoffs == [2.0]
+
+    def test_the_candidate_recommendation_of_xbrl_json(self):
+        content = document()
+        content["documentInfo"]["documentType"] = "https://xbrl.org/CR/2021-02-03/xbrl-json"
+        assert len(read(content).facts) == len(report(AIRBUS_2025).facts)
+
+    def test_a_footnote_has_no_entity_and_is_left_out(self):
+        content = document()
+        content["facts"]["footnote1"] = {
+            "value": "Restated, see note 2.",
+            "dimensions": {"concept": "xbrl:note", "language": "en"},
+        }
+        content["facts"]["fn-2"] = {"value": "See note 4", "dimensions": {"concept": "xbrl:note"}}
+        assert len(read(content).facts) == len(report(AIRBUS_2025).facts)
+
+    def test_the_names_written_in_latin_letters(self):
+        content = payload("airbus_gleif.json")
+        entity = content["data"][0]["attributes"]["entity"]
+        entity["otherNames"] = [{"name": "AIRBUS GROUP SE", "language": "en"}]
+        entity["transliteratedOtherNames"] = [
+            {"name": "AIRBUS SE", "type": "AUTO_ASCII_TRANSLITERATED_LEGAL_NAME"},
+            {"name": "AIRBUS GROUP SE", "type": "PREFERRED_ASCII_TRANSLITERATED_LEGAL_NAME"},
+            "not a name",
+        ]
+        (record,) = parse_lei_records(content)
+        assert record.other_names == ("AIRBUS GROUP SE", "AIRBUS SE")
+
+    async def test_no_connection_to_the_index_gives_nothing(self, fake_network):
+        fake_network.get(FILINGS_PART, httpx.ConnectError("no route"))
+        assert await EsefProvider().filings(AIRBUS) is None

@@ -38,6 +38,10 @@ from models import Asset
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+# Errors in a row after which the reading stops: the database (or the machine) is
+# down, and every next share would fail the same way.
+ERRORS_IN_A_ROW = 20
+
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -100,6 +104,8 @@ async def main(argv: list[str] | None = None) -> int:
         print("DATABASE_URL (or ASYNC_DATABASE_URL) is not set.", file=sys.stderr)
         return 2
     failed = 0
+    in_a_row = 0
+    stopped = None
     counts = {"read": 0, "no LEI": 0, "failed": 0, "unknown": 0}
     try:
         session_factory = resources.session_factory
@@ -116,9 +122,21 @@ async def main(argv: list[str] | None = None) -> int:
                 counts["unknown"] += 1
                 failed += 1
                 continue
-            load = await statements.refresh(
-                asset_id, force=arguments.force, recheck_lei=arguments.recheck_lei
-            )
+            try:
+                load = await statements.refresh(
+                    asset_id, force=arguments.force, recheck_lei=arguments.recheck_lei
+                )
+            except Exception as error:  # one company never stops the others
+                message = str(error).splitlines()[0][:200] if str(error) else ""
+                print(f"{name:<14} error     {type(error).__name__}: {message}", flush=True)
+                counts["failed"] += 1
+                failed += 1
+                in_a_row += 1
+                if in_a_row == ERRORS_IN_A_ROW:
+                    stopped = name
+                    break
+                continue
+            in_a_row = 0
             print(describe(name, load), flush=True)
             if load.status == "no_lei":
                 counts["no LEI"] += 1
@@ -134,6 +152,11 @@ async def main(argv: list[str] | None = None) -> int:
     if counts["unknown"]:
         summary += f", {counts['unknown']} unknown"
     print(summary)
+    if stopped:
+        print(
+            f"Stopped at {stopped}: {ERRORS_IN_A_ROW} errors in a row. Check the database, "
+            "then run the script again: the shares read are not read again."
+        )
     return 1 if failed else 0
 
 

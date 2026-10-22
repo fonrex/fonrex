@@ -50,17 +50,72 @@ NOT_FOUND = "symbol_not_found"
 RETRY_AFTER = timedelta(days=30)
 
 _ISIN = re.compile(r"[A-Z]{2}[0-9A-Z]{9}[0-9]")
-# European legal forms, written without their dots ("S.p.A." is "spa"), left out of
-# the names before they are compared; the other forms are left out by ``same_company``.
+# The countries whose issuers file in ESEF, or in a format filings.xbrl.org collects
+# with it: the European Union, the European Economic Area, the United Kingdom (UKSEF)
+# and Ukraine. The first two letters of an ISIN are the country of its issuer: GLEIF
+# is not asked about a Japanese, Canadian or American share.
+ESEF_COUNTRIES = frozenset(
+    """AT BE BG CY CZ DE DK EE ES FI FR GR HR HU IE IT LT LU LV MT NL PL PT RO SE SI SK
+    IS LI NO GB UA""".split()
+)
+# European legal forms, written without their dots ("S.p.A." is "spa") or in full,
+# left out of the names before they are compared, at their end only ("Airbus SE"; the
+# "AG" of "A.G. Barr" is no legal form) or, for a few, at their start; the others are left
+# out by ``same_company``. A class of shares at the end goes with them.
 _EUROPEAN_FORMS = frozenset(
-    """sa se nv bv ag spa sca sas sarl srl asa as oyj abp ab publ kgaa gmbh plc""".split()
+    """sa se nv bv ag spa sca sas sarl srl asa as oyj abp ab publ kgaa gmbh plc ae sb
+    class""".split()
+)
+_EUROPEAN_FORMS_IN_FULL = (
+    "spolka akcyjna",
+    "societe anonyme",
+    "societe europeenne",
+    "societas europaea",
+    "aktiengesellschaft",
+    "naamloze vennootschap",
+    "societa per azioni",
+    "sociedad anonima",
+    "sociedade anonima",
+    "aktieselskab",
+    "aktiebolag",
+    "aksjeselskap",
+    "osakeyhtio",
+    "anonymi etaireia",
+    "public limited company",
+    "societa benefit",
+)
+# The forms written before the name: "AB Volvo", "AS Tallink", "Oy Stockmann".
+_LEADING_FORMS = frozenset({"ab", "as", "oy"})
+_SHARE_CLASS = re.compile(r"\s+(class|ser|series)\s+[a-z]$")
+# Letters that Unicode does not decompose into a Latin letter and a mark.
+_LETTERS = str.maketrans(
+    {"ł": "l", "Ł": "L", "ø": "o", "Ø": "O", "æ": "ae", "Æ": "AE", "ß": "ss", "đ": "d", "Đ": "D"}
 )
 
 
 def _without_legal_forms(name: str) -> str:
-    text = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
-    text = text.lower().replace("a/s", " ").replace(".", "")
-    return " ".join(word for word in re.findall(r"[a-z0-9&]+", text) if word not in _EUROPEAN_FORMS)
+    text = unicodedata.normalize("NFKD", (name or "").translate(_LETTERS))
+    text = text.encode("ascii", "ignore").decode().lower()
+    text = text.replace("a/s", " ").replace(".", "").replace("'", "")
+    words = " ".join(re.findall(r"[a-z0-9&]+", text))
+    for form in _EUROPEAN_FORMS_IN_FULL:
+        words = re.sub(rf"\b{form}\b", " ", words)
+    words = _SHARE_CLASS.sub("", " ".join(words.split()))
+    kept = words.split()
+    while kept and kept[-1] in _EUROPEAN_FORMS:
+        kept.pop()
+    while kept and kept[0] in _LEADING_FORMS:
+        kept.pop(0)
+    return " ".join(kept)
+
+
+def _folded(text: str) -> str:
+    """The letters of a name, the spellings of the same letter made one: the Danish
+    "Brødrene" is "Broedrene" in a catalogue and "BRODRENE" once decomposed."""
+    compact = text.replace(" ", "")
+    for spelling, letter in (("oe", "o"), ("ae", "a"), ("aa", "a"), ("ue", "u")):
+        compact = compact.replace(spelling, letter)
+    return compact
 
 
 def _contains(longer: list[str], shorter: list[str]) -> bool:
@@ -69,7 +124,17 @@ def _contains(longer: list[str], shorter: list[str]) -> bool:
 
 
 def _same_name(ours: str, theirs: str) -> bool:
+    if not ours or not theirs:
+        return False
     if same_company(ours, theirs):
+        return True
+    # The same letters, spaced otherwise: "Klea Holding" is "KLEAHOLDING", "A G Barr" is
+    # "A.G. BARR", "Groupe Entreprendre" holds "ENTREPRENDRE" (eight letters at least).
+    ours_compact, theirs_compact = _folded(ours), _folded(theirs)
+    if ours_compact == theirs_compact:
+        return True
+    short_compact, long_compact = sorted((ours_compact, theirs_compact), key=len)
+    if len(short_compact) >= 8 and short_compact in long_compact:
         return True
     # A long legal name holding the short one: "Air Liquide" in "L'AIR LIQUIDE SOCIETE
     # ANONYME POUR L'ETUDE ET L'EXPLOITATION DES PROCEDES GEORGES CLAUDE". Two words at
@@ -168,6 +233,10 @@ class LeiResolver:
         if not _ISIN.fullmatch(isin):
             # Nothing was asked: nothing to remember either.
             return LeiResolution(None, "The instrument has no ISIN: GLEIF is not asked about it")
+        if isin[:2] not in ESEF_COUNTRIES:
+            return LeiResolution(
+                None, f"An issuer of {isin[:2]} files no ESEF report: GLEIF is not asked about it"
+            )
         try:
             records = await self._records_source(isin)
         except EsefError as error:

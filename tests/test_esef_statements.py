@@ -238,3 +238,63 @@ class TestScript:
         assert load_esef.describe(
             "CW8.PA", EsefLoad("no_lei", reason="ETF files no annual report")
         ) == ("CW8.PA         no LEI    ETF files no annual report")
+
+
+class TestScriptStops:
+    async def test_after_errors_in_a_row_the_reading_stops(self, monkeypatch, capsys):
+        from scripts import load_esef
+
+        class Resources:
+            session_factory = None
+
+            async def close(self):
+                pass
+
+        async def shares(session_factory, tickers):
+            return [(f"S{number:03d}", number) for number in range(1, 31)]
+
+        async def refresh(self, asset_id, force=False, *, recheck_lei=False):
+            if asset_id == 1:
+                return EsefLoad("no_lei", reason="An issuer of JP files no ESEF report")
+            raise ConnectionError("the database system is in recovery mode")
+
+        monkeypatch.setattr(load_esef.AsyncDatabaseResources, "create", lambda: Resources())
+        monkeypatch.setattr(load_esef, "instruments", shares)
+        monkeypatch.setattr(load_esef.EsefStatements, "refresh", refresh)
+
+        assert await load_esef.main([]) == 1
+        lines = capsys.readouterr().out.splitlines()
+        errors = [line for line in lines if " error " in line]
+        assert len(errors) == load_esef.ERRORS_IN_A_ROW == 20
+        assert errors[-1].startswith("S021           error     ConnectionError:")
+        assert lines[-2] == "30 shares: 0 read, 1 without LEI, 20 failed"
+        assert lines[-1] == (
+            "Stopped at S021: 20 errors in a row. Check the database, then run the script "
+            "again: the shares read are not read again."
+        )
+
+    async def test_a_reading_between_errors_starts_the_count_again(self, monkeypatch, capsys):
+        from scripts import load_esef
+
+        class Resources:
+            session_factory = None
+
+            async def close(self):
+                pass
+
+        async def shares(session_factory, tickers):
+            return [(f"S{number:03d}", number) for number in range(1, 41)]
+
+        async def refresh(self, asset_id, force=False, *, recheck_lei=False):
+            if asset_id == 15:
+                return EsefLoad("no_lei", reason="no ISIN")
+            raise ConnectionError("down")
+
+        monkeypatch.setattr(load_esef.AsyncDatabaseResources, "create", lambda: Resources())
+        monkeypatch.setattr(load_esef, "instruments", shares)
+        monkeypatch.setattr(load_esef.EsefStatements, "refresh", refresh)
+
+        assert await load_esef.main([]) == 1
+        lines = capsys.readouterr().out.splitlines()
+        # 14 errors, a share without LEI, then 20 errors: stopped at the 35th share.
+        assert lines[-1].startswith("Stopped at S035")

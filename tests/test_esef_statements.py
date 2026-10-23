@@ -300,6 +300,32 @@ class TestScriptStops:
         assert lines[-1].startswith("Stopped at S035")
 
 
+class TestReportEnd:
+    """The period of a filing comes from its facts, not from a single late one."""
+
+    def test_a_fact_dated_after_the_closing_is_not_the_period(self):
+        from financials.esef_statements import report_end_of
+        from financials.providers.esef import parse_xbrl_json
+
+        name = "MINO79WLOO247M1IL051-2025-12-31-ESEF-NL-0"
+        report = parse_xbrl_json((FIXTURES / f"{name}.json").read_bytes(), name[:20], name)
+        assert report_end_of(report) == date(2025, 12, 31)
+        # Shares at the date of the general meeting, tagged at that date.
+        late = replace(report.facts[0], period_end=date(2026, 4, 15), duration_days=0)
+        report = replace(report, facts=(*report.facts, late))
+        assert report.period_ends[0] == date(2026, 4, 15)
+        assert report_end_of(report) == date(2025, 12, 31)
+
+    def test_a_filing_of_few_facts_takes_its_latest_date(self):
+        from financials.esef_statements import report_end_of
+        from financials.providers.esef import parse_xbrl_json
+
+        name = "MINO79WLOO247M1IL051-2025-12-31-ESEF-NL-0"
+        report = parse_xbrl_json((FIXTURES / f"{name}.json").read_bytes(), name[:20], name)
+        report = replace(report, facts=report.facts[:3])
+        assert report_end_of(report) == report.period_ends[0]
+
+
 class TestEarningsPerShare:
     """AB InBev tagged its 2023 earnings per share 265 for 2.65 (US dollars)."""
 
@@ -348,6 +374,18 @@ class TestEarningsPerShare:
             )
         )
         assert all(not year.warnings for year in check_per_share(years))
+
+    def test_a_year_near_break_even_is_not_judged(self):
+        from financials.esef_statements import check_per_share
+
+        # 0.0004 a share rounded to the cent: 25 times the ratio of the other years.
+        years = self.years({2025: "3.10", 2024: "0.01", 2023: "2.98", 2022: "2.65", 2021: "2.9"})
+        years[1].figures["net_income"] = replace(
+            years[1].figures["net_income"], value=Decimal("800000")
+        )
+        checked = check_per_share(years)
+        assert all(not year.warnings for year in checked)
+        assert checked[1].value("eps_basic") == Decimal("0.01")
 
     def test_too_few_years_to_judge(self):
         from financials.esef_statements import check_per_share

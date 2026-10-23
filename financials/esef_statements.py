@@ -26,19 +26,26 @@ Nordisk) are stored but left out.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from financials.esef_lei import LeiResolution
 from financials.providers.esef import EsefError, EsefReport, Filing
-from financials.xbrl_mapping import FISCAL_YEAR_DAYS, FactRow, FiscalYear, annual_statements
+from financials.xbrl_mapping import (
+    FISCAL_YEAR_DAYS,
+    MAPPED_CONCEPTS,
+    FactRow,
+    FiscalYear,
+    annual_statements,
+)
 from models import EsefEntityLoad, EsefFiling
 from models import EsefFact as StoredFact
 from settings import env_int
@@ -50,6 +57,12 @@ ESEF_FORM = "ESEF"
 # years: an error of scale in the filing (AB InBev tagged 265 for 2.65 in 2023).
 PER_SHARE_COLUMNS = ("eps_basic", "eps_diluted")
 SCALE_GAP = Decimal(20)
+# Earnings per share below it are not judged: rounded to the cent, their ratio to the
+# profit of a year near break-even can be wrong by more than SCALE_GAP.
+MIN_PER_SHARE = Decimal("0.10")
+# The facts at a date needed for it to be the period of a filing: one fact dated after
+# the closing (shares at the date of the meeting) does not make it.
+REPORT_END_FACTS = 10
 _CHUNK = 2000
 
 READ = "read"
@@ -130,6 +143,19 @@ def _processing_order(filing: Filing) -> tuple:
     return (processed, filing.fxo_id)
 
 
+def report_end_of(report: EsefReport) -> date:
+    """The period of a filing: the latest date of at least ``REPORT_END_FACTS`` facts.
+
+    The latest date of all would let a single fact dated after the closing pass for the
+    period, and the filings of the next years could no longer replace its figures.
+    """
+    counts = Counter(fact.period_end for fact in report.facts)
+    for end in report.period_ends:
+        if counts[end] >= REPORT_END_FACTS:
+            return end
+    return report.period_ends[0]
+
+
 def is_annual(duration_days: int) -> bool:
     """A balance at a date (0 days) or a fiscal year: what the annual statements read."""
     return duration_days == 0 or FISCAL_YEAR_DAYS[0] <= duration_days <= FISCAL_YEAR_DAYS[1]
@@ -173,13 +199,16 @@ def check_per_share(years: list[FiscalYear]) -> list[FiscalYear]:
     Earnings per share divided by the profit is about one over the number of shares,
     which changes slowly. A year whose ratio is ``SCALE_GAP`` times larger or smaller
     than the median of the other years (three at least) holds an error of scale: the
-    figure is left out and the year says why in ``warnings``.
+    figure is left out and the year says why in ``warnings``. Earnings per share below
+    ``MIN_PER_SHARE`` are neither judged nor used to judge.
     """
     for column in PER_SHARE_COLUMNS:
         ratios = {
             year.period_end: abs(year.value(column) / year.value("net_income"))
             for year in years
-            if year.value(column) and year.value("net_income")
+            if year.value(column)
+            and abs(year.value(column)) >= MIN_PER_SHARE
+            and year.value("net_income")
         }
         if len(ratios) < 4:
             continue
@@ -366,14 +395,31 @@ class EsefStatements:
         return load, check_per_share(annual_statements(await self.stored_rows(load.lei)))
 
     async def stored_rows(self, lei: str) -> list[FactRow]:
-        """The stored values of a company that make annual statements."""
+        """The stored values of a company that make annual statements.
+
+        Only the concepts of the columns, for a fiscal year or at a date: the other
+        values stay stored, for a later mapping.
+        """
         async with self.session_factory() as session:
             facts = (
-                (await session.execute(select(StoredFact).where(StoredFact.lei == lei)))
+                (
+                    await session.execute(
+                        select(StoredFact).where(
+                            StoredFact.lei == lei,
+                            tuple_(StoredFact.taxonomy, StoredFact.concept).in_(
+                                sorted(MAPPED_CONCEPTS)
+                            ),
+                            or_(
+                                StoredFact.duration_days == 0,
+                                StoredFact.duration_days.between(*FISCAL_YEAR_DAYS),
+                            ),
+                        )
+                    )
+                )
                 .scalars()
                 .all()
             )
-        return [fact_row(fact) for fact in facts if is_annual(fact.duration_days)]
+        return [fact_row(fact) for fact in facts]
 
     async def filings(self, lei: str) -> list[EsefFiling]:
         """The filings of a company in the index, the latest period first."""
@@ -518,7 +564,7 @@ class EsefStatements:
 
     async def _store(self, filing: Filing, report: EsefReport) -> None:
         """Insert the values; a stored value is replaced only by one of a filing as late."""
-        report_end = report.period_ends[0]
+        report_end = report_end_of(report)
         values = [
             {
                 "lei": filing.lei,

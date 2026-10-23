@@ -407,9 +407,15 @@ class FiscalYear:
         return figure.value if figure else None
 
 
+_CURRENCY = re.compile(r"[A-Z]{3}")
+
+
 def reporting_currency(rows: Iterable[FactRow]) -> str | None:
-    """The currency of the latest annual report: the most frequent money unit it uses."""
-    money = [row for row in rows if "/" not in row.unit and row.unit != "shares"]
+    """The currency of the latest annual report: the most frequent money unit it uses.
+
+    Only a code of ISO 4217 counts: a ratio (``pure``) or a unit of the filer is not money.
+    """
+    money = [row for row in rows if _CURRENCY.fullmatch(row.unit)]
     if not money:
         return None
     last_filed = max(row.order for row in money)

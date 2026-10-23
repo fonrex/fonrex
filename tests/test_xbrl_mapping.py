@@ -219,6 +219,32 @@ class TestAnnualStatements:
         assert (year.currency, year.value("revenue")) == ("EUR", Decimal("36800000000"))
         assert year.value("operating_cashflow") is None  # not mixed in
 
+    def test_a_ratio_or_a_unit_of_the_filer_is_not_a_currency(self):
+        def row(concept, unit, value):
+            return FactRow(
+                "lei",
+                "ifrs-full",
+                concept,
+                unit,
+                date(2025, 12, 31),
+                365,
+                date(2025, 1, 1),
+                Decimal(value),
+                "f",
+                "ESEF",
+                2025,
+                "FY",
+                date(2025, 12, 31),
+                None,
+            )
+
+        # More ratios and tonnes of CO2 than amounts in the latest filing: still euros.
+        rows = [row(f"Ratio{n}", "pure", "0.5") for n in range(4)]
+        rows += [row(f"Emissions{n}", "tCO2e", "12") for n in range(3)]
+        rows += [row("Revenue", "EUR", "1000"), row("ProfitLoss", "EUR", "100")]
+        assert reporting_currency(rows) == "EUR"
+        assert reporting_currency(rows[:7]) is None
+
     def test_no_money_facts_no_years(self):
         assert reporting_currency([]) is None
         assert annual_statements([]) == []

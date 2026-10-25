@@ -151,22 +151,15 @@ def _make_mock_ticker():
     ticker.cashflow = pd.DataFrame(cashflow_data)
     ticker.quarterly_cashflow = pd.DataFrame()
 
-    # .earnings_history
+    # .earnings_history: the shape of yfinance 1.7, quarter end dates as index
     eh_data = pd.DataFrame(
-        [
-            {
-                "quarter": "2024Q4",
-                "epsActual": 1.21,
-                "epsEstimate": 1.15,
-                "surprisePercent": 5.2,
-            },
-            {
-                "quarter": "2024Q3",
-                "epsActual": 0.98,
-                "epsEstimate": 1.02,
-                "surprisePercent": -3.9,
-            },
-        ]
+        {
+            "epsActual": [0.98, 1.21],
+            "epsEstimate": [1.02, 1.15],
+            "epsDifference": [-0.04, 0.06],
+            "surprisePercent": [-0.0392, 0.0522],
+        },
+        index=pd.DatetimeIndex(["2024-09-30", "2024-12-31"], name="quarter"),
     )
     ticker.earnings_history = eh_data
 
@@ -430,7 +423,43 @@ class TestFetchEarnings(_DatabaseTestCase):
         )
         self.assertIsNotNone(q4)
         self.assertEqual(float(q4.eps_actual), 1.21)
-        self.assertEqual(float(q4.surprise_pct), 5.2)
+        self.assertEqual(float(q4.eps_estimate), 1.15)
+        self.assertEqual(float(q4.surprise), 0.06)
+        # A ratio, as Yahoo gives it
+        self.assertEqual(float(q4.surprise_pct), 0.0522)
+        self.assertEqual(q4.period_end, date(2024, 12, 31))
+        q3 = session.query(EarningsHistory).filter_by(asset_id=1, period="2024Q3").first()
+        self.assertEqual(q3.period_end, date(2024, 9, 30))
+        self.assertEqual(float(q3.surprise_pct), -0.0392)
+        session.close()
+
+    def test_earnings_updated_on_a_second_fetch(self):
+        mock_ticker = _make_mock_ticker()
+        self.enricher._fetch_earnings(1, mock_ticker)
+        mock_ticker.earnings_history = mock_ticker.earnings_history.assign(
+            epsActual=[0.99, 1.25]
+        )
+        self.enricher._fetch_earnings(1, mock_ticker)
+
+        session = self.Session()
+        earnings = session.query(EarningsHistory).filter_by(asset_id=1).all()
+        self.assertEqual(len(earnings), 2)
+        q4 = session.query(EarningsHistory).filter_by(asset_id=1, period="2024Q4").one()
+        self.assertEqual(float(q4.eps_actual), 1.25)
+        session.close()
+
+    def test_rows_without_quarter_date_are_reported(self):
+        """Rows Yahoo gives but that cannot be dated are not dropped silently."""
+        mock_ticker = MagicMock()
+        mock_ticker.earnings_history = pd.DataFrame(
+            {"epsActual": [1.0], "epsEstimate": [0.9]}, index=pd.Index([None], name="quarter")
+        )
+        with self.assertLogs("financials.enrichment.yfinance_enricher", "WARNING") as logs:
+            self.enricher._fetch_earnings(1, mock_ticker)
+
+        self.assertIn("nothing stored", logs.output[0])
+        session = self.Session()
+        self.assertEqual(session.query(EarningsHistory).filter_by(asset_id=1).count(), 0)
         session.close()
 
     def test_earnings_none(self):

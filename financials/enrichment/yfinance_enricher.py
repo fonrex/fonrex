@@ -467,13 +467,15 @@ class YFinanceEnricher:
         try:
             from models import EarningsHistory
 
-            # yfinance gives earnings_history as a DataFrame
+            # yfinance gives earnings_history as a DataFrame indexed by the end
+            # date of each quarter (index named "quarter"), with the columns
+            # epsActual, epsEstimate, epsDifference and surprisePercent.
             try:
                 eh = t.earnings_history
             except Exception:
                 eh = None
 
-            if eh is None or (isinstance(eh, pd.DataFrame) and eh.empty):
+            if not isinstance(eh, pd.DataFrame) or eh.empty:
                 logger.debug("No earnings history for asset_id=%s", asset_id)
                 return
 
@@ -481,48 +483,48 @@ class YFinanceEnricher:
             try:
                 count = 0
 
-                if isinstance(eh, pd.DataFrame):
-                    for _, row in eh.iterrows():
-                        # Build the period label
-                        quarter = row.get("quarter")
-                        period_end = row.get("period") or row.get("reportedDate")
+                for quarter_end, row in eh.iterrows():
+                    period_end = _safe_date(quarter_end)
+                    if period_end is None:
+                        continue
+                    # Calendar quarter of the period end: "2025Q3" for 2025-09-30
+                    period_label = f"{period_end.year}Q{(period_end.month - 1) // 3 + 1}"
 
-                        if quarter:
-                            period_label = str(quarter)
-                        elif period_end:
-                            dt = _safe_date(period_end)
-                            if dt:
-                                q = (dt.month - 1) // 3 + 1
-                                period_label = f"{dt.year}Q{q}"
-                            else:
-                                continue
-                        else:
-                            continue
+                    values = {
+                        "asset_id": asset_id,
+                        "period": period_label,
+                        "period_end": period_end,
+                        "eps_actual": _to_decimal(row.get("epsActual")),
+                        "eps_estimate": _to_decimal(row.get("epsEstimate")),
+                        "surprise": _to_decimal(row.get("epsDifference")),
+                        # A ratio, as Yahoo gives it: 0.1273 for a 12.73 % surprise
+                        "surprise_pct": _to_decimal(row.get("surprisePercent")),
+                        "fetched_at": datetime.now(timezone.utc),
+                    }
 
-                        values = {
-                            "asset_id": asset_id,
-                            "period": period_label,
-                            "eps_actual": _to_decimal(row.get("epsActual")),
-                            "eps_estimate": _to_decimal(row.get("epsEstimate")),
-                            "surprise_pct": _to_decimal(row.get("surprisePercent")),
-                            "fetched_at": datetime.now(timezone.utc),
-                        }
+                    existing = (
+                        session.query(EarningsHistory)
+                        .filter_by(asset_id=asset_id, period=period_label)
+                        .first()
+                    )
 
-                        existing = (
-                            session.query(EarningsHistory)
-                            .filter_by(asset_id=asset_id, period=period_label)
-                            .first()
-                        )
+                    if existing:
+                        for key, value in values.items():
+                            if key not in ("asset_id", "period"):
+                                setattr(existing, key, value)
+                    else:
+                        session.add(EarningsHistory(**values))
 
-                        if existing:
-                            for key, value in values.items():
-                                if key not in ("asset_id", "period"):
-                                    setattr(existing, key, value)
-                        else:
-                            obj = EarningsHistory(**values)
-                            session.add(obj)
+                    count += 1
 
-                        count += 1
+                if count == 0:
+                    logger.warning(
+                        "Earnings history of asset_id=%s has %d rows but no quarter date: "
+                        "nothing stored (index %r)",
+                        asset_id,
+                        len(eh),
+                        eh.index.name,
+                    )
 
                 session.commit()
                 logger.debug(

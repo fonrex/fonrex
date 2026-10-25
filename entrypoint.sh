@@ -30,8 +30,13 @@ check_service() {
     return 1
 }
 
-# Check PostgreSQL
-if ! check_service db 5432 "PostgreSQL" 15 3; then
+# Check PostgreSQL at the address of DATABASE_URL (db:5432 by default)
+read -r DB_HOST DB_PORT < <(python -c "
+import os
+from database.lifecycle import database_address
+print(*database_address(os.environ.get('DATABASE_URL')))
+") || true
+if ! check_service "${DB_HOST:-db}" "${DB_PORT:-5432}" "PostgreSQL" 15 3; then
     echo "Cannot connect to PostgreSQL. Aborting startup."
     exit 1
 fi

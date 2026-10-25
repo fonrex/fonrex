@@ -96,13 +96,33 @@ The API image is self-contained: it holds the code, the Alembic migrations and t
 
 The Docker startup goes through `entrypoint.sh`:
 
-1. Waits for PostgreSQL on `db:5432`; the start-up is aborted if it never answers.
+1. Waits for PostgreSQL at the host and port of `DATABASE_URL` (`db:5432` in Compose, and when the URL gives no host; `database_address()` of `database/lifecycle.py`); the start-up is aborted if it never answers.
 2. Waits for Redis on `redis:6379`; an unreachable Redis only disables the cache.
 3. Applies database migrations via Alembic (`alembic upgrade head`).
 4. With `SEED_ON_FIRST_RUN=true` and an empty `assets` table, imports `data/etf.csv`.
 5. Launches `gunicorn --workers $WEB_CONCURRENCY --worker-class uvicorn.workers.UvicornWorker main:app`.
 
 `docker-compose.yml` loads `.env` into the API container (`env_file`), overrides `DATABASE_URL` and `REDIS_URL` to target the Compose services, sets `WEB_CONCURRENCY` (default 1) and clears the system proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`). PostgreSQL and Redis are published on `127.0.0.1` only.
+
+**External database.** To use a PostgreSQL server outside Compose (it needs the TimescaleDB extension, as the `db` image provides), keep `docker-compose.yml` as it is and put the address in `docker-compose.override.yml`, which `docker compose` loads on its own. The override points both services that reach the database to it, removes their dependency on `db`, and puts `db` behind a profile so that it no longer starts:
+
+```yaml
+services:
+  db:
+    profiles: [local-db]
+  fonrex-api:
+    environment:
+      - DATABASE_URL=postgresql://fonrex:${POSTGRES_PASSWORD}@db.example.com:5432/fonrex
+    depends_on: !override
+      redis:
+        condition: service_healthy
+  fonrex-migrate:
+    environment:
+      - DATABASE_URL=postgresql://fonrex:${POSTGRES_PASSWORD}@db.example.com:5432/fonrex
+    depends_on: !reset []
+```
+
+The entrypoint then waits for `db.example.com:5432` instead of `db:5432`.
 
 Authentication is enforced by default (`auth/dependencies.py`): protected routes require a key listed in `FONREX_API_KEY`, `FONREX_RELAY_KEY` or `FONREX_API_KEYS` (full access), or in `FONREX_READ_ONLY_API_KEYS` (reads only: `GET` routes plus the two computation routes `POST /technical/batch` and `POST /dcf/{ticker}`; meant for clients holding the key outside the host, such as the Sheets connector). With no key configured every protected request is rejected (fail closed); the only opt-out is `FONREX_AUTH_REQUIRED=false` with no key configured. `main.py` logs the effective mode at startup.
 

@@ -1,6 +1,9 @@
 """The Docker image must run without the project folder mounted over it."""
 
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -135,3 +138,51 @@ class TestServiceAddresses:
         environment = self._api_environment()
         assert environment["ASYNC_DATABASE_URL"] == ""
         assert "@db:5432/" in environment["DATABASE_URL"]
+
+
+class TestDatabaseWait:
+    """The entrypoint waits for the database of DATABASE_URL, not always for db:5432."""
+
+    @staticmethod
+    def _address_snippet() -> str:
+        script = (PROJECT_ROOT / "entrypoint.sh").read_text(encoding="utf-8")
+        match = re.search(r'< <\(python -c "\n(.*?)"\)', script, re.DOTALL)
+        assert match, "entrypoint.sh no longer reads the database address: update this test"
+        return match[1]
+
+    def _address_waited_for(self, database_url: str | None) -> str:
+        env = {key: value for key, value in os.environ.items() if key != "DATABASE_URL"}
+        if database_url is not None:
+            env["DATABASE_URL"] = database_url
+        env["PYTHONPATH"] = str(PROJECT_ROOT)
+        result = subprocess.run(
+            [sys.executable, "-c", self._address_snippet()],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+
+    def test_compose_database_is_the_default(self):
+        assert self._address_waited_for(None) == "db 5432"
+        assert self._address_waited_for("postgresql://fonrex:pw@db:5432/fonrex") == "db 5432"
+
+    def test_external_database_is_waited_for(self):
+        url = "postgresql://fonrex:pw@db.example.com:6432/fonrex"
+        assert self._address_waited_for(url) == "db.example.com 6432"
+
+    def test_port_defaults_to_postgresql(self):
+        url = "postgresql+psycopg2://fonrex:pw@10.0.0.5/fonrex"
+        assert self._address_waited_for(url) == "10.0.0.5 5432"
+
+    def test_unreadable_url_falls_back_to_compose(self):
+        assert self._address_waited_for("postgresql://fonrex:pw@db.example.com:notaport/x") == (
+            "db 5432"
+        )
+        assert self._address_waited_for("postgresql:///fonrex") == "db 5432"
+
+    def test_entrypoint_waits_for_the_address_it_read(self):
+        script = (PROJECT_ROOT / "entrypoint.sh").read_text(encoding="utf-8")
+        assert 'check_service "${DB_HOST:-db}" "${DB_PORT:-5432}" "PostgreSQL"' in script
+        assert "check_service db 5432" not in script

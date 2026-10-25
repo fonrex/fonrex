@@ -7,6 +7,7 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlsplit
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -58,6 +59,26 @@ def get_async_database_url() -> Optional[str]:
         sync_url.split("://")[0],
     )
     return None
+
+
+def database_address(database_url: Optional[str]) -> tuple[str, int]:
+    """Return the host and port of ``database_url``, for the start-up wait.
+
+    The Docker entrypoint waits for this address before applying the
+    migrations, so that a database outside Compose (set through
+    ``DATABASE_URL``) is waited for instead of the ``db`` service. A URL
+    without host or port falls back to the ``db:5432`` of Compose.
+    """
+    host, port = "db", 5432
+    if not database_url:
+        return host, port
+    try:
+        parts = urlsplit(database_url)
+        port = parts.port or port
+    except ValueError:
+        logger.warning("DATABASE_URL cannot be parsed: waiting for db:5432")
+        return host, 5432
+    return parts.hostname or host, port
 
 
 @dataclass

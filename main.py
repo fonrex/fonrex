@@ -17,6 +17,7 @@ with warnings.catch_warnings():
     )
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.openapi.utils import get_openapi
     from fastapi.responses import JSONResponse
     from fastapi.staticfiles import StaticFiles
 
@@ -92,7 +93,40 @@ async def app_lifespan(_app: FastAPI):
         await shutdown_event(_app)
 
 
-app = FastAPI(title="FonRex API", version="2.0.0", lifespan=app_lifespan)
+app = FastAPI(
+    title="FonRex API",
+    version="2.0.0",
+    lifespan=app_lifespan,
+    # Swagger UI keeps the key entered under "Authorize" across page reloads
+    swagger_ui_parameters={"persistAuthorization": True},
+)
+
+
+def custom_openapi():
+    """Declare the API key so Swagger UI offers "Authorize" and sends the key.
+
+    The key is checked by ``api_key_auth_middleware``, not by route dependencies, so
+    FastAPI would otherwise publish no security scheme and every "Try it out" call
+    would be rejected.
+    """
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    schema.setdefault("components", {})["securitySchemes"] = {
+        "ApiKeyHeader": {"type": "apiKey", "in": "header", "name": "X-API-KEY"},
+        "BearerAuth": {"type": "http", "scheme": "bearer"},
+    }
+    schema["security"] = [{"ApiKeyHeader": []}, {"BearerAuth": []}]
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi
 
 # CORS — restrict to OpenBB Workspace origin (configurable for Enterprise)
 _openbb_origins = [

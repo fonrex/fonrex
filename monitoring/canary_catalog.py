@@ -33,7 +33,8 @@ CANARY_ASSETS: dict[str, dict[str, tuple[float, float]]] = {
         "price": (200.0, 600.0),
     },
     "TSLA": {
-        "pe_ratio": (30.0, 300.0),
+        # 409 on GuruFocus in October 2026: a thin profit makes the PER of Tesla swing widely
+        "pe_ratio": (30.0, 800.0),
         "beta": (1.5, 3.5),
         "price": (100.0, 600.0),
     },

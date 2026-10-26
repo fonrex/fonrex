@@ -205,6 +205,9 @@ class TestPercentProvidersPassValidation:
         assert kept["piotroski_score"] == 4
         assert kept["beneish_m_score"] == pytest.approx(-2.95)
         assert kept["altman_z_score"] == pytest.approx(14.4)
+        # The PER the page displays is within the canary range of TSLA
+        low, high = CANARY_ASSETS["TSLA"]["pe_ratio"]
+        assert low <= kept["pe_ratio"] <= high
         assert kept["gf_score"] == 88
         assert to_ratio("Gurufocus", "roic", Decimal("3.11")) == Decimal("0.0311")
 

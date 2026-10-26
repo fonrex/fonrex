@@ -234,8 +234,9 @@ docker compose exec -T db pg_dump -U fonrex -d fonrex -Fc > fonrex.dump
   `exchange` or `isin`, and replace a series with
   `POST /historical/ingest?ticker=<ticker>&force_refresh=true`.
 - **Permission denied on `logs`**: `mkdir -p logs && chmod 777 logs`.
-- **PostgreSQL on another server**: set its address in `docker-compose.override.yml`; see
-  [Startup](ARCHITECTURE.md#startup) in `ARCHITECTURE.md`.
+- **PostgreSQL on another server**: set its address in `docker-compose.override.yml` (Docker
+  Compose v2.24 or later); see [Startup](ARCHITECTURE.md#startup) in `ARCHITECTURE.md`. Back
+  it up with `pg_dump` against that server, not with the `db` command above.
 - **Container name already in use**: `docker rm -f fonrex-db fonrex-redis fonrex-api`.
 
 Restoring a backup, upgrading an older installation and cleaning old prices are covered in the

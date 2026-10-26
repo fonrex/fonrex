@@ -122,7 +122,7 @@ services:
     depends_on: !reset []
 ```
 
-The entrypoint then waits for `db.example.com:5432` instead of `db:5432`.
+The `!override` and `!reset` tags need Docker Compose v2.24 or later; an older version rejects the file with a YAML error. The entrypoint then waits for `db.example.com:5432` instead of `db:5432`. With `db` stopped, the backup command of the README (`docker compose exec -T db pg_dump ...`) no longer applies: run `pg_dump` against the external server instead, for example `pg_dump -h db.example.com -U fonrex -d fonrex -Fc > fonrex.dump`.
 
 Authentication is enforced by default (`auth/dependencies.py`): protected routes require a key listed in `FONREX_API_KEY`, `FONREX_RELAY_KEY` or `FONREX_API_KEYS` (full access), or in `FONREX_READ_ONLY_API_KEYS` (reads only: `GET` routes plus the two computation routes `POST /technical/batch` and `POST /dcf/{ticker}`; meant for clients holding the key outside the host, such as the Sheets connector). With no key configured every protected request is rejected (fail closed); the only opt-out is `FONREX_AUTH_REQUIRED=false` with no key configured. `main.py` logs the effective mode at startup.
 

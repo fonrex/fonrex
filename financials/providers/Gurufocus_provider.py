@@ -13,6 +13,7 @@ and the revenue of the last twelve months. Percentages are returned as displayed
 """
 
 import logging
+import re
 from typing import Optional
 
 from selectolax.parser import HTMLParser, Node
@@ -37,6 +38,10 @@ TERM_FIELDS = {
     "eps-diluated": "eps",  # sic: the code GuruFocus uses
     "revenue": "revenue",
 }
+
+# The scale an amount is displayed in, written in its label: "Revenue (TTM) (Mil $)".
+_SCALE = re.compile(r"\((Thou|Mil|Bil)\b", re.IGNORECASE)
+_SCALES = {"thou": 1e3, "mil": 1e6, "bil": 1e9}
 
 # A US listing has no exchange in the address of its page (``/stock/TSLA/``).
 _US_EXCHANGES = frozenset(code for code, suffix in GURUFOCUS_TO_YAHOO.items() if suffix == "")
@@ -126,8 +131,10 @@ class GurufocusProvider(BaseProvider):
                 if number != int(number) or not 0 <= number <= 9:
                     continue
                 number = int(number)
-            elif field == "revenue" and "(mil" in label.lower():
-                number *= 1e6
+            elif field == "revenue":
+                scale = _SCALE.search(label)
+                if scale:
+                    number *= _SCALES[scale.group(1).lower()]
             setattr(metrics, field, number)
 
         return metrics

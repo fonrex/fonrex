@@ -1053,6 +1053,28 @@ class TestGurufocus:
 
         assert set(metrics) == {"ticker", "provider_url", "name"}
 
+    @pytest.mark.parametrize(
+        ("label", "revenue"),
+        [
+            ("Revenue (TTM) (Mil $)", 1_234e6),
+            ("Revenue (TTM) (Bil €)", 1_234e9),
+            ("Revenue (TTM) (Thou ¥)", 1_234e3),
+            ("Revenue (TTM)", 1_234.0),
+        ],
+    )
+    async def test_revenue_takes_the_scale_of_its_label(self, fake_network, label, revenue):
+        page = gurufocus_page().replace(
+            "</table>",
+            '<tr><td></td><td><a href="https://www.gurufocus.com/term/revenue/XPAR:AIR">'
+            f"{label}</a></td><td><span>1,234</span></td></tr></table>",
+        )
+        fake_network.get(self.SEARCH, ok_json(GURUFOCUS_SEARCH))
+        fake_network.get("/stock/", ok(page))
+
+        metrics = await GurufocusProvider().get_financials("AIR.PA")
+
+        assert metrics.revenue == pytest.approx(revenue)
+
     async def test_an_impossible_f_score_is_dropped(self, fake_network):
         fake_network.get(self.SEARCH, ok_json(GURUFOCUS_SEARCH))
         fake_network.get(

@@ -13,6 +13,9 @@ from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
+_ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}\d")
+_CURRENCY = re.compile(r"[A-Z]{3}")
+
 # List of modern User-Agents for rotation
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -180,85 +183,98 @@ class ZoneBourseProvider(BaseProvider):
         return None
 
     def _parse_page(self, parser: HTMLParser, ticker_input: str, url: str) -> FinancialMetrics:
-        """Parses the HTML to extract financial metrics."""
+        """Parses the HTML to extract financial metrics.
+
+        The ticker stays the one asked: the ISIN of the page goes to ``isin``.
+        """
         metrics = FinancialMetrics(ticker=ticker_input)
         metrics.provider_url = url
 
         try:
-            # 1. Basic Info (ISIN, Name, Sector)
-            # Using generic strategies as specific classes change.
-            # Looking for h1/h2 relevant text.
-
-            # Header often contains the name
+            # 1. Header: "Cours <company name>", then badges (country, symbol, ISIN, sector)
             h1 = parser.css_first("h1")
             if h1:
-                # The quote page heading reads "Cours <company name>".
-                metrics.name = re.sub(r"^Cours\s+", "", h1.text(strip=True))
+                metrics.name = re.sub(r"^Cours\s+", "", h1.text(strip=True)) or None
+            metrics.isin = self._isin(parser)
+            metrics.sector = self._sector(parser)
 
-            # Extract ISIN - usually labeled
-            # Try to find text "ISIN:" nearby
-            metrics.ticker = self._extract_labeled_value(parser, "ISIN") or ticker_input
+            # Last price, in the currency written next to it
+            last = parser.css_first(".is__realtime-last .js-last")
+            if last:
+                metrics.price = self._clean_number(last.text(strip=True))
+                currency = last.parent.css_first("sup") if last.parent else None
+                if currency and _CURRENCY.fullmatch(currency.text(strip=True)):
+                    metrics.currency = currency.text(strip=True)
 
-            # Sector
-            metrics.sector = self._extract_labeled_value(
-                parser, "Secteur"
-            ) or self._extract_labeled_value(parser, "Sector")
+            # 2. Label / value rows of the side cards (consensus, company profile)
+            for label, value in self._grid_rows(parser):
+                self._assign_grid_value(metrics, label, value)
 
-            # 2. Ratings & Consensus
-            # Trading Rating / Investment Rating often in a 'ratings' section.
-            # We look for container with 'rating' class or id.
-            # Old code used: div#ratings
-
-            # Consensus Mean
-            # Old code: div#consensusDetail...
-            consensus_node = parser.css_first("div#consensusDetail")
-            if consensus_node:
-                # Consensus markup is detected here; extraction remains provider-specific.
-                logger.debug("Consensus section detected for %s", ticker_input)
-
-            # ESG Score
-            # Old code: div.esg-rank
+            # ESG MSCI rating (AAA to CCC)
             esg_node = parser.css_first(".esg-rank")
             if esg_node:
                 metrics.esg_score = esg_node.text(strip=True)
 
-            # 3. Financial Data (Revenue, PE, etc.)
-            # Extract from financial tables (often present on the summary page or a tab)
-            # We assume the summary page has some key figures table.
+            # 3. Valuation and financial tables (estimates of the current fiscal year)
             self._extract_financial_table_data(parser, metrics)
-
-            # 4. Analyst Count / Recommendation
-            # Often in the consensus section
 
         except Exception as e:
             logger.error(f"Error parsing page: {e}")
 
         return metrics
 
-    def _extract_labeled_value(self, parser: HTMLParser, label: str) -> Optional[str]:
-        """
-        Helper to find a value associated with a label using text search.
-        E.g. find node with text "ISIN", then get next sibling or child.
-        """
-        # Strategy: Find any element containing the label
-        # This is expensive for the whole doc, maybe limit scope?
-        # For now, searching common metadata containers if possible, else global.
-
-        # Selectolax doesn't implement :contains easily. We iterate promising candidates.
-        # Check standard metadata lists
-        candidates = parser.css("li, td, div, span")
-        for node in candidates:
-            # We want 'leaf' nodes or small nodes roughly
-            txt = node.text(strip=True)
-            if label in txt and len(txt) < 100:
-                # If label is "ISIN: FR0000...", we split
-                if ":" in txt:
-                    parts = txt.split(":")
-                    if label in parts[0]:
-                        return parts[1].strip()
-                # If label is its own node, maybe the value is next sibling
-                # Not easily accessible in selectolax without parent iter.
+    @staticmethod
+    def _isin(parser: HTMLParser) -> Optional[str]:
+        """The ISIN of the header badges, or of an "ISIN : ..." label."""
+        for badge in parser.css(".badge-container h2"):
+            text = badge.text(strip=True)
+            if _ISIN.fullmatch(text):
+                return text
+        for node in parser.css("li, td, div, span"):
+            text = node.text(strip=True)
+            match = re.fullmatch(r"ISIN\s*:?\s*([A-Z]{2}[A-Z0-9]{9}\d)", text)
+            if match:
+                return match.group(1)
         return None
+
+    @staticmethod
+    def _sector(parser: HTMLParser) -> Optional[str]:
+        """The sector link of the header (``/bourse/secteurs/...``)."""
+        link = parser.css_first('.badge-container a[href*="/bourse/secteurs/"]')
+        if link:
+            return link.text(strip=True) or None
+        return None
+
+    @staticmethod
+    def _grid_rows(parser: HTMLParser) -> List[Tuple[str, str]]:
+        """The rows ``<div class="grid"><div class="c">label</div><div>value</div></div>``."""
+        rows = []
+        for grid in parser.css("div.grid"):
+            cells = [child for child in grid.iter() if child.tag in ("div", "a")]
+            if len(cells) != 2:
+                continue
+            label = cells[0].text(strip=True)
+            value = " ".join(cells[1].text(separator=" ").split())
+            if label and value and len(label) < 40:
+                rows.append((label, value))
+        return rows
+
+    def _assign_grid_value(self, metrics: FinancialMetrics, label: str, value: str) -> None:
+        key = label.lower()
+        if key == "recommandation moyenne":
+            metrics.consensus = value
+        elif key == "nombre d'analystes":
+            count = self._clean_number(value)
+            if count is not None and count == int(count):
+                metrics.analyst_count = int(count)
+        elif key == "objectif de cours moyen":
+            metrics.target_price = self._clean_number(value.split(" ")[0])
+        elif key == "employés":
+            staff = self._clean_number(value)
+            if staff is not None and staff == int(staff):
+                metrics.employees = int(staff)
+        elif key == "secteur" and not metrics.sector:
+            metrics.sector = value
 
     def _extract_financial_table_data(self, parser: HTMLParser, metrics: FinancialMetrics):
         """
@@ -302,7 +318,18 @@ class ZoneBourseProvider(BaseProvider):
     @staticmethod
     def _assign_metric(metrics: FinancialMetrics, label_lower: str, value: float) -> None:
         """Maps a row label to a metric; an already extracted metric is kept."""
-        if "chiffre d'affaires" in label_lower or "net sales" in label_lower:
+        if label_lower.startswith("capitalisation"):
+            field = "market_cap"
+        elif label_lower.startswith("valeur d'entreprise"):
+            field = "enterprise_value"
+        elif label_lower.startswith("ve / ca") or label_lower.startswith("ve/ca"):
+            field = "ev_revenue"
+        elif label_lower.startswith("endettement net"):
+            field = "net_debt"
+        elif label_lower.startswith("flottant"):
+            # Returned as displayed, i.e. as a percentage (82.19 for 82.19 %).
+            field = "float_percent"
+        elif "chiffre d'affaires" in label_lower or "net sales" in label_lower:
             field = "revenue"
         elif "résultat net" in label_lower or "net income" in label_lower:
             field = "net_income"

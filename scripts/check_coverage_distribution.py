@@ -70,7 +70,7 @@ MODULE_THRESHOLDS = {
     "financials/providers/treasury.py": 98.0,
     "financials/providers/wallStreetJournal_provider.py": 85.0,
     "financials/providers/yfinance_provider.py": 81.0,
-    "financials/providers/ZoneBourse_provider.py": 87.0,
+    "financials/providers/ZoneBourse_provider.py": 93.0,
 }
 
 # Every module of these packages must appear in MODULE_THRESHOLDS.

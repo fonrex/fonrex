@@ -161,6 +161,19 @@ class TestZoneBourse:
         assert metrics.name == "Airbus SE"
         assert metrics.provider_url == "https://www.zonebourse.com/cours/action/AIRBUS-SE-4637/"
 
+    async def test_isin_of_the_page_never_replaces_the_ticker(self, fake_network):
+        """Issue #32: the ISIN read on the page was written into ``ticker``."""
+        page = (
+            "<html><body><h1>Cours Airbus SE</h1>"
+            "<ul><li>ISIN : NL0000235190</li></ul></body></html>"
+        )
+        self._routes(fake_network, page=[ok(page)])
+
+        metrics = await ZoneBourseProvider().get_financials("AIR.PA")
+
+        assert metrics.ticker == "AIR.PA"
+        assert metrics.isin == "NL0000235190"
+
     async def test_search_is_a_form_post_with_the_identifier(self, fake_network):
         self._routes(fake_network)
 

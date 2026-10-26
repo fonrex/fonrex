@@ -1,0 +1,21 @@
+{
+  "provider": "Gurufocus",
+  "ticker": "TSLA",
+  "source_url": "https://www.gurufocus.com/stock/TSLA/summary",
+  "captured_on": "2026-10-26",
+  "expected": {
+    "altman_z_score": 14.4,
+    "beneish_m_score": -2.95,
+    "debt_to_equity": 0.18,
+    "eps": 0.909,
+    "gf_score": 88,
+    "name": "Tesla Inc",
+    "operating_margin": 3.5,
+    "pe_ratio": 409.48,
+    "piotroski_score": 4,
+    "profit_margin": 3.11,
+    "revenue": 103570000000.0,
+    "roic": 3.11
+  },
+  "known_gaps": {}
+}

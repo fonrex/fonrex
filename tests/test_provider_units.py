@@ -117,9 +117,8 @@ KNOWN_YIELD_PROVIDERS = {
 }
 
 PERCENT_YIELD_PROVIDERS = sorted(
-    KNOWN_YIELD_PROVIDERS | {
-        name for name, fields in PROVIDER_PERCENT_FIELDS.items() if "dividend_yield" in fields
-    }
+    KNOWN_YIELD_PROVIDERS
+    | {name for name, fields in PROVIDER_PERCENT_FIELDS.items() if "dividend_yield" in fields}
 )
 
 
@@ -186,6 +185,38 @@ class TestPercentProvidersPassValidation:
         )
 
         assert results["ZoneBourse"]["operating_margin"] == pytest.approx(9.8)
+
+    async def test_gurufocus_real_page_passes_the_validation(self):
+        """The Tesla summary page: percentages and scores are kept, in their own unit."""
+        from pathlib import Path
+
+        from financials.providers.Gurufocus_provider import GurufocusProvider
+
+        html = (Path(__file__).parent / "fixtures/providers/gurufocus_tsla.html").read_text()
+        payload = GurufocusProvider()._parse_page(HTMLParser(html), "NAS:TSLA").model_dump()
+
+        results = await ValidationLayer().validate_results(
+            ticker="TSLA", results={"Gurufocus": payload}
+        )
+
+        kept = results["Gurufocus"]
+        assert kept["roic"] == pytest.approx(3.11)
+        assert kept["operating_margin"] == pytest.approx(3.5)
+        assert kept["piotroski_score"] == 4
+        assert kept["beneish_m_score"] == pytest.approx(-2.95)
+        assert kept["altman_z_score"] == pytest.approx(14.4)
+        assert kept["gf_score"] == 88
+        assert to_ratio("Gurufocus", "roic", Decimal("3.11")) == Decimal("0.0311")
+
+    async def test_impossible_scores_are_rejected(self):
+        results = await ValidationLayer().validate_results(
+            ticker="TSLA",
+            results={"Gurufocus": {"piotroski_score": 12, "gf_score": 140, "roic": 3.11}},
+        )
+
+        assert results["Gurufocus"]["piotroski_score"] is None
+        assert results["Gurufocus"]["gf_score"] is None
+        assert results["Gurufocus"]["roic"] == pytest.approx(3.11)
 
     async def test_googlefinance_operating_margin_is_kept(self):
         # Through the real parser: the page shows "9.8%", the parser keeps 9.8.

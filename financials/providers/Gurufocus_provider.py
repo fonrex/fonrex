@@ -1,22 +1,49 @@
-import asyncio
+"""GurufocusProvider — the scores and ratios of the summary page of a share on GuruFocus.
+
+One page is read: ``/stock/{symbol}/summary``. GuruFocus renders it on its server
+(Nuxt), so the figures are in the HTML. Each figure of its tables sits in a row
+whose label links to the definition of the term (``/term/fscore/TSLA``): the row is
+found by that code, never by the first number of the page, and the value is the
+cell next to the label.
+
+Read: the GF Score (``/100``), the Piotroski F-Score (``/9``), the Beneish M-Score,
+the Altman Z-Score, the ROIC, the PE ratio, the net and operating margins, the debt to equity, the EPS
+and the revenue of the last twelve months. Percentages are returned as displayed
+(``3.11`` for 3.11 %), as declared in ``monitoring/units.py``.
+"""
+
 import logging
-import re
 from typing import Optional
 
-from selectolax.parser import HTMLParser
+from selectolax.parser import HTMLParser, Node
 
 from financials.exchange import GURUFOCUS_TO_YAHOO
 from financials.models import FinancialMetrics
+from financials.numbers import parse_number
 from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
+# Code of the term in the link of a row → field of FinancialMetrics.
+TERM_FIELDS = {
+    "fscore": "piotroski_score",
+    "mscore": "beneish_m_score",
+    "zscore": "altman_z_score",
+    "roic": "roic",
+    "pettm": "pe_ratio",
+    "net-margin": "profit_margin",
+    "operating-margin": "operating_margin",
+    "debt-to-equity": "debt_to_equity",
+    "eps-diluated": "eps",  # sic: the code GuruFocus uses
+    "revenue": "revenue",
+}
+
+# A US listing has no exchange in the address of its page (``/stock/TSLA/``).
+_US_EXCHANGES = frozenset(code for code, suffix in GURUFOCUS_TO_YAHOO.items() if suffix == "")
+
 
 class GurufocusProvider(BaseProvider):
-    """
-    Gurufocus Provider.
-    Fetches specific scores (Piotroski, Beneish, etc.) from term definitions pages.
-    """
+    """Scores and ratios of a share, from its GuruFocus summary page."""
 
     BASE_URL = "https://www.gurufocus.com"
 
@@ -30,72 +57,128 @@ class GurufocusProvider(BaseProvider):
             "Origin": "https://www.gurufocus.com",
             "Referer": "https://www.gurufocus.com/",
         }
+        self.page_headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
 
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        """
-        Financial metrics, after resolving the ticker with the search API.
-        """
+        """Financial metrics, after resolving the ticker with the search API."""
         async with self._session(headers=self.headers) as client:
             # 1. Resolve the GuruFocus ticker (e.g. TFI.PA -> XPAR:TFI)
             gf_ticker = await self._resolve_gf_ticker(client, ticker)
             if not gf_ticker:
-                logger.warning(f"Could not resolve GuruFocus ticker for {ticker}")
+                logger.warning("Could not resolve GuruFocus ticker for %s", ticker)
                 return None
+            logger.info("Resolved GuruFocus ticker: %s -> %s", ticker, gf_ticker)
 
-            logger.info(f"Resolved GuruFocus ticker: {ticker} -> {gf_ticker}")
-            metrics = FinancialMetrics(ticker=gf_ticker)
-            metrics.provider_url = f"{self.BASE_URL}/stock/{gf_ticker}/"
+            # 2. Read the summary page
+            url = self.summary_url(gf_ticker)
+            page = None
+            try:
+                resp = await client.get(url, headers=self.page_headers)
+                if resp.status_code == 200:
+                    page = HTMLParser(resp.text)
+                else:
+                    logger.warning("GuruFocus page of %s: HTTP %s", gf_ticker, resp.status_code)
+            except Exception as e:
+                logger.error("Error fetching the GuruFocus page of %s: %s", gf_ticker, e)
 
-            # 2. Read the scores in parallel
-            tasks = [
-                self._fetch_score(client, gf_ticker, "fscore", "Piotroski-F-Score"),
-                self._fetch_score(client, gf_ticker, "mscore", "Beneish-M-Score"),
-                self._fetch_score(client, gf_ticker, "ROIC", "ROIC-Percentage"),
-                self._fetch_score(client, gf_ticker, "gf_score", "GF-Score"),
-            ]
-
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Unpack results
-            f_score, m_score, roic, gf_score = results
-
-            # Assign if valid
-            if isinstance(f_score, float):
-                metrics.piotroski_score = int(f_score)
-            if isinstance(m_score, float):
-                metrics.beneish_m_score = m_score
-            if isinstance(roic, float):
-                metrics.roic = roic
-            # gf_score extraction logic could be added to models if needed
-
+            metrics = (
+                self._parse_page(page, gf_ticker)
+                if page is not None
+                else FinancialMetrics(ticker=gf_ticker)
+            )
+            metrics.ticker = gf_ticker
+            metrics.provider_url = url
             return metrics
+
+    @classmethod
+    def summary_url(cls, gf_ticker: str) -> str:
+        """The summary page: ``/stock/TSLA/summary``, ``/stock/XPAR:AIR/summary``."""
+        exchange, _, symbol = gf_ticker.rpartition(":")
+        path = symbol if exchange.upper() in _US_EXCHANGES else gf_ticker
+        return f"{cls.BASE_URL}/stock/{path}/summary"
+
+    # ── Page ──────────────────────────────────────────────────────────────────
+
+    def _parse_page(self, page: HTMLParser, ticker: str) -> FinancialMetrics:
+        """The figures of a summary page; a figure not displayed stays ``None``."""
+        metrics = FinancialMetrics(ticker=ticker)
+
+        title = page.css_first("h1")
+        if title is not None:
+            name = " ".join(title.text(deep=True).split())
+            metrics.name = name or None
+
+        gf_score = page.css_first('a[href*="/term/gf-score/"] .t-primary')
+        if gf_score is not None:
+            metrics.gf_score = parse_number(gf_score.text(deep=True), decimal=".")
+
+        for code, field in TERM_FIELDS.items():
+            row = self._row(page, code)
+            if row is None:
+                continue
+            label, value = row
+            number = parse_number(value, decimal=".")
+            if number is None:
+                continue
+            if field == "piotroski_score":
+                if number != int(number) or not 0 <= number <= 9:
+                    continue
+                number = int(number)
+            elif field == "revenue" and "(mil" in label.lower():
+                number *= 1e6
+            setattr(metrics, field, number)
+
+        return metrics
+
+    @staticmethod
+    def _row(page: HTMLParser, code: str) -> Optional[tuple[str, str]]:
+        """The label and the value of the first row of a table whose label links to
+        the term ``code``. The value drops what follows it (``4/9`` gives ``4``)."""
+        for link in page.css(f'tr a[href*="/term/{code}/"]'):
+            cell = _ancestor(link, "td")
+            if cell is None:
+                continue
+            value_cell = cell.next
+            while value_cell is not None and value_cell.tag != "td":
+                value_cell = value_cell.next
+            if value_cell is None:
+                continue
+            for extra in value_cell.css(".t-label, svg"):
+                extra.decompose()
+            label = " ".join(cell.text(deep=True).split())
+            value = " ".join(value_cell.text(deep=True).split())
+            return label, value
+        return None
+
+    # ── Ticker ────────────────────────────────────────────────────────────────
 
     async def _resolve_gf_ticker(self, client: ProviderSession, ticker: str) -> Optional[str]:
         """
         Resolve the GuruFocus ticker with the search API and the exchange mapping.
         E.g. TFI.PA -> XPAR:TFI
         """
+        # The ticker already holds a GuruFocus exchange (e.g. NAS:AAPL)
+        if ":" in ticker:
+            return ticker
+
         # Split the symbol and the exchange suffix, if any
         parts = ticker.split(".")
         symbol = parts[0]
         target_suffix = f".{parts[1].upper()}" if len(parts) > 1 else ""
-
-        # The ticker already holds a GuruFocus exchange (e.g. NAS:AAPL)
-        if ":" in ticker:
-            return ticker
 
         resolved = await self._search_symbol(client, symbol, target_suffix)
         if resolved:
             return resolved
 
         # Fallback: when the search fails, rebuild the ticker from the exchange mapping
-        if target_suffix is not None:
-            for gf_exch, suffix in GURUFOCUS_TO_YAHOO.items():
-                if suffix.upper() == target_suffix.upper():
-                    # No suffix (US market): prefer NAS or NYSE
-                    if target_suffix == "" and gf_exch not in ["NAS", "NYSE"]:
-                        continue
-                    return f"{gf_exch}:{symbol}"
+        for gf_exch, suffix in GURUFOCUS_TO_YAHOO.items():
+            if suffix.upper() == target_suffix.upper():
+                # No suffix (US market): prefer NAS or NYSE
+                if target_suffix == "" and gf_exch not in ["NAS", "NYSE"]:
+                    continue
+                return f"{gf_exch}:{symbol}"
 
         return None
 
@@ -139,28 +222,11 @@ class GurufocusProvider(BaseProvider):
                             return f"{exch}:{symb}" if exch else symb
 
         except Exception as e:
-            logger.error(f"Error during GuruFocus search for {query}: {e}")
+            logger.error("Error during GuruFocus search for %s: %s", query, e)
         return None
 
-    async def _fetch_score(
-        self, client: ProviderSession, ticker: str, term_code: str, term_name: str
-    ) -> Optional[float]:
-        """
-        Read a number from a GuruFocus term definition page.
-        """
-        url = f"{self.BASE_URL}/term/{term_code}/{ticker}/{term_name}/{ticker}"
-        try:
-            resp = await client.get(url)
-            if resp.status_code == 200:
-                html = HTMLParser(resp.text)
-                # Heuristic: the first decimal number of the main content.
-                # GuruFocus usually shows the value prominently.
-                content = html.text()
-                # Look for a pattern such as "8" or "0.45" once the noise is removed.
-                # The legacy code took the first <font> of a given block.
-                match = re.search(r"([-+]?\d*\.\d+|\d+)", content)
-                if match:
-                    return float(match.group(1))
-        except Exception as e:
-            logger.error(f"Error fetching {term_name} for {ticker}: {e}")
-        return None
+
+def _ancestor(node: Node, tag: str) -> Optional[Node]:
+    while node is not None and node.tag != tag:
+        node = node.parent
+    return node

@@ -1229,6 +1229,8 @@ Fundamental providers are declared in `main.py` in two tuples, imported when the
 
 **Queried by `/fundamental`** (`PROVIDER_SPECS`): ZoneBourse, GoogleFinance, Boursorama, Barrons, wallStreetJournal, Marketwatch, MorningStar, Investing, Gurufocus, Fortuneo, BourseDirect, Msn, InvestirLesEchos, YahooFinance. The `provider` parameter restricts a request to some of them.
 
+Gurufocus reads one page per share, its summary (`/stock/TSLA/summary`, `/stock/XPAR:AIR/summary`), rendered on the server: each figure is taken from the table row whose label links to its term (`/term/fscore/…`), never from the first number of the page. It gives the GF Score (`/100`), the Piotroski F-Score (`/9`, anything else dropped), the Beneish M-Score, the Altman Z-Score, the ROIC, the PE ratio, the net and operating margins, the debt to equity, the EPS and the revenue (displayed in millions) of the last twelve months. The scores and the ROIC have ranges in `FIELD_RANGES`; ROIC and operating margin are declared as percentages in `monitoring/units.py`.
+
 **Specialized providers** (`SPECIALIZED_PROVIDER_SPECS`), each behind its own route:
 - `SECEdgar` – insider transactions (US only, Form 4)
 - `JustETF` – ETF metadata (fees, AUM, replication, performance)

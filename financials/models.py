@@ -47,6 +47,7 @@ class FinancialMetrics(StandardFinancials):
     # Gurufocus Scores
     piotroski_score: Optional[int] = Field(None, description="Score Piotroski")
     beneish_m_score: Optional[float] = Field(None, description="Score Beneish M")
+    altman_z_score: Optional[float] = Field(None, description="Altman Z-Score")
     roic: Optional[float] = Field(None, description="ROIC (%)")
     gf_score: Optional[float] = Field(None, description="Score Gurufocus")
 

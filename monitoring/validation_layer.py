@@ -71,6 +71,12 @@ FIELD_RANGES: Dict[str, Tuple[float, float]] = {
     # 52W
     "week_52_high": (0.001, 1_000_000.0),
     "week_52_low": (0.001, 1_000_000.0),
+    # Scores (GuruFocus)
+    "piotroski_score": (0.0, 9.0),
+    "beneish_m_score": (-20.0, 20.0),
+    "altman_z_score": (-100.0, 1000.0),
+    "gf_score": (0.0, 100.0),
+    "roic": (-5.0, 10.0),
 }
 
 # Threshold set by environment variable

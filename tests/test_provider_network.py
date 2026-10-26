@@ -938,39 +938,69 @@ GURUFOCUS_SEARCH = [
 ]
 
 
+def gurufocus_page(ticker: str = "XPAR:AIR") -> str:
+    """A summary page shaped as GuruFocus serves it (tests/fixtures/providers/gurufocus_tsla.html)."""
+
+    def row(code: str, label: str, value: str) -> str:
+        return (
+            f'<tr><td></td><td><a href="https://www.gurufocus.com/term/{code}/{ticker}">{label}</a>'
+            f'</td><td><span class="p-l-sm"> {value}</span></td></tr>'
+        )
+
+    return (
+        "<html><head><title>3M and 52-week figures | GuruFocus</title></head><body>"
+        "<nav>Top 25 GF Score 100 Screener 2026</nav><h1>Airbus SE</h1>"
+        f'<a href="https://www.gurufocus.com/term/gf-score/{ticker}">GF Score™: '
+        '<span class="t-primary">81</span> <span class="t-label">/100</span></a>'
+        '<table class="summary-table">'
+        + row("fscore", "Piotroski F-Score", '7<span class="t-label">/9</span>')
+        + row("mscore", "Beneish M-Score", "-2.45")
+        + row("zscore", "Altman Z-Score", "3.1")
+        + row("roic", "ROIC %", "12.3")
+        + row("pettm", "PE Ratio", "28.4")
+        + "</table></body></html>"
+    )
+
+
 class TestGurufocus:
     SEARCH = "gurufocus.com/reader/_api/_search"
 
-    def _terms(self, net, ticker="XPAR:AIR"):
-        net.get(f"/term/fscore/{ticker}/", ok("Piotroski F-Score : 7 (As of Today)"))
-        net.get(f"/term/mscore/{ticker}/", ok("Beneish M-Score : -2.45 (As of Today)"))
-        net.get(f"/term/ROIC/{ticker}/", ok("ROIC % : 12.3 (As of Jun. 2026)"))
-        net.get(f"/term/gf_score/{ticker}/", ok("GF Score : 81"))
-
     async def test_exchange_suffix_selects_the_matching_listing(self, fake_network):
         fake_network.get(self.SEARCH, ok_json(GURUFOCUS_SEARCH))
-        self._terms(fake_network)
+        fake_network.get("/stock/XPAR:AIR/summary", ok(gurufocus_page()))
 
         metrics = await GurufocusProvider().get_financials("AIR.PA")
 
         assert metrics.ticker == "XPAR:AIR"
-        assert metrics.provider_url == "https://www.gurufocus.com/stock/XPAR:AIR/"
+        assert metrics.provider_url == "https://www.gurufocus.com/stock/XPAR:AIR/summary"
+        assert metrics.name == "Airbus SE"
+        assert metrics.gf_score == 81
         assert metrics.piotroski_score == 7
         assert metrics.beneish_m_score == pytest.approx(-2.45)
+        assert metrics.altman_z_score == pytest.approx(3.1)
         assert metrics.roic == pytest.approx(12.3)
+        assert metrics.pe_ratio == pytest.approx(28.4)
         assert "text=AIR" in fake_network.urls(self.SEARCH)[0]
         assert fake_network.requests[0].headers["Referer"] == "https://www.gurufocus.com/"
+        # One page for every figure, asked as a page
+        assert fake_network.calls("/stock/") == 1
+        assert fake_network.calls("/term/") == 0
+        page_request = fake_network.requests[-1]
+        assert page_request.headers["Accept"].startswith("text/html")
 
     async def test_us_ticker_takes_the_first_exact_symbol(self, fake_network):
         fake_network.get(self.SEARCH, ok_json(GURUFOCUS_SEARCH))
-        self._terms(fake_network, "NYSE:AIR")
+        fake_network.get("/stock/AIR/summary", ok(gurufocus_page("AIR")))
 
         metrics = await GurufocusProvider().get_financials("AIR")
 
+        # A US listing has no exchange in the address of its page
         assert metrics.ticker == "NYSE:AIR"
+        assert metrics.provider_url == "https://www.gurufocus.com/stock/AIR/summary"
+        assert metrics.piotroski_score == 7
 
     async def test_gurufocus_ticker_skips_the_search(self, fake_network):
-        self._terms(fake_network, "NAS:AAPL")
+        fake_network.get("/stock/AAPL/summary", ok(gurufocus_page("AAPL")))
 
         metrics = await GurufocusProvider().get_financials("NAS:AAPL")
 
@@ -986,36 +1016,53 @@ class TestGurufocus:
         self, fake_network, search_response
     ):
         fake_network.get(self.SEARCH, search_response)
-        self._terms(fake_network)
+        fake_network.get("/stock/XPAR:AIR/summary", ok(gurufocus_page()))
 
         metrics = await GurufocusProvider().get_financials("AIR.PA")
 
         assert metrics.ticker == "XPAR:AIR"
         assert metrics.piotroski_score == 7
 
-    async def test_blocked_term_pages_leave_the_scores_empty(self, fake_network):
+    @pytest.mark.parametrize(
+        "page_response",
+        [CLOUDFLARE_CHALLENGE, status(500), httpx.ReadTimeout("timed out")],
+        ids=["http-403", "http-500", "timeout"],
+    )
+    async def test_unreadable_page_leaves_the_figures_empty(self, fake_network, page_response):
         fake_network.get(self.SEARCH, ok_json(GURUFOCUS_SEARCH))
-        fake_network.get("/term/", CLOUDFLARE_CHALLENGE)
+        fake_network.get("/stock/", page_response)
 
         metrics = dump(await GurufocusProvider().get_financials("AIR.PA"))
 
         assert metrics == {
             "ticker": "XPAR:AIR",
-            "provider_url": "https://www.gurufocus.com/stock/XPAR:AIR/",
+            "provider_url": "https://www.gurufocus.com/stock/XPAR:AIR/summary",
         }
 
-    async def test_one_failing_term_does_not_lose_the_others(self, fake_network):
+    async def test_numbers_outside_the_rows_are_never_taken(self, fake_network):
+        """Issue #32: the first number of the page (title, menu) was taken for a score."""
+        page = (
+            "<html><head><title>3M Co (MMM) | GuruFocus</title></head><body>"
+            "<nav>Top 25 GF Score 100</nav><h1>3M Co</h1>"
+            "<p>Piotroski F-Score 2026 screener: 9 new ideas</p></body></html>"
+        )
         fake_network.get(self.SEARCH, ok_json(GURUFOCUS_SEARCH))
-        fake_network.get("/term/fscore/", httpx.ReadTimeout("timed out"))
-        fake_network.get("/term/mscore/", ok("Beneish M-Score : -2.45"))
-        fake_network.get("/term/ROIC/", status(500))
-        fake_network.get("/term/gf_score/", ok("GF Score : 81"))
+        fake_network.get("/stock/", ok(page))
 
         metrics = dump(await GurufocusProvider().get_financials("AIR.PA"))
 
-        assert metrics["beneish_m_score"] == pytest.approx(-2.45)
+        assert set(metrics) == {"ticker", "provider_url", "name"}
+
+    async def test_an_impossible_f_score_is_dropped(self, fake_network):
+        fake_network.get(self.SEARCH, ok_json(GURUFOCUS_SEARCH))
+        fake_network.get(
+            "/stock/", ok(gurufocus_page().replace('7<span class="t-label">/9</span>', "12"))
+        )
+
+        metrics = dump(await GurufocusProvider().get_financials("AIR.PA"))
+
         assert "piotroski_score" not in metrics
-        assert "roic" not in metrics
+        assert metrics["roic"] == pytest.approx(12.3)
 
 
 # ── Morningstar ──────────────────────────────────────────────────────────────

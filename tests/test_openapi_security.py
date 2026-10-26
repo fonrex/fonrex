@@ -22,3 +22,18 @@ def test_openapi_still_lists_routes():
 def test_docs_persist_authorization():
     html = TestClient(app).get("/docs").text
     assert '"persistAuthorization": true' in html
+
+
+def test_openapi_marks_public_paths_as_public():
+    schema = TestClient(app).get("/openapi.json").json()
+    assert schema["paths"]["/health"]["get"]["security"] == []
+    assert "security" not in schema["paths"]["/eod/{ticker}"]["get"]
+
+
+def test_openapi_keeps_fastapi_settings(monkeypatch):
+    monkeypatch.setattr(app, "openapi_schema", None)
+    monkeypatch.setattr(app, "description", "Self-hosted instance")
+    monkeypatch.setattr(app, "servers", [{"url": "https://fonrex.example"}])
+    schema = app.openapi()
+    assert schema["info"]["description"] == "Self-hosted instance"
+    assert schema["servers"] == [{"url": "https://fonrex.example"}]

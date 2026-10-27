@@ -237,6 +237,26 @@ class TestPercentProvidersPassValidation:
         low, high = CANARY_ASSETS["TSLA"]["pe_ratio"]
         assert low <= kept["pe_ratio"] <= high
 
+    async def test_investing_real_page_passes_the_validation(self):
+        """The French page of Tesla: percentages are checked as ratios and kept."""
+        from pathlib import Path
+
+        html = (Path(__file__).parent / "fixtures/providers/investing_tsla.html").read_text()
+        payload = InvestingProvider()._parse_page(HTMLParser(html), "TSLA").model_dump()
+
+        results = await ValidationLayer().validate_results(
+            ticker="TSLA", results={"Investing": payload}
+        )
+
+        kept = results["Investing"]
+        assert kept["roe"] == pytest.approx(3.8)
+        assert kept["roa"] == pytest.approx(2.3)
+        assert kept["gross_margin"] == pytest.approx(19.3)
+        assert kept["pb_ratio"] == pytest.approx(18.0)
+        assert kept["beta"] == pytest.approx(1.92)
+        low, high = CANARY_ASSETS["TSLA"]["pe_ratio"]
+        assert low <= kept["pe_ratio"] <= high
+
     async def test_impossible_scores_are_rejected(self):
         results = await ValidationLayer().validate_results(
             ticker="TSLA",

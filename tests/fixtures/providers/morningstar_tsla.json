@@ -1,0 +1,32 @@
+{
+  "provider": "MorningStar",
+  "ticker": "TSLA",
+  "source_url": "https://global.morningstar.com/fr/investissements/actions/0P0000OQN8/cours",
+  "captured_on": "2026-10-27",
+  "expected": {
+    "average_volume": 36900000.0,
+    "beta": 1.94,
+    "change_percent": 4.04,
+    "currency": "USD",
+    "dividend_yield_forward": 0.0,
+    "employees": 134785,
+    "float_shares": 3536290000.0,
+    "industry": "Concessionnaires automobiles et de camions",
+    "investment_style": "Grande Croissance",
+    "market_cap": 1610000000000.0,
+    "name": "Tesla Inc",
+    "pb_ratio": 17.34,
+    "pe_ratio": 430.35,
+    "price": 407.46,
+    "ps_ratio": 13.39,
+    "sector": "Consommation cyclique",
+    "shares_outstanding": 3952730000.0,
+    "shares_short": 69350000.0,
+    "short_percent_float": 1.96,
+    "short_ratio": 2.04,
+    "volume": 44600000.0,
+    "week_52_high": 498.83,
+    "week_52_low": 297.38
+  },
+  "known_gaps": {}
+}

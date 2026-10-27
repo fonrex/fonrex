@@ -126,6 +126,17 @@ class FinancialProviderRunnerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raw_providers["Investing"], "ISIN: FR0000045072")
         self.assertEqual(results["Investing"]["isin"], "FR0000045072")
 
+    async def test_morningstar_uses_isin_before_generic_ticker(self):
+        """Issue #32: MorningStar searches by ISIN, the ticker found nothing."""
+        runner = FinancialProviderRunner({"MorningStar": {"type": "async", "class": EchoProvider}})
+
+        results, raw_providers = await runner.run(
+            ticker="AIR.PA", isin="NL0000235190", provider_params=[], asset_mappings={}
+        )
+
+        self.assertEqual(raw_providers["MorningStar"], "ISIN: NL0000235190")
+        self.assertEqual(results["MorningStar"]["isin"], "NL0000235190")
+
     async def test_wsj_uses_isin_before_generic_ticker(self):
         runner = FinancialProviderRunner(
             {"wallStreetJournal": {"type": "async", "class": EchoProvider}}

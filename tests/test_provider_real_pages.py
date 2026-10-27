@@ -120,6 +120,7 @@ class TestRealPages:
             "Gurufocus",
             "Investing",
             "InvestirLesEchos",
+            "MorningStar",
             "Marketwatch",
             "Msn",
             "ZoneBourse",

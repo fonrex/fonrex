@@ -136,7 +136,8 @@ class TestSignAndThousandsAreKept:
 
 class TestMorningStarLabels:
     def _parse(self, rows: str) -> dict:
-        return MorningStarProvider()._parse_page(page(rows), "TST", "https://example.test/page")
+        metrics = MorningStarProvider()._parse_page(page(rows), "TST", "https://example.test/page")
+        return metrics.model_dump(exclude_none=True)
 
     def test_price_earnings_and_yield_in_french_format(self):
         data = self._parse(

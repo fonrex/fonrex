@@ -257,6 +257,26 @@ class TestPercentProvidersPassValidation:
         low, high = CANARY_ASSETS["TSLA"]["pe_ratio"]
         assert low <= kept["pe_ratio"] <= high
 
+    async def test_morningstar_real_page_passes_the_validation(self):
+        """The French page of Tesla: the market cap in French billions, the short float in %."""
+        from pathlib import Path
+
+        html = (Path(__file__).parent / "fixtures/providers/morningstar_tsla.html").read_text()
+        payload = MorningStarProvider()._parse_page(HTMLParser(html), "TSLA", "u").model_dump()
+
+        results = await ValidationLayer().validate_results(
+            ticker="TSLA", results={"MorningStar": payload}
+        )
+
+        kept = results["MorningStar"]
+        assert kept["market_cap"] == pytest.approx(1.61e12)
+        assert kept["short_percent_float"] == pytest.approx(1.96)
+        assert kept["pb_ratio"] == pytest.approx(17.34)
+        assert kept["ps_ratio"] == pytest.approx(13.39)
+        assert kept["beta"] == pytest.approx(1.94)
+        low, high = CANARY_ASSETS["TSLA"]["pe_ratio"]
+        assert low <= kept["pe_ratio"] <= high
+
     async def test_impossible_scores_are_rejected(self):
         results = await ValidationLayer().validate_results(
             ticker="TSLA",

@@ -27,7 +27,7 @@ PROVIDER_PERCENT_FIELDS: dict[str, frozenset[str]] = {
     "Barrons": frozenset({"dividend_yield"}),
     "wallStreetJournal": frozenset({"dividend_yield"}),
     "Marketwatch": frozenset({"dividend_yield"}),
-    "MorningStar": frozenset({"dividend_yield"}),
+    "MorningStar": frozenset({"dividend_yield", "short_percent_float"}),
     "Investing": frozenset({"dividend_yield", "roa", "roe", "gross_margin"}),
     "Gurufocus": frozenset({"roic", "operating_margin", "profit_margin"}),
     "Fortuneo": frozenset(),

@@ -150,6 +150,7 @@ class FinancialProviderRunner:
                 "boursorama",
                 "gurufocus",
                 "investirlesechos",
+                "morningstar",
             }
         ):
             search_term = target_isin

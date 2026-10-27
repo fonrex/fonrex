@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from financials.models import FinancialMetrics
 from financials.providers.Barrons_provider import BarronsProvider
 from financials.providers.BourseDirect_provider import BourseDirectProvider
 from financials.providers.boursorama_provider import BoursoramaProvider
@@ -1148,50 +1149,81 @@ MORNINGSTAR_SEARCH = (
     'Airbus SE|{"i":"0P0000A5ZK","pi":"0P0000A5ZK","n":"Airbus SE"}|STOCK|AIR|EURONEXT'
 )
 MORNINGSTAR_PAGE = """
-<html><body><h1><span>Airbus SE</span></h1>
-<div><span class="sal-dp-name">Rendement div.</span><span>1,49 %</span></div>
+<html lang="fr"><body><h1><span itemprop="name">Airbus SE</span> <abbr>AIR</abbr></h1>
+<div class="sal-dp-pair"><h3 class="sal-dp-name">Rend div glissant</h3>
+<p class="sal-dp-value">1,49 %</p></div>
+<div class="sal-dp-pair"><h3 class="sal-dp-name">Cap. boursière</h3>
+<p class="sal-dp-value">149,9 Mrd</p></div>
 </body></html>
 """
 
 
 class TestMorningStar:
     SEARCH = "morningstar.fr/fr/util/SecuritySearch.ashx"
-    PAGE = "tools.morningstar.fr/fr/stockreport/default.aspx"
+    PAGE = "global.morningstar.com/fr/investissements/actions/0P0000A5ZK/cours"
 
     async def test_search_then_page(self, fake_network):
         fake_network.post(self.SEARCH, ok(MORNINGSTAR_SEARCH))
         fake_network.get(self.PAGE, ok(MORNINGSTAR_PAGE))
 
-        data = await MorningStarProvider().get_financials(AIRBUS_ISIN)
+        metrics = await MorningStarProvider().get_financials(AIRBUS_ISIN)
 
-        assert data["morningstar_id"] == "0P0000A5ZK"
-        assert data["long_name"] == "Airbus SE"
-        assert data["dividend_yield"] == pytest.approx(1.49)
-        assert "id=0P0000A5ZK" in data["provider_url"]
+        # Issue #32: a FinancialMetrics, with the fields named as everywhere else
+        assert isinstance(metrics, FinancialMetrics)
+        assert metrics.morningstar_id == "0P0000A5ZK"
+        assert metrics.name == "Airbus SE"
+        assert metrics.isin == AIRBUS_ISIN
+        assert metrics.dividend_yield == pytest.approx(1.49)
+        assert metrics.market_cap == pytest.approx(149.9e9)
+        assert metrics.provider_url == f"https://{self.PAGE}"
+        assert metrics.morningstar_pdf_url.endswith("secId=0P0000A5ZK")
+        assert not hasattr(metrics, "moringstar_pdf_url")
         assert f"q={AIRBUS_ISIN}" in fake_network.requests[0].content.decode()
+
+    @pytest.mark.parametrize(
+        "identifier",
+        [
+            "0P0000A5ZK",
+            "https://global.morningstar.com/fr/investissements/actions/0P0000A5ZK/cours",
+        ],
+        ids=["identifier", "page-url"],
+    )
+    async def test_identifier_or_page_skips_the_search(self, fake_network, identifier):
+        fake_network.get(self.PAGE, ok(MORNINGSTAR_PAGE))
+
+        metrics = await MorningStarProvider().get_financials(identifier)
+
+        assert metrics.morningstar_id == "0P0000A5ZK"
+        assert metrics.dividend_yield == pytest.approx(1.49)
+        assert fake_network.calls(self.SEARCH) == 0
 
     async def test_identifier_found_by_its_pattern(self, fake_network):
         fake_network.post(self.SEARCH, ok("<a href='/snapshot?id=0P0000A5ZK'>Airbus</a>"))
         fake_network.get(self.PAGE, ok(MORNINGSTAR_PAGE))
 
-        data = await MorningStarProvider().get_financials(AIRBUS_ISIN)
+        metrics = await MorningStarProvider().get_financials(AIRBUS_ISIN)
 
-        assert data["morningstar_id"] == "0P0000A5ZK"
+        assert metrics.morningstar_id == "0P0000A5ZK"
 
     @pytest.mark.parametrize(
         "page_response",
-        [status(500), ok(""), httpx.ConnectError("down")],
-        ids=["http-500", "empty-body", "network-error"],
+        [
+            status(500),
+            ok(""),
+            httpx.ConnectError("down"),
+            httpx.Response(202, headers={"x-amzn-waf-action": "challenge"}, text=""),
+        ],
+        ids=["http-500", "empty-body", "network-error", "waf-challenge"],
     )
     async def test_page_failure_keeps_the_identifiers(self, fake_network, page_response):
         fake_network.post(self.SEARCH, ok(MORNINGSTAR_SEARCH))
         fake_network.get(self.PAGE, page_response)
 
-        data = await MorningStarProvider().get_financials(AIRBUS_ISIN)
+        metrics = dump(await MorningStarProvider().get_financials(AIRBUS_ISIN))
 
-        assert data["isin"] == AIRBUS_ISIN
-        assert data["morningstar_id"] == "0P0000A5ZK"
-        assert "dividend_yield" not in data
+        assert metrics["isin"] == AIRBUS_ISIN
+        assert metrics["morningstar_id"] == "0P0000A5ZK"
+        assert "dividend_yield" not in metrics
 
     async def test_search_redirected_to_another_site_gives_none(self, fake_network):
         # What the retired endpoint does today: it redirects to the global site.
@@ -1200,7 +1232,7 @@ class TestMorningStar:
         fake_network.get("global.morningstar.com", ok("<html><title>Morningstar</title></html>"))
 
         assert await MorningStarProvider().get_financials(AIRBUS_ISIN) is None
-        assert fake_network.calls(self.PAGE) == 0
+        assert fake_network.calls("/investissements/actions/") == 0
 
     @pytest.mark.parametrize(
         "search_response",
@@ -1212,7 +1244,7 @@ class TestMorningStar:
 
         assert await MorningStarProvider().get_financials(AIRBUS_ISIN) is None
 
-    async def test_missing_isin_makes_no_request(self, fake_network):
+    async def test_missing_identifier_makes_no_request(self, fake_network):
         assert await MorningStarProvider().get_financials("") is None
         assert fake_network.requests == []
 
@@ -1460,8 +1492,8 @@ class TestMorningStarJoinsTheCommonBase:
         fake_network.post(TestMorningStar.SEARCH, status(503), ok(MORNINGSTAR_SEARCH))
         fake_network.get(TestMorningStar.PAGE, ok(MORNINGSTAR_PAGE))
 
-        data = await MorningStarProvider().get_financials(AIRBUS_ISIN)
+        metrics = await MorningStarProvider().get_financials(AIRBUS_ISIN)
 
-        assert data["morningstar_id"] == "0P0000A5ZK"
+        assert metrics.morningstar_id == "0P0000A5ZK"
         assert fake_network.calls(TestMorningStar.SEARCH) == 2
         assert fake_network.backoffs == [1.0]

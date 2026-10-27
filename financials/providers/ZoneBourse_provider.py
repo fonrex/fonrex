@@ -268,7 +268,8 @@ class ZoneBourseProvider(BaseProvider):
             if count is not None and count == int(count):
                 metrics.analyst_count = int(count)
         elif key == "objectif de cours moyen":
-            metrics.target_price = self._clean_number(value.split(" ")[0])
+            # "2 150,00 EUR": the currency after the figure is understood by parse_number
+            metrics.target_price = self._clean_number(value)
         elif key == "employés":
             staff = self._clean_number(value)
             if staff is not None and staff == int(staff):

@@ -97,6 +97,26 @@ class TestSignAndThousandsAreKept:
         assert metrics.pe_ratio == pytest.approx(1234.5)
         assert metrics.dividend_yield == pytest.approx(1.5)
 
+    @pytest.mark.parametrize("text", ["Débloquer", "Unlock Pro+ (7 days)", "Q3 2026", "N/A"])
+    def test_investing_text_in_a_figure_cell_is_no_figure(self, text):
+        html = page(
+            f"<h1>Test SA</h1><dl><dt>P/E Ratio</dt><dd>{text}</dd><dt>EPS</dt><dd>2.1</dd></dl>"
+        )
+
+        metrics = InvestingProvider()._parse_page(html, "TST")
+
+        assert metrics.pe_ratio is None
+        assert metrics.eps == pytest.approx(2.1)
+
+    def test_investing_accented_range_label(self):
+        html = HTMLParser(
+            "<html lang='fr'><body><dl><dt>Écart 52 sem.</dt><dd>297,38-498,83</dd></dl></body></html>"
+        )
+
+        metrics = InvestingProvider()._parse_page(html, "TST")
+
+        assert (metrics.week_52_low, metrics.week_52_high) == (297.38, 498.83)
+
     def test_zonebourse_typographic_minus_and_narrow_space(self):
         assert ZoneBourseProvider()._clean_number("\u22121\u202f234,5 M") == pytest.approx(
             -1_234_500_000

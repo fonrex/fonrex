@@ -217,10 +217,8 @@ class InvestingProvider(BaseProvider):
         field = KEY_FIGURES.get(label)
         if field is None or getattr(metrics, field, None) is not None:
             return
+        # The <dd> holds the figure alone: a text ("Unlock", "N/A", "Q3 2026") is no figure
         value = parse_number(text, decimal=decimal)
-        if value is None:
-            # "Dividend Yield: 3.45%" written among words
-            value = find_number(text, decimal=decimal)
         if value is not None:
             setattr(metrics, field, value)
 
@@ -280,7 +278,9 @@ KEY_FIGURES = {
 DIVIDEND_LABELS = {"dividend (yield)", "dividende"}
 RANGE_LABELS = {
     "52 wk range": ("week_52_low", "week_52_high"),
+    "52 week range": ("week_52_low", "week_52_high"),
     "ecart 52 sem.": ("week_52_low", "week_52_high"),
+    "écart 52 sem.": ("week_52_low", "week_52_high"),
 }
 PROFILE_FIELDS = {
     "industry": "industry",

@@ -658,6 +658,31 @@ class TestInvesting:
 
         assert metrics.name == "Apple Inc"
 
+    async def test_dd_after_whitespace_is_read(self, fake_network):
+        """Issue #32: a newline between <dt> and <dd> made every key figure missing."""
+        page = (
+            "<html lang='en'><body><h1>Apple Inc (AAPL)</h1><dl>\n"
+            "  <dt>P/E Ratio</dt>\n  <dd>30.5</dd>\n"
+            "  <dt>EPS</dt>\n  <!-- trailing -->\n  <dd>8.72</dd>\n"
+            "  <dt>Dividend (Yield)</dt>\n  <dd>1.04 (0.41%)</dd>\n"
+            "  <dt>52 wk Range</dt>\n  <dd>164.08 - 260.10</dd>\n"
+            "  <dt>Market Cap</dt>\n  <dd>3.86T</dd>\n"
+            "  <dt>Next Earnings Date</dt>\n  <dd>Jan 29, 2027</dd>\n"
+            "</dl></body></html>"
+        )
+        fake_network.get(self.SEARCH, ok_json(INVESTING_QUOTES))
+        fake_network.get(self.PAGE, ok(page))
+
+        metrics = await InvestingProvider().get_financials("AAPL")
+
+        assert metrics.name == "Apple Inc"
+        assert metrics.pe_ratio == pytest.approx(30.5)
+        assert metrics.eps == pytest.approx(8.72)
+        assert metrics.dividend_rate == pytest.approx(1.04)
+        assert metrics.dividend_yield == pytest.approx(0.41)
+        assert (metrics.week_52_low, metrics.week_52_high) == (164.08, 260.10)
+        assert metrics.market_cap == pytest.approx(3.86e12)
+
     async def test_isin_query_is_recorded(self, fake_network):
         fake_network.get(self.SEARCH, ok_json(INVESTING_QUOTES))
         fake_network.get(self.PAGE, ok(INVESTING_PAGE))

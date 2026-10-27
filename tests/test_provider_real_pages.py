@@ -118,6 +118,7 @@ class TestRealPages:
             "Fortuneo",
             "GoogleFinance",
             "Gurufocus",
+            "Investing",
             "InvestirLesEchos",
             "Marketwatch",
             "Msn",

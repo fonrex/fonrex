@@ -1,10 +1,11 @@
 import logging
+import re
 from typing import Optional
 
-from selectolax.parser import HTMLParser
+from selectolax.parser import HTMLParser, Node
 
 from financials.models import FinancialMetrics
-from financials.numbers import find_number
+from financials.numbers import find_number, parse_number
 from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
@@ -139,24 +140,153 @@ class InvestingProvider(BaseProvider):
         return None
 
     def _parse_page(self, parser: HTMLParser, ticker_input: str) -> FinancialMetrics:
+        """The figures of an equity page of investing.com, in English or in French.
+
+        The key figures are ``<dt>label</dt><dd>value</dd>`` pairs: the ``<dd>`` is the
+        next element after the ``<dt>``, whatever whitespace separates them. The
+        language of the page (``<html lang>``) decides the decimal separator.
+        """
         metrics = FinancialMetrics(ticker=ticker_input)
+        html = parser.css_first("html")
+        decimal = "," if (html and (html.attributes.get("lang") or "").startswith("fr")) else "."
+
         h1 = parser.css_first("h1")
         if h1:
-            metrics.name = h1.text(strip=True)
+            # "Tesla Inc (TSLA)": the symbol in parentheses is not part of the name
+            name = re.sub(r"\s*\([^()]*\)\s*$", "", h1.text(strip=True))
+            metrics.name = name or None
 
-        # Investing often puts data in dl pairs
-        # e.g. <dt>P/E Ratio</dt><dd>15.2</dd>
+        last = parser.css_first('[data-test="instrument-price-last"]')
+        if last:
+            metrics.price = parse_number(last.text(strip=True), decimal=decimal)
+        change = parser.css_first('[data-test="instrument-price-change-percent"]')
+        if change:
+            metrics.change_percent = find_number(
+                change.text(strip=True).strip("()"), decimal=decimal
+            )
+        currency = parser.css_first('[data-test="currency-in-label"] span')
+        if currency and _CURRENCY.fullmatch(currency.text(strip=True)):
+            metrics.currency = currency.text(strip=True)
 
         for dt in parser.css("dt"):
-            label = dt.text(strip=True)
-            dd = dt.next
-            if dd and dd.tag == "dd":
-                val = find_number(dd.text(strip=True))
-                if val is not None:
-                    if "P/E Ratio" in label:
-                        metrics.pe_ratio = val
-                    elif "EPS" in label:
-                        metrics.eps = val
-                    elif "Dividend Yield" in label:
-                        metrics.dividend_yield = val
+            dd = _next_element(dt)
+            if dd is None or dd.tag != "dd":
+                continue
+            label = _label(dt.text(strip=True))
+            try:
+                self._assign_key_figure(metrics, label, dd.text(strip=True), decimal)
+            except (AttributeError, TypeError, ValueError) as error:
+                # One unreadable figure must not lose the others
+                logger.warning("Investing figure %r not read: %s", label, error)
+
+        # Company profile: "<div>Industry</div><a>Automobiles…</a>"
+        for name_node in parser.css("div.pr-3"):
+            value_node = _next_element(name_node)
+            if value_node is None:
+                continue
+            field = PROFILE_FIELDS.get(_label(name_node.text(strip=True)))
+            value = value_node.text(strip=True)
+            if field and value and getattr(metrics, field, None) is None:
+                if field == "employees":
+                    count = parse_number(value, decimal=decimal)
+                    if count is not None and count == int(count):
+                        metrics.employees = int(count)
+                else:
+                    setattr(metrics, field, value)
         return metrics
+
+    @staticmethod
+    def _assign_key_figure(metrics: FinancialMetrics, label: str, text: str, decimal: str):
+        """Set the field of a key figure; the first value of a field wins."""
+        if label in DIVIDEND_LABELS:
+            # "0.24 (0.11%)": the dividend per share, then the yield in parentheses
+            yield_match = re.search(r"\(([^()]*%)\)", text)
+            if yield_match and metrics.dividend_yield is None:
+                metrics.dividend_yield = find_number(yield_match.group(1), decimal=decimal)
+            rate = parse_number(text.split("(")[0], decimal=decimal)
+            if rate is not None and getattr(metrics, "dividend_rate", None) is None:
+                metrics.dividend_rate = rate
+            return
+        if label in RANGE_LABELS:
+            low, high = RANGE_LABELS[label]
+            parts = re.split(r"\s*-\s*(?=\d)", text, maxsplit=1)
+            if len(parts) == 2 and getattr(metrics, low, None) is None:
+                setattr(metrics, low, parse_number(parts[0], decimal=decimal))
+                setattr(metrics, high, parse_number(parts[1], decimal=decimal))
+            return
+        field = KEY_FIGURES.get(label)
+        if field is None or getattr(metrics, field, None) is not None:
+            return
+        # The <dd> holds the figure alone: a text ("Unlock", "N/A", "Q3 2026") is no figure
+        value = parse_number(text, decimal=decimal)
+        if value is not None:
+            setattr(metrics, field, value)
+
+
+def _label(text: str) -> str:
+    """A label compared without case or spacing."""
+    return " ".join(text.lower().split())
+
+
+def _next_element(node: Node) -> Optional[Node]:
+    """The next sibling that is an element, skipping text and comment nodes."""
+    sibling = node.next
+    while sibling is not None and sibling.tag in ("-text", "_comment", "-comment"):
+        sibling = sibling.next
+    return sibling
+
+
+_CURRENCY = re.compile(r"[A-Z]{3}")
+
+# Key figures of the equity page, in English and in French. Percentages are kept as
+# displayed (see monitoring/units.py).
+KEY_FIGURES = {
+    "p/e ratio": "pe_ratio",
+    "per": "pe_ratio",
+    "eps": "eps",
+    "bpa": "eps",
+    "dividend yield": "dividend_yield",
+    "market cap": "market_cap",
+    "capitalisation": "market_cap",
+    "shares outstanding": "shares_outstanding",
+    "act. en circulation": "shares_outstanding",
+    "revenue": "revenue",
+    "chiffre d'affaires": "revenue",
+    "net income": "net_income",
+    "résultat net": "net_income",
+    "book value / share": "book_value_per_share",
+    "valeur comptable / action": "book_value_per_share",
+    "return on assets": "roa",
+    "rendement des actifs": "roa",
+    "return on equity": "roe",
+    "rendement des fonds propres": "roe",
+    "gross profit margin": "gross_margin",
+    "marge bénéficiaire brute": "gross_margin",
+    "price/book": "pb_ratio",
+    "p/b ratio": "pb_ratio",
+    "ratio p/b": "pb_ratio",
+    "ebitda": "ebitda",
+    "ev/ebitda": "ev_ebitda",
+    "beta": "beta",
+    "bêta": "beta",
+    "prev. close": "previous_close",
+    "clôture précédente": "previous_close",
+    "volume": "volume",
+    "average volume (3m)": "average_volume",
+    "volume moyen (3m)": "average_volume",
+}
+DIVIDEND_LABELS = {"dividend (yield)", "dividende"}
+RANGE_LABELS = {
+    "52 wk range": ("week_52_low", "week_52_high"),
+    "52 week range": ("week_52_low", "week_52_high"),
+    "ecart 52 sem.": ("week_52_low", "week_52_high"),
+    "écart 52 sem.": ("week_52_low", "week_52_high"),
+}
+PROFILE_FIELDS = {
+    "industry": "industry",
+    "industrie": "industry",
+    "sector": "sector",
+    "secteur": "sector",
+    "employees": "employees",
+    "employés": "employees",
+}

@@ -211,6 +211,32 @@ class TestPercentProvidersPassValidation:
         assert kept["gf_score"] == 88
         assert to_ratio("Gurufocus", "roic", Decimal("3.11")) == Decimal("0.0311")
 
+    @pytest.mark.parametrize("provider_name", ["ZoneBourse", "GoogleFinance", "Gurufocus"])
+    async def test_net_margin_in_percent_is_kept(self, provider_name):
+        """A 12.5 % net margin is checked as 0.125, not rejected as 12.5."""
+        results = await ValidationLayer().validate_results(
+            ticker="AIR.PA", results={provider_name: {"profit_margin": 12.5}}
+        )
+
+        assert results[provider_name]["profit_margin"] == pytest.approx(12.5)
+
+    async def test_zonebourse_real_page_passes_the_validation(self):
+        from pathlib import Path
+
+        html = (Path(__file__).parent / "fixtures/providers/zonebourse_tsla.html").read_text()
+        payload = ZoneBourseProvider()._parse_page(HTMLParser(html), "TSLA", "u").model_dump()
+
+        results = await ValidationLayer().validate_results(
+            ticker="TSLA", results={"ZoneBourse": payload}
+        )
+
+        kept = results["ZoneBourse"]
+        assert kept["price"] == pytest.approx(391.62)
+        assert kept["target_price"] == pytest.approx(409.27)
+        assert kept["pe_ratio"] == pytest.approx(367)
+        low, high = CANARY_ASSETS["TSLA"]["pe_ratio"]
+        assert low <= kept["pe_ratio"] <= high
+
     async def test_impossible_scores_are_rejected(self):
         results = await ValidationLayer().validate_results(
             ticker="TSLA",

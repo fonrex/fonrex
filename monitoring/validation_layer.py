@@ -53,6 +53,8 @@ FIELD_RANGES: Dict[str, Tuple[float, float]] = {
     "roe": (-5.0, 10.0),
     "roa": (-2.0, 2.0),
     "net_margin": (-5.0, 1.0),
+    # The same quantity under the name of FinancialMetrics (scraped providers)
+    "profit_margin": (-5.0, 1.0),
     "operating_margin": (-5.0, 1.0),
     "gross_margin": (-1.0, 1.0),
     # Growth (ratios)

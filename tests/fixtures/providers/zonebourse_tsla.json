@@ -1,0 +1,27 @@
+{
+  "provider": "ZoneBourse",
+  "ticker": "TSLA",
+  "source_url": "https://www.zonebourse.com/cours/action/TESLA-INC-6344549/",
+  "captured_on": "2026-10-26",
+  "expected": {
+    "analyst_count": 43,
+    "consensus": "ACCUMULER",
+    "currency": "USD",
+    "employees": 134785,
+    "enterprise_value": 1440242767290.0,
+    "esg_score": "BBB",
+    "ev_revenue": 13.4,
+    "float_percent": 82.19,
+    "isin": "US88160R1014",
+    "market_cap": 1471295562660.0,
+    "name": "Tesla, Inc.",
+    "net_debt": -31052795370.0,
+    "net_income": 3421506950.0,
+    "pe_ratio": 367.0,
+    "price": 391.62,
+    "revenue": 107736439730.0,
+    "sector": "Fabricants de voitures et camions",
+    "target_price": 409.27
+  },
+  "known_gaps": {}
+}

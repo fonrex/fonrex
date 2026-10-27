@@ -161,6 +161,36 @@ class TestZoneBourse:
         assert metrics.name == "Airbus SE"
         assert metrics.provider_url == "https://www.zonebourse.com/cours/action/AIRBUS-SE-4637/"
 
+    async def test_isin_of_the_page_never_replaces_the_ticker(self, fake_network):
+        """Issue #32: the ISIN read on the page was written into ``ticker``."""
+        page = (
+            "<html><body><h1>Cours Airbus SE</h1>"
+            "<ul><li>ISIN : NL0000235190</li></ul></body></html>"
+        )
+        self._routes(fake_network, page=[ok(page)])
+
+        metrics = await ZoneBourseProvider().get_financials("AIR.PA")
+
+        assert metrics.ticker == "AIR.PA"
+        assert metrics.isin == "NL0000235190"
+
+    async def test_target_price_above_a_thousand_keeps_its_thousands(self, fake_network):
+        """A space separates the thousands: "2 150,00 EUR" is 2150, not 2."""
+        page = (
+            "<html><body><h1>Cours Hermès International</h1>"
+            '<div class="grid py-5"><div class="c">Objectif de cours Moyen</div>'
+            '<div class="c-auto"><span class="last">2\u202f150,00</span>EUR</div></div>'
+            '<div class="grid py-5"><div class="c">Nombre d\'Analystes</div>'
+            '<div class="c-auto">1 024</div></div>'
+            "</body></html>"
+        )
+        self._routes(fake_network, page=[ok(page)])
+
+        metrics = await ZoneBourseProvider().get_financials(AIRBUS_ISIN)
+
+        assert metrics.target_price == pytest.approx(2150.0)
+        assert metrics.analyst_count == 1024
+
     async def test_search_is_a_form_post_with_the_identifier(self, fake_network):
         self._routes(fake_network)
 

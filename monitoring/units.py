@@ -21,15 +21,15 @@ _HUNDRED = Decimal("100")
 # field: an explicit empty set documents that its values are already ratios.
 # ``tests/test_provider_units.py`` enforces this for all monitored providers.
 PROVIDER_PERCENT_FIELDS: dict[str, frozenset[str]] = {
-    "ZoneBourse": frozenset({"dividend_yield", "operating_margin"}),
-    "GoogleFinance": frozenset({"dividend_yield", "operating_margin"}),
+    "ZoneBourse": frozenset({"dividend_yield", "operating_margin", "profit_margin"}),
+    "GoogleFinance": frozenset({"dividend_yield", "operating_margin", "profit_margin"}),
     "Boursorama": frozenset({"dividend_yield"}),
     "Barrons": frozenset({"dividend_yield"}),
     "wallStreetJournal": frozenset({"dividend_yield"}),
     "Marketwatch": frozenset({"dividend_yield"}),
     "MorningStar": frozenset({"dividend_yield"}),
     "Investing": frozenset({"dividend_yield"}),
-    "Gurufocus": frozenset({"roic", "operating_margin"}),
+    "Gurufocus": frozenset({"roic", "operating_margin", "profit_margin"}),
     "Fortuneo": frozenset(),
     "BourseDirect": frozenset(),
     "Msn": frozenset(),

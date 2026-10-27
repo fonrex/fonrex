@@ -5,7 +5,11 @@
   "captured_on": "2026-10-03",
   "expected": {
     "dividend_yield": 1.81,
+    "enterprise_value": 137000000000.0,
     "esg_score": "BBB",
+    "ev_revenue": 1.69,
+    "float_percent": 73.66,
+    "market_cap": 150000000000.0,
     "name": "Airbus SE",
     "net_income": 5858280870.0,
     "pe_ratio": 25.5,

@@ -269,6 +269,27 @@ class TestPercentProvidersPassValidation:
         assert kept["pe_ratio"] == pytest.approx(7.456088)
         assert to_ratio("MorningStar", "dividend_yield", Decimal("0.055754")) == Decimal("0.055754")
 
+    async def test_morningstar_short_float_is_a_percentage(self):
+        import json
+        from pathlib import Path
+
+        from financials.models import FinancialMetrics
+
+        folder = Path(__file__).parent / "fixtures/providers/morningstar"
+        metrics = FinancialMetrics(ticker="0P0000OQN8")
+        MorningStarProvider.read_trading(
+            metrics, json.loads((folder / "trading_0P0000OQN8.json").read_text())
+        )
+
+        results = await ValidationLayer().validate_results(
+            ticker="TSLA", results={"MorningStar": metrics.model_dump()}
+        )
+
+        kept = results["MorningStar"]
+        # 1.9611 % is checked as 0.019611, inside (0, 1), and kept as given
+        assert kept["short_percent_float"] == pytest.approx(1.9611)
+        assert kept["beta"] == pytest.approx(1.942994)
+
     async def test_impossible_scores_are_rejected(self):
         results = await ValidationLayer().validate_results(
             ticker="TSLA",

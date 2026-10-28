@@ -7,12 +7,15 @@ read. Its components call two JSON services, which answer a script directly:
 * the screener of ``lt.morningstar.com`` turns an ISIN (or a ticker) into the
   Morningstar identifier of a listing (``0P0000OQN8`` for Tesla);
 * ``api-global.morningstar.com/sal-service`` gives the overview of that listing
-  (price, valuation, ranges, style) and the profile of its company (sector, staff).
+  (price, valuation, ranges, style), the profile of its company (sector, staff) and
+  its trading information (beta, shares, short interest).
 
-The ``ApiKey`` header is the public key of those components, written in their
-JavaScript; ``MORNINGSTAR_SAL_API_KEY`` replaces it if Morningstar changes it. The
+The ``ApiKey`` and ``X-API-REALTIME-E`` headers are public constants of those
+components, written in their JavaScript; ``MORNINGSTAR_SAL_API_KEY`` and
+``MORNINGSTAR_SAL_REALTIME_TOKEN`` replace them if Morningstar changes them. The
 services are not documented: a failure of one of them leaves its fields empty.
-Ratios such as the dividend yield are given as ratios (``0.055754`` for 5.58 %).
+The dividend yields are ratios (``0.055754`` for 5.58 %); the short percentage of the
+float is a percentage (``1.9611``), the shares outstanding and the float millions.
 """
 
 import asyncio
@@ -34,7 +37,49 @@ _ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}\d")
 SAL_API_KEY_ENV_VAR = "MORNINGSTAR_SAL_API_KEY"
 # The public key of the components of global.morningstar.com (sal-common-*.js).
 DEFAULT_SAL_API_KEY = "lstzFDEOhfFNMLikKa0am9mgEKLBl49T"
+REALTIME_TOKEN_ENV_VAR = "MORNINGSTAR_SAL_REALTIME_TOKEN"
+# The public "tokenRealtime" of the same components, sent by the trading information.
+DEFAULT_SAL_REALTIME_TOKEN = (
+    "eyJlbmMiOiJBMTI4R0NNIiwiYWxnIjoiUlNBLU9BRVAifQ."
+    "X-h4zn65XpjG8cZnL3e6hj8LMbzupQBglHZce7tzu-c4utCtXQ2IYoLxdik04usYRhNo74AS_2crdjLnBc_J0l"
+    "FEdAPzb_OBE7HjwfRaYeNhfXIDw74QCrFGqQ5n7AtllL-vTGnqmI1S9WJhSwnIBe_yRxuXGGbIttizI5FItYY."
+    "bB3WkiuoS1xzw78w."
+    "iTqTFVbxKo4NQQsNNlbkF4tg4GCfgqdRdQXN8zQU3QYhbHc-XDusH1jFii3-_-AIsqpHaP7ilG9aBxzoK7KPPfK3"
+    "apcoMS6fDM3QLRSZzjkBoxWK75FtrQMAN5-LecdJk97xaXEciS0QqqBqNugoSPwoiZMazHX3rr7L5jPM-ecXN2uE"
+    "jbSR0wfg-57iHAku8jvThz4mtGpMRAOil9iZaL6iRQ."
+    "o6tR6kuOQBhnpcsdTQeZWw"
+)
 SAL_VERSION = "5.21.0"
+
+# The screener returns funds before shares for a short ticker ("BNP"): enough rows.
+SCREENER_PAGE_SIZE = 50
+
+# Yahoo suffix -> exchanges (MIC, as in "EX$$$$XPAR") and currencies of that place.
+# A bare ticker is not an identity: "AIR" is Airbus in Paris and AAR Corp in New York.
+PLACES = {
+    "PA": ({"XPAR"}, {"EUR"}),
+    "AS": ({"XAMS"}, {"EUR"}),
+    "BR": ({"XBRU"}, {"EUR"}),
+    "LS": ({"XLIS"}, {"EUR"}),
+    "IR": ({"XDUB"}, {"EUR"}),
+    "DE": ({"XETR"}, {"EUR"}),
+    "F": ({"XFRA"}, {"EUR"}),
+    "MI": ({"XMIL"}, {"EUR"}),
+    "MC": ({"XMAD"}, {"EUR"}),
+    "HE": ({"XHEL"}, {"EUR"}),
+    "VI": ({"XWBO"}, {"EUR"}),
+    "L": ({"XLON"}, {"GBP", "GBX"}),
+    "SW": ({"XSWX"}, {"CHF"}),
+    "ST": ({"XSTO"}, {"SEK"}),
+    "CO": ({"XCSE"}, {"DKK"}),
+    "OL": ({"XOSL"}, {"NOK"}),
+    "TO": ({"XTSE"}, {"CAD"}),
+    "T": ({"XTKS"}, {"JPY"}),
+    "HK": ({"XHKG"}, {"HKD"}),
+    "AX": ({"XASX"}, {"AUD"}),
+}
+# Exchanges of a ticker written without suffix (United States).
+US_EXCHANGES = {"XNAS", "XNYS", "XASE", "ARCX", "BATS"}
 
 # Placeholder of the figures reserved to paying users ("premium only").
 _PREMIUM_ONLY = "_PO_"
@@ -57,11 +102,15 @@ def sal_api_key() -> str:
     return (os.environ.get(SAL_API_KEY_ENV_VAR) or "").strip() or DEFAULT_SAL_API_KEY
 
 
+def sal_realtime_token() -> str:
+    return (os.environ.get(REALTIME_TOKEN_ENV_VAR) or "").strip() or DEFAULT_SAL_REALTIME_TOKEN
+
+
 class MorningStarProvider(BaseProvider):
     """Figures of a share from the screener and the sal-service of Morningstar."""
 
     SCREENER_URL = "https://lt.morningstar.com/api/rest.svc/9vehuxllxs/security/screener"
-    SAL_URL = "https://api-global.morningstar.com/sal-service/v1/stock/data/{endpoint}"
+    SAL_URL = "https://api-global.morningstar.com/sal-service/v1/stock/{path}"
     PAGE_URL = "https://global.morningstar.com/fr/investissements/actions/{ms_id}/cours"
 
     def __init__(self, max_retries: int = 3, timeout: int = 15):
@@ -86,11 +135,21 @@ class MorningStarProvider(BaseProvider):
                 logger.warning("Could not find the MorningStar identifier of %s", identifier)
                 return None
 
-            overview, profile = await asyncio.gather(
+            overview, profile, trading = await asyncio.gather(
                 self._sal(
-                    client, "equityOverview", ms_id, showAnalystRating="true", hideesg="true"
+                    client,
+                    "data/equityOverview",
+                    ms_id,
+                    {"shareClassId": ms_id, "showAnalystRating": "true", "hideesg": "true"},
                 ),
-                self._sal(client, "companyProfile", ms_id),
+                self._sal(client, "data/companyProfile", ms_id, {"shareClassId": ms_id}),
+                self._sal(
+                    client,
+                    f"tradingInformation/{ms_id}/data",
+                    ms_id,
+                    {},
+                    {"X-API-REALTIME-E": sal_realtime_token()},
+                ),
             )
 
         metrics = FinancialMetrics(
@@ -103,6 +162,8 @@ class MorningStarProvider(BaseProvider):
             self.read_overview(metrics, overview)
         if profile:
             self.read_profile(metrics, profile)
+        if trading:
+            self.read_trading(metrics, trading)
         return metrics
 
     @staticmethod
@@ -117,11 +178,12 @@ class MorningStarProvider(BaseProvider):
         """The identifier of the listing found by the screener for an ISIN or a ticker."""
         params = {
             "page": "1",
-            "pageSize": "10",
+            "pageSize": str(SCREENER_PAGE_SIZE),
             "outputType": "json",
             "version": "1",
             "securityDataPoints": "SecId|Name|Ticker|ISIN|ExchangeId|CurrencyId",
-            "term": identifier,
+            # The screener knows "AIR", never the Yahoo ticker "AIR.PA"
+            "term": _search_term(identifier),
         }
         try:
             resp = await client.get(self.SCREENER_URL, params=params)
@@ -137,30 +199,44 @@ class MorningStarProvider(BaseProvider):
     def select_id(rows: list[dict], identifier: str) -> Optional[str]:
         """The row that is the identifier asked, never only the first one.
 
-        An ISIN must be the ISIN of the row; a ticker (``TSLA``, ``AIR.PA``) its
-        ticker, without the Yahoo suffix.
+        An ISIN must be the ISIN of the row. A ticker must be the ticker of the row,
+        without its Yahoo suffix, on the place the suffix names (``AIR.PA``: Paris,
+        never AAR Corp in New York); without suffix, a United States listing first.
+        Funds (identifiers that do not start with ``0P``) are never taken.
         """
         wanted = identifier.strip().upper()
+        shares = [row for row in rows if _MS_ID.fullmatch(str(row.get("SecId") or ""))]
         if _ISIN.fullmatch(wanted):
-            key = "ISIN"
+            matches = [row for row in shares if str(row.get("ISIN") or "").upper() == wanted]
+            return matches[0]["SecId"] if matches else None
+
+        symbol, place = _ticker_and_place(wanted)
+        matches = [row for row in shares if str(row.get("Ticker") or "").upper() == symbol]
+        if place is not None:
+            exchanges, currencies = place
+            matches = [
+                row
+                for row in matches
+                if _code(row.get("ExchangeId")) in exchanges
+                or (not _code(row.get("ExchangeId")) and _code(row.get("CurrencyId")) in currencies)
+            ]
         else:
-            key, wanted = "Ticker", wanted.split(".")[0]
-        for row in rows:
-            if str(row.get(key) or "").upper() == wanted and _MS_ID.fullmatch(
-                str(row.get("SecId") or "")
-            ):
-                return row["SecId"]
-        return None
+            matches.sort(key=lambda row: _code(row.get("ExchangeId")) not in US_EXCHANGES)
+        return matches[0]["SecId"] if matches else None
 
     # ── Services ──────────────────────────────────────────────────────────────
 
     async def _sal(
-        self, client: ProviderSession, endpoint: str, ms_id: str, **extra: str
+        self,
+        client: ProviderSession,
+        path: str,
+        ms_id: str,
+        params: dict[str, str],
+        headers: Optional[dict[str, str]] = None,
     ) -> Optional[dict]:
         """One answer of the sal-service, or ``None`` (logged) when it cannot be read."""
-        params = {
-            "shareClassId": ms_id,
-            **extra,
+        query = {
+            **params,
             "locale": "fr",
             "clientId": "INTLCOM",
             "benchmarkId": "null",
@@ -168,23 +244,23 @@ class MorningStarProvider(BaseProvider):
         }
         try:
             resp = await client.get(
-                self.SAL_URL.format(endpoint=endpoint),
-                params=params,
-                headers={"ApiKey": sal_api_key()},
+                self.SAL_URL.format(path=path),
+                params=query,
+                headers={"ApiKey": sal_api_key(), **(headers or {})},
             )
             if resp.status_code != 200:
                 logger.warning(
                     "MorningStar %s of %s: HTTP %s%s",
-                    endpoint,
+                    path,
                     ms_id,
                     resp.status_code,
-                    f" (check {SAL_API_KEY_ENV_VAR})" if resp.status_code in (401, 403) else "",
+                    " (check MORNINGSTAR_SAL_* in .env)" if resp.status_code in (401, 403) else "",
                 )
                 return None
             data = resp.json()
             return data if isinstance(data, dict) else None
         except Exception as e:
-            logger.warning("MorningStar %s of %s not read: %s", endpoint, ms_id, e)
+            logger.warning("MorningStar %s of %s not read: %s", path, ms_id, e)
         return None
 
     @staticmethod
@@ -235,6 +311,34 @@ class MorningStarProvider(BaseProvider):
         _put(metrics, "website", _text(value("contact", "url")))
         _put(metrics, "country", _text(value("contact", "country")))
 
+    @staticmethod
+    def read_trading(metrics: FinancialMetrics, data: dict) -> None:
+        """Beta, shares and short interest of a listing (``tradingInformation``).
+
+        The shares outstanding and the float are given in millions, the shares
+        shorted as a count, the short percentage of the float as a percentage.
+        """
+        _put(metrics, "beta", _number((data.get("returnStatistics") or {}).get("beta")))
+        for field, key in (
+            ("shares_outstanding", "sharesOutstanding"),
+            ("float_shares", "floatShares"),
+        ):
+            millions = _number(data.get(key))
+            _put(metrics, field, millions * 1e6 if millions is not None else None)
+        _put(metrics, "shares_short", _number(data.get("sharesShorted")))
+        _put(metrics, "short_percent_float", _number(data.get("floatSharesShorted")))
+        _put(metrics, "short_ratio", _number(data.get("daysToConver")))
+        # Also in the overview: taken here only when the overview did not give them
+        for field, key in (
+            ("market_cap", "marketCap"),
+            ("volume", "volume"),
+            ("average_volume", "avgVolume"),
+            ("week_52_low", "yearRangeLow"),
+            ("week_52_high", "yearRangeHigh"),
+        ):
+            _put(metrics, field, _number(data.get(key)))
+        _put(metrics, "currency", _text(data.get("tradingCurrency")))
+
 
 def _put(metrics: FinancialMetrics, field: str, value: Any) -> None:
     """Set a field once: the first source that gives it wins."""
@@ -252,3 +356,27 @@ def _number(value: Any) -> Optional[float]:
     if value == _PREMIUM_ONLY:
         return None
     return parse_number(value, decimal=".")
+
+
+def _code(value: Any) -> str:
+    """The code of a screener identifier: "EX$$$$XPAR" -> "XPAR", "CU$$$$$EUR" -> "EUR"."""
+    return str(value or "").rsplit("$", 1)[-1].upper()
+
+
+def _ticker_and_place(ticker: str) -> tuple[str, Optional[tuple[set[str], set[str]]]]:
+    """The bare symbol and the place of a Yahoo ticker: "AIR.PA" -> ("AIR", Paris).
+
+    A suffix that names no known place (``BRK.B`` is a share class) stays in the symbol.
+    """
+    symbol, _, suffix = ticker.rpartition(".")
+    if symbol and suffix in PLACES:
+        return symbol, PLACES[suffix]
+    return ticker, None
+
+
+def _search_term(identifier: str) -> str:
+    """What the screener is asked: an ISIN as it is, a ticker without its Yahoo suffix."""
+    wanted = identifier.strip().upper()
+    if _ISIN.fullmatch(wanted):
+        return wanted
+    return _ticker_and_place(wanted)[0]

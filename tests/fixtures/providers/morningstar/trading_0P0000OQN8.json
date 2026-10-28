@@ -1,0 +1,31 @@
+{
+  "bid": 403.42,
+  "bidSize": 40,
+  "ask": 403.52,
+  "askSize": 40,
+  "dayRangeHigh": 410.85,
+  "dayRangeLow": 397.18,
+  "yearRangeHigh": 498.83,
+  "yearRangeLow": 297.38,
+  "avgVolume": 37064680.991401516,
+  "volume": 34837298.068043,
+  "marketCap": 1598721237682.38,
+  "sharesOutstanding": 3952.7302,
+  "floatShares": 3536.285,
+  "sharesShorted": 69350469.0,
+  "sharesShortedDate": "2026-10-15T05:00:00.000",
+  "floatSharesShorted": 1.9611,
+  "daysToConver": 2.043,
+  "sharesShortedChanged": -2.2287,
+  "previousSharesShortedDate": "2026-09-30T05:00:00.000",
+  "returnStatistics": {
+    "numberOfMonths": 60.0,
+    "beta": 1.942994
+  },
+  "lastClose": 407.46,
+  "lastPrice": 404.46,
+  "exchangeName": "NASDAQ",
+  "domicileCountryCode": "USA",
+  "lastCloseCurrency": "USD",
+  "tradingCurrency": "USD"
+}

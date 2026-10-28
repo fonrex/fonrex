@@ -17,7 +17,7 @@ Only short extracts are stored (labels and figures), never a full page.
 `search/` holds real search API responses used to test result selection.
 
 `morningstar/` holds real answers of the JSON services of Morningstar (screener, overview,
-company profile), the long business descriptions cut to their first sentence.
+company profile, trading information), the long business descriptions cut to their first sentence.
 
 To refresh a fixture after a site changes its markup, capture the page again, reduce it the same
 way and update the `.json` file with the values displayed on the page that day.

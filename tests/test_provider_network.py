@@ -1157,12 +1157,14 @@ class TestMorningStar:
     SCREENER = "lt.morningstar.com/api/rest.svc/9vehuxllxs/security/screener"
     OVERVIEW = "sal-service/v1/stock/data/equityOverview"
     PROFILE = "sal-service/v1/stock/data/companyProfile"
+    TRADING = "sal-service/v1/stock/tradingInformation/"
     TESLA = "US88160R1014"
     TESLA_PAGE = "https://global.morningstar.com/fr/investissements/actions/0P0000OQN8/cours"
 
-    def _services(self, net, overview=None, profile=None):
-        net.get(self.OVERVIEW, overview or morningstar("overview_0P0000OQN8.json"))
-        net.get(self.PROFILE, profile or morningstar("profile_0P0000OQN8.json"))
+    def _services(self, net, overview=None, profile=None, trading=None, ms_id="0P0000OQN8"):
+        net.get(self.OVERVIEW, overview or morningstar(f"overview_{ms_id}.json"))
+        net.get(self.PROFILE, profile or morningstar(f"profile_{ms_id}.json"))
+        net.get(self.TRADING, trading or morningstar(f"trading_{ms_id}.json"))
 
     async def test_isin_then_overview_and_profile(self, fake_network):
         fake_network.get(self.SCREENER, morningstar("screener_US88160R1014.json"))
@@ -1190,6 +1192,52 @@ class TestMorningStar:
         assert getattr(metrics, "fair_value", None) is None
         assert not hasattr(metrics, "morningstar_pdf_url")
 
+    async def test_trading_information(self, fake_network):
+        fake_network.get(self.SCREENER, morningstar("screener_US88160R1014.json"))
+        self._services(fake_network)
+
+        metrics = await MorningStarProvider().get_financials(self.TESLA)
+
+        assert metrics.beta == pytest.approx(1.942994)
+        # Given in millions of shares
+        assert metrics.shares_outstanding == pytest.approx(3_952_730_200)
+        assert metrics.float_shares == pytest.approx(3_536_285_000)
+        # Given as a count of shares, and as a percentage of the float
+        assert metrics.shares_short == pytest.approx(69_350_469)
+        assert metrics.short_percent_float == pytest.approx(1.9611)
+        assert metrics.short_ratio == pytest.approx(2.043)
+        # The overview's figures are kept when the two give the same field
+        assert metrics.market_cap == pytest.approx(1_592_554_978_643.7)
+
+    async def test_trading_carries_the_realtime_token(self, fake_network, monkeypatch):
+        self._services(fake_network)
+
+        await MorningStarProvider().get_financials("0P0000OQN8")
+        default = next(r for r in fake_network.requests if self.TRADING in str(r.url))
+        monkeypatch.setenv("MORNINGSTAR_SAL_REALTIME_TOKEN", "new-token")
+        fake_network.requests.clear()
+        await MorningStarProvider().get_financials("0P0000OQN8")
+        replaced = next(r for r in fake_network.requests if self.TRADING in str(r.url))
+
+        assert default.headers["X-API-REALTIME-E"].startswith("eyJlbmMiOiJBMTI4R0NNIi")
+        assert (
+            "X-API-REALTIME-E"
+            not in next(r for r in fake_network.requests if self.OVERVIEW in str(r.url)).headers
+        )
+        assert replaced.headers["X-API-REALTIME-E"] == "new-token"
+
+    async def test_a_yahoo_ticker_is_searched_without_its_suffix(self, fake_network):
+        """Review of #39: the screener finds nothing for "AIR.PA", only for "AIR"."""
+        fake_network.get(self.SCREENER, morningstar("screener_NL0000235190.json"))
+        fake_network.get("sal-service", status(404))
+
+        metrics = await MorningStarProvider().get_financials("AIR.PA")
+
+        search = fake_network.requests[0]
+        assert search.url.params["term"] == "AIR"
+        assert search.url.params["pageSize"] == "50"
+        assert metrics.morningstar_id == "0P00009WFE"
+
     async def test_requests_carry_the_isin_and_the_public_key(self, fake_network):
         fake_network.get(self.SCREENER, morningstar("screener_US88160R1014.json"))
         self._services(fake_network)
@@ -1212,8 +1260,7 @@ class TestMorningStar:
 
     async def test_a_listing_in_another_currency(self, fake_network):
         """0P0000A5ZK is SCOR quoted in Swiss francs: the currency is the one of the listing."""
-        fake_network.get(self.OVERVIEW, morningstar("overview_0P0000A5ZK.json"))
-        fake_network.get(self.PROFILE, morningstar("profile_0P0000A5ZK.json"))
+        self._services(fake_network, ms_id="0P0000A5ZK")
 
         metrics = await MorningStarProvider().get_financials("0P0000A5ZK")
 
@@ -1225,6 +1272,11 @@ class TestMorningStar:
         assert metrics.dividend_yield == pytest.approx(0.055754)
         assert metrics.investment_style == "Mid Value"
         assert metrics.country == "France"
+        # No short interest is published for this listing: nothing is invented
+        assert metrics.beta == pytest.approx(-0.024912)
+        assert metrics.shares_outstanding == pytest.approx(178_663_400)
+        assert getattr(metrics, "float_shares", None) is None
+        assert getattr(metrics, "short_percent_float", None) is None
 
     @pytest.mark.parametrize(
         "identifier",
@@ -1245,12 +1297,25 @@ class TestMorningStar:
 
     @pytest.mark.parametrize(
         ("identifier", "expected"),
-        [("NL0000235190", "0P00009WFE"), ("AIR.PA", "0P00009WFE"), ("US0378331005", None)],
-        ids=["isin", "ticker-with-suffix", "other-isin"],
+        [
+            ("NL0000235190", "0P00009WFE"),
+            ("AIR.PA", "0P00009WFE"),
+            ("AIR", "0P0000AAR0"),
+            ("AIR.DE", None),
+            ("US0378331005", None),
+        ],
+        ids=["isin", "ticker-on-its-place", "bare-ticker-in-the-us", "other-place", "other-isin"],
     )
     def test_the_row_of_the_identifier_is_chosen(self, identifier, expected):
         rows = json.loads((MORNINGSTAR_FIXTURES / "screener_NL0000235190.json").read_text())
-        rows = [{"SecId": "0P000000ZZ", "ISIN": "FR0000000000", "Ticker": "ZZ"}, *rows["rows"]]
+        rows = [
+            # A fund comes first in the screener for short tickers: never taken
+            {"SecId": "F00000ZZZZ", "ISIN": "NL0000235190", "Ticker": "AIR"},
+            {"SecId": "0P000000ZZ", "ISIN": "FR0000000000", "Ticker": "ZZ"},
+            # AAR Corp, "AIR" in New York
+            {"SecId": "0P0000AAR0", "Ticker": "AIR", "ExchangeId": "EX$$$$XNYS"},
+            *rows["rows"],
+        ]
 
         assert MorningStarProvider.select_id(rows, identifier) == expected
 
@@ -1549,6 +1614,7 @@ class TestMorningStarJoinsTheCommonBase:
         )
         fake_network.get(TestMorningStar.OVERVIEW, morningstar("overview_0P0000OQN8.json"))
         fake_network.get(TestMorningStar.PROFILE, morningstar("profile_0P0000OQN8.json"))
+        fake_network.get(TestMorningStar.TRADING, morningstar("trading_0P0000OQN8.json"))
 
         metrics = await MorningStarProvider().get_financials(TestMorningStar.TESLA)
 

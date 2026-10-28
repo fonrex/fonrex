@@ -1,0 +1,31 @@
+{
+  "bid": 30.02,
+  "bidSize": 900,
+  "ask": 32.08,
+  "askSize": 900,
+  "dayRangeHigh": 31.12,
+  "dayRangeLow": 31.12,
+  "yearRangeHigh": 32.1,
+  "yearRangeLow": 25,
+  "avgVolume": 257.6,
+  "volume": 500,
+  "marketCap": 5560004883.52,
+  "sharesOutstanding": 178.6634,
+  "floatShares": null,
+  "sharesShorted": null,
+  "sharesShortedDate": null,
+  "floatSharesShorted": null,
+  "daysToConver": null,
+  "sharesShortedChanged": null,
+  "previousSharesShortedDate": null,
+  "returnStatistics": {
+    "numberOfMonths": 60.0,
+    "beta": -0.024912
+  },
+  "lastClose": 31.2,
+  "lastPrice": 31.12,
+  "exchangeName": "SIX Swiss Exchange",
+  "domicileCountryCode": "FRA",
+  "lastCloseCurrency": "CHF",
+  "tradingCurrency": "CHF"
+}

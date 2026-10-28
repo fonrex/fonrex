@@ -352,7 +352,11 @@ class AssetImporter:
             sp = self.db.begin_nested()
             try:
                 asset = self._upsert_asset(isin_rows)
-                existing_listings: List[AssetListing] = []
+                # Listings stored by an earlier batch or import count too: an ISIN
+                # split across batches must not get a second primary listing.
+                existing_listings: List[AssetListing] = (
+                    self.db.query(AssetListing).filter_by(asset_id=asset.id).all()
+                )
 
                 for row in isin_rows:
                     listing, created = self._upsert_listing(asset, row, existing_listings)

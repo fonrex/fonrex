@@ -63,7 +63,7 @@ MODULE_THRESHOLDS = {
     "financials/providers/justetf.py": 87.0,
     "financials/providers/JustETF_provider.py": 83.0,
     "financials/providers/Marketwatch_provider.py": 93.0,
-    "financials/providers/MorningStar_provider.py": 78.0,
+    "financials/providers/MorningStar_provider.py": 95.0,
     "financials/providers/Msn_provider.py": 100.0,
     "financials/providers/openfigi.py": 90.0,
     "financials/providers/sec_edgar.py": 79.0,

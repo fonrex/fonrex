@@ -46,7 +46,7 @@ PARSERS = {
 }
 
 # Echoed inputs, not information read from the page.
-INPUT_FIELDS = {"ticker", "provider_url", "isin", "morningstar_url"}
+INPUT_FIELDS = {"ticker", "provider_url", "isin"}
 FINANCIAL_FIELDS = (
     "pe_ratio",
     "dividend_yield",
@@ -70,10 +70,7 @@ EMPTY_PAGE = "<html><head></head><body></body></html>"
 
 
 def parse(provider: str, html: str, ticker: str) -> dict:
-    result = PARSERS[provider](HTMLParser(html), ticker)
-    if isinstance(result, dict):
-        return {key: value for key, value in result.items() if value is not None}
-    return result.model_dump(exclude_none=True)
+    return PARSERS[provider](HTMLParser(html), ticker).model_dump(exclude_none=True)
 
 
 def load_fixtures() -> list[tuple[str, dict, str]]:
@@ -120,6 +117,7 @@ class TestRealPages:
             "Gurufocus",
             "Investing",
             "InvestirLesEchos",
+            "MorningStar",
             "Marketwatch",
             "Msn",
             "ZoneBourse",

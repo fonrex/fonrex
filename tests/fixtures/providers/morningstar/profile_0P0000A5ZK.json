@@ -1,0 +1,42 @@
+{
+  "performanceId": "0P0000A5ZK",
+  "title": "Company Profile",
+  "sections": {
+    "businessDescription": {
+      "label": "Business Description",
+      "value": "Scor est le sixième réassureur mondial, proposant des produits de réassurance non-vie et vie."
+    },
+    "contact": {
+      "label": "Contact",
+      "address1": "5, avenue Kleber, Paris 75116",
+      "address2": "",
+      "country": "France",
+      "phone": "T +33 158447000",
+      "fax": "",
+      "email": "ir@scor.com",
+      "url": "www.scor.com"
+    },
+    "sector": {
+      "label": "Sector",
+      "value": "Financial Services"
+    },
+    "industry": {
+      "label": "Industry",
+      "value": "Insurance - Reinsurance"
+    },
+    "mostRecentEarnings": {
+      "label": "Most Recent Earnings",
+      "value": "2025-12-31T06:00:00.000"
+    },
+    "fiscalYearEnds": {
+      "label": "Fiscal Year End",
+      "value": "2026-12-31T06:00:00.000"
+    },
+    "totalEmployees": {
+      "label": "Total Number of Employees",
+      "value": "3760",
+      "date": "2025-12-31"
+    },
+    "stockType": null
+  }
+}

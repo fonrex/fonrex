@@ -8,7 +8,6 @@ from financials.providers.boursorama_provider import BoursoramaProvider
 from financials.providers.GoogleFinance_provider import GoogleFinanceProvider
 from financials.providers.Investing_provider import InvestingProvider
 from financials.providers.Marketwatch_provider import MarketwatchProvider
-from financials.providers.MorningStar_provider import MorningStarProvider
 from financials.providers.Msn_provider import MsnProvider
 from financials.providers.ZoneBourse_provider import ZoneBourseProvider
 
@@ -132,32 +131,6 @@ class TestSignAndThousandsAreKept:
         assert clean("-1.2B") == pytest.approx(-1_200_000_000)
         assert clean("5.67%") == pytest.approx(5.67)
         assert clean("1,234.56") == pytest.approx(1234.56)
-
-
-class TestMorningStarLabels:
-    def _parse(self, rows: str) -> dict:
-        metrics = MorningStarProvider()._parse_page(page(rows), "TST", "https://example.test/page")
-        return metrics.model_dump(exclude_none=True)
-
-    def test_price_earnings_and_yield_in_french_format(self):
-        data = self._parse(
-            '<div class="sal-dp-name">PER</div><div>25,5</div>'
-            '<div class="sal-dp-name">Rendement div.</div><div>1,81 %</div>'
-        )
-
-        assert data["pe_ratio"] == pytest.approx(25.5)
-        assert data["dividend_yield"] == pytest.approx(1.81)
-
-    def test_performance_is_not_a_price_earnings_ratio(self):
-        """Any label containing the letters "per" was read as the P/E ratio."""
-        data = self._parse('<div class="sal-dp-name">Performance 1 an</div><div>50,7</div>')
-
-        assert "pe_ratio" not in data
-
-    def test_missing_figure_is_left_out(self):
-        data = self._parse('<div class="sal-dp-name">PER</div><div>-</div>')
-
-        assert "pe_ratio" not in data
 
 
 class TestZoneBourseRows:

@@ -42,12 +42,6 @@ GOOGLE_HTML = """
 </body></html>
 """
 
-MORNINGSTAR_HTML = """
-<html><body><h1><span>Airbus</span></h1>
-  <div><span class="sal-dp-name">Rendement div.</span><span>3,45 %</span></div>
-</body></html>
-"""
-
 US_LABEL_HTML = """
 <html><body><h1>Apple</h1><ul>
   <li>P/E Ratio: 30.5</li>
@@ -73,10 +67,6 @@ def _parse(provider_name: str):
         )
     if provider_name == "GoogleFinance":
         return GoogleFinanceProvider()._parse_page(HTMLParser(GOOGLE_HTML), "AIR:EPA")
-    if provider_name == "MorningStar":
-        return MorningStarProvider()._parse_page(
-            HTMLParser(MORNINGSTAR_HTML), "NL0000235190", "https://example.test/airbus"
-        )
     if provider_name == "Barrons":
         return BarronsProvider()._parse_page(HTMLParser(US_LABEL_HTML), "AAPL")
     if provider_name == "Marketwatch":
@@ -111,7 +101,6 @@ KNOWN_YIELD_PROVIDERS = {
     "GoogleFinance",
     "Investing",
     "Marketwatch",
-    "MorningStar",
     "ZoneBourse",
     "wallStreetJournal",
 }
@@ -257,25 +246,28 @@ class TestPercentProvidersPassValidation:
         low, high = CANARY_ASSETS["TSLA"]["pe_ratio"]
         assert low <= kept["pe_ratio"] <= high
 
-    async def test_morningstar_real_page_passes_the_validation(self):
-        """The French page of Tesla: the market cap in French billions, the short float in %."""
+    async def test_morningstar_ratios_pass_the_validation_as_given(self):
+        """The JSON services give ratios: a 5.58 % yield is 0.055754, not divided again."""
+        import json
         from pathlib import Path
 
-        html = (Path(__file__).parent / "fixtures/providers/morningstar_tsla.html").read_text()
-        payload = MorningStarProvider()._parse_page(HTMLParser(html), "TSLA", "u").model_dump()
+        from financials.models import FinancialMetrics
+
+        folder = Path(__file__).parent / "fixtures/providers/morningstar"
+        metrics = FinancialMetrics(ticker="0P0000A5ZK")
+        MorningStarProvider.read_overview(
+            metrics, json.loads((folder / "overview_0P0000A5ZK.json").read_text())
+        )
 
         results = await ValidationLayer().validate_results(
-            ticker="TSLA", results={"MorningStar": payload}
+            ticker="SCR", results={"MorningStar": metrics.model_dump()}
         )
 
         kept = results["MorningStar"]
-        assert kept["market_cap"] == pytest.approx(1.61e12)
-        assert kept["short_percent_float"] == pytest.approx(1.96)
-        assert kept["pb_ratio"] == pytest.approx(17.34)
-        assert kept["ps_ratio"] == pytest.approx(13.39)
-        assert kept["beta"] == pytest.approx(1.94)
-        low, high = CANARY_ASSETS["TSLA"]["pe_ratio"]
-        assert low <= kept["pe_ratio"] <= high
+        assert kept["dividend_yield"] == pytest.approx(0.055754)
+        assert kept["pb_ratio"] == pytest.approx(1.389758)
+        assert kept["pe_ratio"] == pytest.approx(7.456088)
+        assert to_ratio("MorningStar", "dividend_yield", Decimal("0.055754")) == Decimal("0.055754")
 
     async def test_impossible_scores_are_rejected(self):
         results = await ValidationLayer().validate_results(

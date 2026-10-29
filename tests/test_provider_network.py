@@ -1079,6 +1079,15 @@ class TestGurufocus:
         assert metrics.ticker == "XPAR:AIR"
         assert metrics.piotroski_score == 7
 
+    async def test_lowercase_ticker_gives_the_same_ticker_on_both_paths(self, fake_network):
+        fake_network.get(self.SEARCH, CLOUDFLARE_CHALLENGE)
+        fake_network.get("/stock/XPAR:AIR/summary", ok(gurufocus_page()))
+
+        metrics = await GurufocusProvider().get_financials("air.pa")
+
+        assert metrics.ticker == "XPAR:AIR"
+        assert metrics.provider_url == "https://www.gurufocus.com/stock/XPAR:AIR/summary"
+
     @pytest.mark.parametrize(
         "page_response",
         [CLOUDFLARE_CHALLENGE, status(500), httpx.ReadTimeout("timed out")],
@@ -1141,6 +1150,140 @@ class TestGurufocus:
 
         assert "piotroski_score" not in metrics
         assert metrics["roic"] == pytest.approx(12.3)
+
+    async def test_exchange_suffix_never_takes_another_symbol_or_exchange(self, fake_network):
+        """Searching SAN.PA must not take XPAR:AF or NYSE:SAN when XPAR:SAN is absent."""
+        fake_network.get(
+            self.SEARCH,
+            ok_json(
+                [
+                    {"type": "stock", "data": {"symbol": "AF", "exchange": "XPAR"}},
+                    {"type": "stock", "data": {"symbol": "SAN", "exchange": "NYSE"}},
+                ]
+            ),
+        )
+        fake_network.get("/stock/XPAR:SAN/summary", ok(gurufocus_page("XPAR:SAN")))
+
+        metrics = await GurufocusProvider().get_financials("SAN.PA")
+
+        assert metrics.ticker == "XPAR:SAN"
+        assert metrics.provider_url == "https://www.gurufocus.com/stock/XPAR:SAN/summary"
+        assert fake_network.requests[0].headers["Accept"].startswith("text/html")
+
+    @pytest.mark.parametrize(
+        ("nuxt_script", "expected"),
+        [
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:87}}}(0));",
+                87.0,
+            ),
+            (
+                "window.__NUXT__=(function(a,b,bZ){return {stock:{gf_score:bZ}}}(void 0,.93,95));",
+                95.0,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:0}}}(0));",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:missing}}}(87));",
+                None,
+            ),
+            (
+                "window.__NUXT__={gf_score:bZ};",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}}(unquoted));",
+                None,
+            ),
+            (
+                'window.__NUXT__=(function(a){return {peers:[{symbol:"F",gf_score:41}],'
+                'stock:{name:"a}{,gf_score:12",competitors:[{gf_score:41}],gf_score:87}}}(0));',
+                87.0,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{peers:[{gf_score:41}]}}}(0));",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a,b,c,d,e){return {stock:{gf_score:e},x:[a,b,c,d]}}"
+                "(void 0,Array(2),new Date(0),{k:1,'q':\"(\"},64));",
+                64.0,
+            ),
+            (
+                'window.__NUXT__=(function(a,b){return {stock:{gf_score:b}}}("x}}(1,2\\"",72));',
+                72.0,
+            ),
+            (
+                "window.__NUXT__=(function(usd1){return {stock:{gf_score:usd1}}}(77));",
+                77.0,
+            ),
+            (
+                'window.__NUXT__=(function(a){return {stock:{gf_score:a}}}("81"));',
+                81.0,
+            ),
+            (
+                'window.__NUXT__=(function(a){return {stock:{gf_score:a}}}("\\x"));',
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}}(true));",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a,b){return {stock:{gf_score:b}}}(1));",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}});",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}}(87",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}",
+                None,
+            ),
+        ],
+        ids=[
+            "literal",
+            "iife-parameter",
+            "zero-not-applicable",
+            "unknown-parameter",
+            "not-an-iife",
+            "unparseable-args",
+            "peer-scores-ignored",
+            "only-a-peer-score",
+            "other-args-not-json",
+            "iife-marker-in-a-string",
+            "currency-like-parameter",
+            "number-in-a-string",
+            "invalid-string",
+            "not-a-number",
+            "missing-argument",
+            "function-never-called",
+            "unclosed-call",
+            "unclosed-body",
+        ],
+    )
+    async def test_gf_score_falls_back_to_server_rendered_nuxt_state(
+        self, fake_network, nuxt_script, expected
+    ):
+        page = (
+            "<html><body><h1>Tesla Inc</h1>"
+            "<script>var analytics = true;</script>"
+            f"<script>{nuxt_script}</script>"
+            "</body></html>"
+        )
+        fake_network.get("/stock/TSLA/summary", ok(page))
+
+        metrics = await GurufocusProvider().get_financials("NAS:TSLA")
+
+        assert metrics.gf_score == expected
+        assert fake_network.requests[0].headers["Accept"].startswith("text/html")
 
 
 # ── Morningstar ──────────────────────────────────────────────────────────────

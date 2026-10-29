@@ -283,8 +283,6 @@ class TestFindNumber:
 OWN_CONVERSION = {
     # Retry-After header of an HTTP answer, not a figure of a page.
     "base.py",
-    # Reads the first figure of a whole page: the search itself has to be redone.
-    "Gurufocus_provider.py",
     # Amounts with their currency and unit, kept as Decimal (ETF details).
     "JustETF_provider.py",
     "justetf.py",

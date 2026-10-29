@@ -428,20 +428,18 @@ class AssetImporter:
     ) -> Tuple[Optional[AssetListing], bool]:
         """
         Upsert on (asset_id, ticker, exchange, currency).
+        A row without exchange matches any stored exchange: enrichment fills the
+        blank exchange of an imported listing, which must not be imported again.
         Returns (listing, created). In dry_run returns an unpersisted object.
         """
         exchange = determine_exchange(row) or ""
 
-        listing = (
-            self.db.query(AssetListing)
-            .filter_by(
-                asset_id=asset.id,
-                ticker=row.ticker,
-                exchange=exchange,
-                currency=row.currency,
-            )
-            .first()
+        query = self.db.query(AssetListing).filter_by(
+            asset_id=asset.id, ticker=row.ticker, currency=row.currency
         )
+        if exchange:
+            query = query.filter_by(exchange=exchange)
+        listing = query.order_by(AssetListing.is_primary.desc(), AssetListing.id).first()
 
         if listing:
             return listing, False

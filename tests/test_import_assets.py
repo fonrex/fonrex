@@ -337,6 +337,64 @@ class TestAssetImporter(SqliteTestMixin):
         usd_listing = self.session.query(AssetListing).filter_by(currency="USD").one()
         self.assertTrue(usd_listing.is_primary)
 
+    def test_reimport_after_enrichment_filled_the_exchange_creates_nothing(self):
+        rows = [self._csv_row()]
+        AssetImporter(self.session).run(rows)
+        listing = self.session.query(AssetListing).one()
+        listing.exchange = "NMS"  # what the enrichment writes
+        self.session.commit()
+        self.session.expunge_all()
+
+        stats = AssetImporter(self.session).run(rows)
+
+        self.assertEqual(stats.listings_created, 0)
+        self.assertEqual(stats.listings_skipped, 1)
+        self.assertEqual(self.session.query(AssetListing).count(), 1)
+
+    def test_row_without_exchange_matches_the_primary_then_the_oldest_listing(self):
+        asset = Asset(ticker="AAPL", isin="US0378331005", name="Apple", is_active=True)
+        self.session.add(asset)
+        self.session.flush()
+        for exchange, is_primary in (("NMS", False), ("NGM", True), ("NCM", False)):
+            self.session.add(
+                AssetListing(
+                    asset_id=asset.id,
+                    ticker="AAPL",
+                    exchange=exchange,
+                    currency="USD",
+                    is_primary=is_primary,
+                    source="manual",
+                )
+            )
+        self.session.commit()
+        importer = AssetImporter(self.session)
+
+        listing, created = importer._upsert_listing(asset, self._csv_row(), [])
+        self.assertFalse(created)
+        self.assertEqual(listing.exchange, "NGM")
+
+        self.session.query(AssetListing).update({"is_primary": False})
+        listing, created = importer._upsert_listing(asset, self._csv_row(), [])
+        self.assertFalse(created)
+        self.assertEqual(listing.exchange, "NMS")
+
+    def test_row_with_an_exchange_still_matches_that_exchange_only(self):
+        asset = Asset(ticker="SAP", isin="DE0007164600", name="SAP", is_active=True)
+        self.session.add(asset)
+        self.session.flush()
+        self.session.add(
+            AssetListing(
+                asset_id=asset.id, ticker="SAP.DE", exchange="GER", currency="EUR", source="manual"
+            )
+        )
+        self.session.commit()
+
+        row = self._csv_row(ticker="SAP.DE", isin="DE0007164600", currency="EUR")
+        listing, created = AssetImporter(self.session)._upsert_listing(asset, row, [])
+
+        self.assertTrue(created)
+        self.assertEqual(listing.exchange, "XETR")
+
     def test_stats_track_listings_skipped(self):
         rows = [self._csv_row()]
         AssetImporter(self.session).run(rows)

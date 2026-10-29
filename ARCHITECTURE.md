@@ -232,6 +232,7 @@ The use-case layer is therefore the target model, reached by three routers; the 
 | `schemas/technical.py` | Pydantic v2 schemas for time series and technical indicator results. |
 | `import_assets.py` | ISIN-deduplicated CSV import pipeline: `parse_csv` → `AssetImporter` (grouping by ISIN, `_upsert_asset` / `_upsert_listing` / `_create_default_mappings`); Yahoo/yfinance enrichment and logos in kept legacy functions. |
 | `scripts/clean_isin_duplicates.py` | Standalone diagnostic and ISIN duplicate cleanup tool: `diagnose_duplicates`, `clean_duplicates` (re-parenting → deletion), `create_unique_index`; CLI with `--dry-run`, `--create-index`, `--isin`, `--diagnose-only`. |
+| `scripts/clean_listing_duplicates.py` | Removes the listings that a CSV re-import duplicated after the enrichment filled the exchange: `find_duplicates`, `clean_duplicates`; CLI with `--dry-run`, `--isin`. A duplicate holding prices is reported and kept. |
 | `scripts/ingest_all.py` | Administration CLI to trigger global historical ingestion of all database assets. |
 | `scripts/seed_database.py` | Imports the default catalogue, then optionally enriches it and ingests daily prices (`make db-seed`). |
 | `scripts/check_coverage_distribution.py` | Coverage floor of each module, checked by `make ci`, and the coverage summary published by the CI. |
@@ -963,7 +964,8 @@ AssetImporter.run(rows)
   → _process_batch()  per BATCH_SIZE_IMPORT chunk
        ↓ grouping by ISIN
     _upsert_asset()          — 1 Asset per ISIN (INSERT or UPDATE)
-    _upsert_listing()        — 1 AssetListing per (asset_id, ticker, exchange, currency)
+    _upsert_listing()        — 1 AssetListing per (asset_id, ticker, exchange, currency);
+                               a row without exchange matches any stored exchange
     _create_default_mappings() — YahooFinance + GoogleFinance
        ↓
     commit() if not dry_run
@@ -979,6 +981,8 @@ Primary listing logic (`determine_is_primary`):
 1. First listing → `is_primary = True`.
 2. Primary already exists → `False`.
 3. Currency in `PRIMARY_CURRENCIES` {USD, GBP, JPY, CHF, CAD, AUD} and no primary yet → `True`.
+
+Listing matching (`_upsert_listing`): a row whose exchange is known (from the file or from the suffix of its ticker) matches the listing of that exchange only. A row without exchange matches the listing of the same instrument, ticker and currency whatever its exchange, the primary one first, then the oldest: the enrichment fills the blank exchange of an imported listing, and importing the file again must not create a second one. `scripts/clean_listing_duplicates.py` removes the duplicates that older imports created this way.
 
 The import itself makes no network call. The `YahooFinance` mapping it creates is the ticker of the file, marked `source = 'csv_import'` and not verified: it is replaced by the verified symbol the first time the listing is ingested or asked for its fundamentals (see [Source Symbol](#3-source-symbol-historicalyahoo_symbolspy)). `--enrich-only` is a separate step: it runs the deep enrichment of `financials/enrichment/yfinance_enricher.py` (highlights, statements, earnings, ratings…) for one instrument or for the instruments of a file. Yahoo is asked with the symbol verified for the primary listing of the instrument (the same resolver as the price ingestion); an instrument without a verified symbol is left as it is, and the log says why.
 
@@ -1012,6 +1016,26 @@ Cleanup steps (`clean_duplicates`):
 4. Delete duplicated assets that are now without listings.
 
 `--create-index` creates, when they are missing, the unique index `uq_assets_isin_not_null` and the constraint `uq_asset_listing_identity`.
+
+### Listing Duplicates Cleanup (`scripts/clean_listing_duplicates.py`)
+
+Before the importer matched a row without exchange on any stored exchange, importing a file again after its enrichment created a second listing (`exchange = ""`) next to the enriched one, with its own mappings. A duplicate is a listing with an empty exchange when an older listing of the same instrument, ticker and currency exists; the oldest one is kept.
+
+```bash
+# Rehearsal: the cleanup is executed, then rolled back
+docker compose exec fonrex-api python scripts/clean_listing_duplicates.py --dry-run
+
+# Cleanup
+docker compose exec fonrex-api python scripts/clean_listing_duplicates.py
+
+# Specific ISIN
+docker compose exec fonrex-api python scripts/clean_listing_duplicates.py \
+  --isin US0378331005 --dry-run
+```
+
+- A duplicate without prices is deleted; its `asset_mappings` rows go with it (cascade).
+- A duplicate that holds prices is listed in the report and left alone: `prices_eod.asset_listing_id` does not cascade.
+- When the deleted duplicate was the primary listing, the kept listing becomes primary.
 
 ## EOD And Historical Data
 

@@ -1,0 +1,15 @@
+{
+  "total": 1,
+  "page": 1,
+  "pageSize": 10,
+  "rows": [
+    {
+      "SecId": "0P00009WFE",
+      "Name": "Airbus SE",
+      "Ticker": "AIR",
+      "ISIN": "NL0000235190",
+      "ExchangeId": "EX$$$$XPAR",
+      "CurrencyId": "CU$$$$$EUR"
+    }
+  ]
+}

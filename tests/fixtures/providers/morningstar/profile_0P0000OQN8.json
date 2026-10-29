@@ -1,0 +1,42 @@
+{
+  "performanceId": "0P0000OQN8",
+  "title": "Company Profile",
+  "sections": {
+    "businessDescription": {
+      "label": "Business Description",
+      "value": "Tesla, constructeur automobile verticalement intégré spécialisé dans les véhicules électriques à batterie et développeur de logiciels de conduite autonome."
+    },
+    "contact": {
+      "label": "Contact",
+      "address1": "1 Tesla Road, Austin, TX 78725",
+      "address2": "",
+      "country": "United States of America (the)",
+      "phone": "T +1 512 516-8177",
+      "fax": "",
+      "email": "",
+      "url": "www.tesla.com"
+    },
+    "sector": {
+      "label": "Sector",
+      "value": "Consumer Cyclical"
+    },
+    "industry": {
+      "label": "Industry",
+      "value": "Auto Manufacturers"
+    },
+    "mostRecentEarnings": {
+      "label": "Most Recent Earnings",
+      "value": "2026-09-30T05:00:00.000"
+    },
+    "fiscalYearEnds": {
+      "label": "Fiscal Year End",
+      "value": "2026-12-31T06:00:00.000"
+    },
+    "totalEmployees": {
+      "label": "Total Number of Employees",
+      "value": "134785",
+      "date": "2025-12-31"
+    },
+    "stockType": null
+  }
+}

@@ -20,7 +20,6 @@ from financials.providers.Gurufocus_provider import GurufocusProvider
 from financials.providers.Investing_provider import InvestingProvider
 from financials.providers.InvestirLesEchos_provider import InvestirLesEchosProvider
 from financials.providers.Marketwatch_provider import MarketwatchProvider
-from financials.providers.MorningStar_provider import MorningStarProvider
 from financials.providers.Msn_provider import MsnProvider
 from financials.providers.wallStreetJournal_provider import WallStreetJournalProvider
 from financials.providers.ZoneBourse_provider import ZoneBourseProvider
@@ -39,7 +38,6 @@ PARSERS = {
     "Investing": lambda page, ticker: InvestingProvider()._parse_page(page, ticker),
     "InvestirLesEchos": lambda page, ticker: InvestirLesEchosProvider()._parse_page(page, ticker),
     "Marketwatch": lambda page, ticker: MarketwatchProvider()._parse_page(page, ticker),
-    "MorningStar": lambda page, ticker: MorningStarProvider()._parse_page(page, ticker, PAGE_URL),
     "Msn": lambda page, ticker: MsnProvider()._parse_page(page, ticker),
     "wallStreetJournal": lambda page, ticker: WallStreetJournalProvider()._parse_page(page, ticker),
     "ZoneBourse": lambda page, ticker: ZoneBourseProvider()._parse_page(page, ticker, PAGE_URL),
@@ -117,7 +115,6 @@ class TestRealPages:
             "Gurufocus",
             "Investing",
             "InvestirLesEchos",
-            "MorningStar",
             "Marketwatch",
             "Msn",
             "ZoneBourse",

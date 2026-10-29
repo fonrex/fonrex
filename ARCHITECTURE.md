@@ -671,6 +671,7 @@ Constraints, indexes, and compatibility:
 
 - The diagram shows the columns that matter to understand the model, not every column: `models.py` is the reference.
 - `AssetListing` is unique by `(asset_id, ticker, exchange, currency)` — constraint `uq_asset_listing_identity`, created with the table and re-asserted by migration 009.
+- An instrument has at most one primary listing: the partial unique index `uq_asset_listings_one_primary` on `asset_listings (asset_id) WHERE is_primary` (migration 029, which first kept the oldest of the primary listings that older imports had left).
 - `AssetMapping` is unique by `(asset_listing_id, provider_name)` (constraint `uq_asset_listing_provider`). `asset_listing_id` may be empty: the mapping then applies to every listing of the instrument, and PostgreSQL does not treat two such rows as duplicates. `source` says where the identifier comes from (`csv_import`, `manual`, `isin_search`, `ticker_check`, `symbol_not_found`) and `last_verified_at` when it was last confirmed: see [Source Symbol](#3-source-symbol-historicalyahoo_symbolspy).
 - `RealtimeSubscription` has a unique constraint `uq_realtime_sub_asset` on `asset_id`.
 - `assets.isin` is protected by the unique partial index `uq_assets_isin_not_null` (`WHERE isin IS NOT NULL`), created by migrations 001 and 004. Migration 009 merges the duplicates left in older databases and creates the index where it was still missing. A single `Asset` per ISIN is guaranteed at the database level.
@@ -1840,6 +1841,7 @@ Every file of `alembic/versions/` is listed here (`tests/test_docs_consistency.p
 | 026 | `026_esef_filings.py` | `esef_filings` (a filing of the index of filings.xbrl.org: its LEI, the period the index gives it, its country, links and counts of errors, and what its last reading found: status, true period of its facts, counts of facts, breakdowns and conflicts), `esef_facts` (one value per LEI, concept, unit and period, the one of the latest filing, removed with its filing) and `esef_entity_loads` (last reading of the filings of each company); the ESEF filings of European listed companies. The downgrade drops the three tables. |
 | 027 | `027_esef_long_prefixes.py` | `esef_facts.taxonomy` and `esef_facts.unit` take 255 characters (40 before): the prefix of the extension of a company can be longer (`ecclesiasticalinsuranceofficepubliclimitedcompany`). The downgrade gives them back 40 characters. |
 | 028 | `028_esef_text_keys.py` | `esef_facts.taxonomy`, `concept` and `unit` become `text`: a company names the concepts and units of its extension as it wishes, and a catalogue of 3 000 European companies held names longer than 255 characters. The downgrade gives them back 255 characters. |
+| 029 | `029_single_primary_listing.py` | Data correction then guard: an instrument keeps a single primary listing, the oldest one (lowest `id`), and its other listings marked primary by the CSV importer are unmarked; the partial unique index `uq_asset_listings_one_primary` on `asset_listings (asset_id) WHERE is_primary` then refuses a second one. The downgrade drops the index and leaves the data alone. |
 
 ## Zipline Bundle (Backtesting Integration)
 

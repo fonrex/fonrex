@@ -1079,6 +1079,15 @@ class TestGurufocus:
         assert metrics.ticker == "XPAR:AIR"
         assert metrics.piotroski_score == 7
 
+    async def test_lowercase_ticker_gives_the_same_ticker_on_both_paths(self, fake_network):
+        fake_network.get(self.SEARCH, CLOUDFLARE_CHALLENGE)
+        fake_network.get("/stock/XPAR:AIR/summary", ok(gurufocus_page()))
+
+        metrics = await GurufocusProvider().get_financials("air.pa")
+
+        assert metrics.ticker == "XPAR:AIR"
+        assert metrics.provider_url == "https://www.gurufocus.com/stock/XPAR:AIR/summary"
+
     @pytest.mark.parametrize(
         "page_response",
         [CLOUDFLARE_CHALLENGE, status(500), httpx.ReadTimeout("timed out")],
@@ -1197,6 +1206,47 @@ class TestGurufocus:
                 "window.__NUXT__=(function(a){return {stock:{peers:[{gf_score:41}]}}}(0));",
                 None,
             ),
+            (
+                "window.__NUXT__=(function(a,b,c,d,e){return {stock:{gf_score:e},x:[a,b,c,d]}}"
+                "(void 0,Array(2),new Date(0),{k:1,'q':\"(\"},64));",
+                64.0,
+            ),
+            (
+                'window.__NUXT__=(function(a,b){return {stock:{gf_score:b}}}("x}}(1,2\\"",72));',
+                72.0,
+            ),
+            (
+                "window.__NUXT__=(function(usd1){return {stock:{gf_score:usd1}}}(77));",
+                77.0,
+            ),
+            (
+                'window.__NUXT__=(function(a){return {stock:{gf_score:a}}}("81"));',
+                81.0,
+            ),
+            (
+                'window.__NUXT__=(function(a){return {stock:{gf_score:a}}}("\\x"));',
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}}(true));",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a,b){return {stock:{gf_score:b}}}(1));",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}});",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}}(87",
+                None,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{gf_score:a}}",
+                None,
+            ),
         ],
         ids=[
             "literal",
@@ -1207,6 +1257,16 @@ class TestGurufocus:
             "unparseable-args",
             "peer-scores-ignored",
             "only-a-peer-score",
+            "other-args-not-json",
+            "iife-marker-in-a-string",
+            "currency-like-parameter",
+            "number-in-a-string",
+            "invalid-string",
+            "not-a-number",
+            "missing-argument",
+            "function-never-called",
+            "unclosed-call",
+            "unclosed-body",
         ],
     )
     async def test_gf_score_falls_back_to_server_rendered_nuxt_state(

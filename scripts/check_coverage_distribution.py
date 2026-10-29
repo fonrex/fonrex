@@ -56,7 +56,7 @@ MODULE_THRESHOLDS = {
     "financials/providers/esef.py": 99.0,
     "financials/providers/Fortuneo_provider.py": 87.0,
     "financials/providers/GoogleFinance_provider.py": 86.0,
-    "financials/providers/Gurufocus_provider.py": 86.0,
+    "financials/providers/Gurufocus_provider.py": 91.0,
     "financials/providers/index_constituents.py": 69.0,
     "financials/providers/Investing_provider.py": 93.0,
     "financials/providers/InvestirLesEchos_provider.py": 96.0,

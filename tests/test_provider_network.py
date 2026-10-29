@@ -1188,6 +1188,15 @@ class TestGurufocus:
                 "window.__NUXT__=(function(a){return {stock:{gf_score:a}}}(unquoted));",
                 None,
             ),
+            (
+                'window.__NUXT__=(function(a){return {peers:[{symbol:"F",gf_score:41}],'
+                'stock:{name:"a}{,gf_score:12",competitors:[{gf_score:41}],gf_score:87}}}(0));',
+                87.0,
+            ),
+            (
+                "window.__NUXT__=(function(a){return {stock:{peers:[{gf_score:41}]}}}(0));",
+                None,
+            ),
         ],
         ids=[
             "literal",
@@ -1196,6 +1205,8 @@ class TestGurufocus:
             "unknown-parameter",
             "not-an-iife",
             "unparseable-args",
+            "peer-scores-ignored",
+            "only-a-peer-score",
         ],
     )
     async def test_gf_score_falls_back_to_server_rendered_nuxt_state(
@@ -1212,6 +1223,7 @@ class TestGurufocus:
         metrics = await GurufocusProvider().get_financials("NAS:TSLA")
 
         assert metrics.gf_score == expected
+        assert fake_network.requests[0].headers["Accept"].startswith("text/html")
 
 
 # ── Morningstar ──────────────────────────────────────────────────────────────

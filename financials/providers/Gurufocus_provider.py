@@ -48,7 +48,9 @@ _SCALES = {"thou": 1e3, "mil": 1e6, "bil": 1e9}
 _US_EXCHANGES = frozenset(code for code, suffix in GURUFOCUS_TO_YAHOO.items() if suffix == "")
 
 # Server-rendered Nuxt state carrying ``gf_score`` when its badge is client-rendered.
-_NUXT_GF_SCORE = re.compile(r"\bgf_score:([A-Za-z0-9_$.+-]+)")
+# The score of the page is a property of its ``stock:{...}`` object.
+_NUXT_STOCK = re.compile(r"\bstock:\{")
+_NUXT_GF_SCORE = re.compile(r"gf_score:([A-Za-z0-9_$.+-]+)")
 _NUXT_PARAMS = re.compile(r"window\.__NUXT__=\(function\(([^)]*)\)\{")
 _LEADING_DOT_FLOAT = re.compile(r"(?<![\w.])(-?)\.(\d)")
 
@@ -62,15 +64,13 @@ class GurufocusProvider(BaseProvider):
         self.max_retries = max_retries
         self.timeout = timeout
         # ``Accept: text/html...`` placed after ``Referer`` lets both ``/_api/_search``
-        # and ``/stock/{symbol}/summary`` pass Cloudflare without a JS challenge.
+        # and ``/stock/{symbol}/summary`` pass Cloudflare without a JS challenge:
+        # the JSON ``Accept`` of a browser XHR is refused on the search.
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9,fr-FR;q=0.8,fr;q=0.7",
             "Origin": "https://www.gurufocus.com",
             "Referer": "https://www.gurufocus.com/",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-        self.page_headers = {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
 
@@ -88,7 +88,7 @@ class GurufocusProvider(BaseProvider):
             url = self.summary_url(gf_ticker)
             page = None
             try:
-                resp = await client.get(url, headers=self.page_headers)
+                resp = await client.get(url)
                 if resp.status_code == 200:
                     page = HTMLParser(resp.text)
                 else:
@@ -241,13 +241,44 @@ def _nuxt_gf_score(page: HTMLParser) -> Optional[float]:
     """The GF Score written in the server-rendered ``window.__NUXT__`` script."""
     for script in page.css("script"):
         text = script.text()
-        match = _NUXT_GF_SCORE.search(text)
-        if not match:
+        token = _stock_gf_score_token(text)
+        if token is None:
             continue
-        token = match.group(1)
         score = parse_number(token, decimal=".") or _resolve_nuxt_arg(text, token)
         if score is not None and 0 < score <= 100:
             return score
+    return None
+
+
+def _stock_gf_score_token(script_text: str) -> Optional[str]:
+    """The value written for ``gf_score`` directly in a ``stock:{...}`` object.
+
+    A ``gf_score`` nested deeper (a peer, a comparison) belongs to another share.
+    """
+    for start in _NUXT_STOCK.finditer(script_text):
+        depth = 0
+        in_string = False
+        i = start.end() - 1
+        while i < len(script_text):
+            char = script_text[i]
+            if in_string:
+                if char == "\\":
+                    i += 1
+                elif char == '"':
+                    in_string = False
+            elif char == '"':
+                in_string = True
+            elif char in "{[":
+                depth += 1
+            elif char in "}]":
+                depth -= 1
+                if depth == 0:
+                    break
+            if depth == 1 and not in_string and char in "{,":
+                match = _NUXT_GF_SCORE.match(script_text, i + 1)
+                if match:
+                    return match.group(1)
+            i += 1
     return None
 
 
@@ -269,6 +300,7 @@ def _resolve_nuxt_arg(script_text: str, token: str) -> Optional[float]:
     try:
         args = json.loads(f"[{args_str}]")
     except ValueError:
+        logger.debug("GuruFocus Nuxt arguments are not JSON; gf_score left empty")
         return None
     return parse_number(args[idx], decimal=".") if idx < len(args) else None
 

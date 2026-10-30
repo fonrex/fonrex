@@ -257,7 +257,7 @@ class DeepFundamentalsResponse(BaseModel):
     )
 
 
-# ── EODHD Premium Response ────────────────────────────────────────────────────
+# ── EODHD-compatible response ─────────────────────────────────────────────────
 
 
 class SharesStatsSchema(BaseModel):
@@ -297,7 +297,8 @@ class ESGScoresSchema(BaseModel):
 
 class EODHDFundamentalResponse(BaseModel):
     """
-    Standardized Premium response aligned with the EODHD API.
+    Fundamentals document in a layout compatible with the EODHD format.
+    Fonrex is not affiliated with EODHD.
     """
 
     general: dict = Field(..., alias="General")

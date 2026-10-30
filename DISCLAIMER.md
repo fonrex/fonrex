@@ -24,6 +24,7 @@ The Software is licensed under the **GNU Affero General Public License v3.0 (AGP
 
 ## 4. No Endorsement or Affiliation
 Fonrex is an independent open-source project. It is **not affiliated with, endorsed by, sponsored by, or associated with** any of the financial platforms, banks, websites, or data providers mentioned in the documentation, source code comments, or community discussions. All trademarks, service marks, and company names are the property of their respective owners.
+* **Compatible formats:** when Fonrex says that a response follows the layout of another service (for example `fmt=eodhd`, a layout compatible with the EODHD fundamentals format), it only describes the shape of the JSON so that existing tools can read it. Fonrex does not call that service, does not use its data, and is not endorsed by it.
 
 ## 5. Limitation of Liability & "As Is" Warranty
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. 

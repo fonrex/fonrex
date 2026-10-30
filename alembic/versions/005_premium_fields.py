@@ -1,4 +1,4 @@
-"""Migration 004 — Premium fields, EODHD parity
+"""Migration 004 — extended fundamentals fields (EODHD-compatible layout)
 
 Revision ID: 004
 Revises: 003

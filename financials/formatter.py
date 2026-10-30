@@ -196,8 +196,10 @@ class _Chooser:
 
 class FinancialsFormatter:
     """
-    Turns the enriched results (database + yfinance) into the exact structure
-    of the EODHD Premium Fundamental Data API.
+    Turns the enriched results (database + yfinance) into a document whose
+    layout is compatible with the EODHD fundamentals format (section and field
+    names), so that tools written for that format can read it. Fonrex is not
+    affiliated with EODHD and never calls its API.
     """
 
     @staticmethod

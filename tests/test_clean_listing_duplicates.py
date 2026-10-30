@@ -92,7 +92,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
 
         result = clean_duplicates(self.session, duplicates, dry_run=False)
 
-        self.assertEqual(result, {"listings_deleted": 1, "primaries_moved": 0})
+        self.assertEqual(result, {"listings_deleted": 1, "primaries_moved": 0, "held_prices": []})
         self.assertEqual(self._listing_ids(), [enriched.id])
         self.assertEqual(
             self.session.query(AssetMapping).filter_by(asset_listing_id=duplicate.id).count(), 0
@@ -109,9 +109,28 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         duplicates = find_duplicates(self.session)
         result = clean_duplicates(self.session, duplicates, dry_run=False)
 
-        self.assertEqual([d.has_prices for d in duplicates], [True])
+        self.assertEqual([(d.has_prices, d.kept_has_prices) for d in duplicates], [(True, False)])
         self.assertEqual(result["listings_deleted"], 0)
+        self.assertEqual(result["held_prices"], [duplicate.id])
         self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
+
+    def test_prices_ingested_after_the_search_keep_the_duplicate(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "", is_primary=True)
+        self.session.commit()
+
+        duplicates = find_duplicates(self.session)
+        self.assertEqual([d.has_prices for d in duplicates], [False])
+        self._price(duplicate)  # the scheduler ingests before the cleanup reaches it
+        self.session.commit()
+        result = clean_duplicates(self.session, duplicates, dry_run=False)
+
+        self.assertEqual(
+            result, {"listings_deleted": 0, "primaries_moved": 0, "held_prices": [duplicate.id]}
+        )
+        self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
+        self.assertTrue(self.session.get(AssetListing, duplicate.id).is_primary)
 
     def test_a_primary_duplicate_hands_its_role_to_the_kept_listing(self):
         asset = self._asset("US0378331005", "AAPL")
@@ -121,7 +140,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
 
         result = clean_duplicates(self.session, find_duplicates(self.session), dry_run=False)
 
-        self.assertEqual(result, {"listings_deleted": 1, "primaries_moved": 1})
+        self.assertEqual(result, {"listings_deleted": 1, "primaries_moved": 1, "held_prices": []})
         primaries = self.session.query(AssetListing).filter_by(is_primary=True).all()
         self.assertEqual([listing.id for listing in primaries], [kept.id])
 

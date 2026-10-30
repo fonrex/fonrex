@@ -13,8 +13,10 @@ A duplicate is a listing with an empty exchange when an older listing of the sam
 instrument, ticker and currency exists: the importer will never reach it again.
 The oldest listing of the group is kept. A duplicate that holds prices is reported
 and left alone (``prices_eod`` does not cascade); the others are deleted with
-their ``asset_mappings`` rows. When a deleted duplicate was the primary listing,
-the kept listing becomes primary.
+their ``asset_mappings`` rows. Prices are checked again right before each delete,
+under a row lock, so an ingestion running at the same time cannot make the run
+fail. When a deleted duplicate was the primary listing, the kept listing becomes
+primary.
 
 Usage
 ─────
@@ -56,8 +58,13 @@ class ListingDuplicate:
     duplicate_id: int
     kept_id: int
     kept_exchange: str
+    kept_has_prices: bool
     is_primary: bool
     has_prices: bool
+
+
+def _holds_prices(session, listing_id: int) -> bool:
+    return bool(session.query(exists().where(PriceEOD.asset_listing_id == listing_id)).scalar())
 
 
 def find_duplicates(session, isin_filter: str | None = None) -> list[ListingDuplicate]:
@@ -88,7 +95,6 @@ def find_duplicates(session, isin_filter: str | None = None) -> list[ListingDupl
             .order_by(AssetListing.id)
             .first()
         )
-        has_prices = session.query(exists().where(PriceEOD.asset_listing_id == listing.id)).scalar()
         duplicates.append(
             ListingDuplicate(
                 isin=isin,
@@ -97,8 +103,9 @@ def find_duplicates(session, isin_filter: str | None = None) -> list[ListingDupl
                 duplicate_id=listing.id,
                 kept_id=kept.id,
                 kept_exchange=kept.exchange,
+                kept_has_prices=_holds_prices(session, kept.id),
                 is_primary=listing.is_primary,
-                has_prices=bool(has_prices),
+                has_prices=_holds_prices(session, listing.id),
             )
         )
     return duplicates
@@ -107,13 +114,27 @@ def find_duplicates(session, isin_filter: str | None = None) -> list[ListingDupl
 def clean_duplicates(session, duplicates: list[ListingDuplicate], dry_run: bool = True) -> dict:
     """
     Delete the duplicates without prices; their mappings go with them.
-    Returns the number of listings deleted and of primaries moved to the kept listing.
+    Returns the number of listings deleted, of primaries moved to the kept listing,
+    and the ids of the duplicates left alone because they hold prices.
     """
     deleted = primaries_moved = 0
+    held_prices = []
     for duplicate in duplicates:
         if duplicate.has_prices:
+            held_prices.append(duplicate.duplicate_id)
             continue
-        listing = session.get(AssetListing, duplicate.duplicate_id)
+        # The lock makes an ingestion that writes a price for this listing wait for
+        # the end of the run, and the check sees the prices written since
+        # find_duplicates: such a listing is skipped instead of failing the delete.
+        listing = (
+            session.query(AssetListing)
+            .filter_by(id=duplicate.duplicate_id)
+            .with_for_update()
+            .one()
+        )
+        if _holds_prices(session, listing.id):
+            held_prices.append(duplicate.duplicate_id)
+            continue
         session.delete(listing)
         # The delete reaches the database before the kept listing becomes primary:
         # an instrument may hold a single primary listing.
@@ -131,12 +152,16 @@ def clean_duplicates(session, duplicates: list[ListingDuplicate], dry_run: bool 
         session.commit()
         logger.info("Changes committed")
 
-    return {"listings_deleted": deleted, "primaries_moved": primaries_moved}
+    return {
+        "listings_deleted": deleted,
+        "primaries_moved": primaries_moved,
+        "held_prices": held_prices,
+    }
 
 
 def print_report(duplicates: list[ListingDuplicate], result: dict, dry_run: bool) -> None:
     prefix = "[DRY-RUN] " if dry_run else ""
-    kept_with_prices = [d for d in duplicates if d.has_prices]
+    kept_with_prices = [d for d in duplicates if d.duplicate_id in result["held_prices"]]
     print()
     print("=" * 60)
     print(f"  {prefix}Listing Duplicates Cleanup")
@@ -149,8 +174,11 @@ def print_report(duplicates: list[ListingDuplicate], result: dict, dry_run: bool
         print(
             f"    listing {duplicate.duplicate_id} ({duplicate.isin} {duplicate.ticker} "
             f"{duplicate.currency}) duplicates listing {duplicate.kept_id} "
-            f"(exchange {duplicate.kept_exchange or '-'})"
+            f"(exchange {duplicate.kept_exchange or '-'}, "
+            f"{'with' if duplicate.kept_has_prices else 'without'} prices)"
         )
+    if kept_with_prices:
+        print("  See ARCHITECTURE.md (Listing Duplicates Cleanup) for what to do with them.")
     print()
 
 

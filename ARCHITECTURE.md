@@ -1034,8 +1034,16 @@ docker compose exec fonrex-api python scripts/clean_listing_duplicates.py \
 ```
 
 - A duplicate without prices is deleted; its `asset_mappings` rows go with it (cascade).
-- A duplicate that holds prices is listed in the report and left alone: `prices_eod.asset_listing_id` does not cascade.
+- A duplicate that holds prices is listed in the report and left alone: `prices_eod.asset_listing_id` does not cascade. Prices are checked again right before each delete, with the listing row locked, so the script can run while the scheduler ingests: a duplicate that received prices in the meantime is reported, not deleted.
 - When the deleted duplicate was the primary listing, the kept listing becomes primary.
+
+A duplicate usually holds prices because it was a primary listing of its instrument (older imports could give an instrument several): the ingestion fetched them for the same instrument and currency as the kept listing. The report says whether the kept listing has prices. If it has none, move the bars to it, then run the script again:
+
+```sql
+UPDATE prices_eod SET asset_listing_id = <kept_id> WHERE asset_listing_id = <duplicate_id>;
+```
+
+If the kept listing has its own prices, the bars of the duplicate are a second copy of the same series: delete them (`DELETE FROM prices_eod WHERE asset_listing_id = <duplicate_id>`) and run the script again. Doing this inside the script is left to a follow-up.
 
 ## EOD And Historical Data
 

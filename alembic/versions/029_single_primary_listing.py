@@ -9,9 +9,10 @@ had been stored by an earlier batch or an earlier import: an instrument could en
 up with several primary listings, and ``/eod`` then chose among them by currency.
 The importer now sees the stored listings.
 
-This revision keeps the oldest primary listing of each instrument (lowest ``id``),
-the one the "first listing" rule would have chosen and the tie-break of
-``preferred_listing_of_asset``, and unmarks the others. It then creates the
+This revision keeps one primary listing per instrument and unmarks the others:
+an active one before an inactive one, then the oldest (lowest ``id``), the order
+of ``preferred_listing_of_asset``. An instrument never ends up with an inactive
+primary while an active one existed. It then creates the
 partial unique index ``uq_asset_listings_one_primary`` on ``(asset_id)
 WHERE is_primary``, so that a second primary listing can no longer be stored.
 
@@ -35,7 +36,9 @@ def upgrade() -> None:
               SELECT 1 FROM asset_listings AS older
               WHERE older.asset_id = l.asset_id
                 AND older.is_primary
-                AND older.id < l.id
+                AND older.id <> l.id
+                AND (older.is_active > l.is_active
+                     OR (older.is_active = l.is_active AND older.id < l.id))
           )
         """
     )

@@ -361,8 +361,8 @@ class AssetImporter:
                 for row in isin_rows:
                     listing, created = self._upsert_listing(asset, row, existing_listings)
                     if listing is not None:
-                        existing_listings.append(listing)
                         if created:
+                            existing_listings.append(listing)
                             self.stats.listings_created += 1
                             self._create_default_mappings(asset, listing, row)
                         else:

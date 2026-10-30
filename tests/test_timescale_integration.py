@@ -2393,12 +2393,13 @@ class TestEsefTextKeysOnPostgres:
 
 
 class TestSinglePrimaryListingOnPostgres:
-    """Revision 029: an instrument keeps one primary listing, the oldest one."""
+    """Revision 029: an instrument keeps one primary listing, the oldest active one."""
 
     LISTINGS = """
         INSERT INTO assets (id, ticker, name, currency, is_active, isin) VALUES
          (9001, 'SPLIT', 'Split ETF', 'USD', true, 'IE00TEST0291'),
-         (9002, 'ALONE', 'Single listing', 'USD', true, 'IE00TEST0292');
+         (9002, 'ALONE', 'Single listing', 'USD', true, 'IE00TEST0292'),
+         (9003, 'DELIST', 'Delisted first listing', 'USD', true, 'IE00TEST0293');
         INSERT INTO asset_listings
          (id, asset_id, ticker, exchange, currency, source, is_primary, is_active,
           created_at, updated_at)
@@ -2407,7 +2408,10 @@ class TestSinglePrimaryListingOnPostgres:
          (9012, 9001, 'SPLIT', '', 'EUR', 'csv_import', true, true, now(), now()),
          (9013, 9001, 'SPLIT', '', 'GBP', 'csv_import', false, true, now(), now()),
          (9014, 9001, 'SPLIT', '', 'CHF', 'csv_import', true, true, now(), now()),
-         (9021, 9002, 'ALONE', '', 'USD', 'csv_import', true, true, now(), now());
+         (9021, 9002, 'ALONE', '', 'USD', 'csv_import', true, true, now(), now()),
+         (9031, 9003, 'DELIST', '', 'USD', 'csv_import', true, false, now(), now()),
+         (9032, 9003, 'DELIST', '', 'EUR', 'csv_import', true, true, now(), now()),
+         (9033, 9003, 'DELIST', '', 'GBP', 'csv_import', true, true, now(), now());
     """
 
     @staticmethod
@@ -2417,7 +2421,7 @@ class TestSinglePrimaryListingOnPostgres:
                 connection.execute(
                     text("""
                         SELECT id FROM asset_listings
-                        WHERE asset_id IN (9001, 9002) AND is_primary ORDER BY id
+                        WHERE asset_id IN (9001, 9002, 9003) AND is_primary ORDER BY id
                     """)
                 )
                 .scalars()
@@ -2426,7 +2430,7 @@ class TestSinglePrimaryListingOnPostgres:
 
     @staticmethod
     def _clean(connection) -> None:
-        connection.execute(text("DELETE FROM assets WHERE id IN (9001, 9002)"))
+        connection.execute(text("DELETE FROM assets WHERE id IN (9001, 9002, 9003)"))
 
     @staticmethod
     def _index(engine) -> str | None:
@@ -2435,7 +2439,7 @@ class TestSinglePrimaryListingOnPostgres:
                 text("SELECT to_regclass('uq_asset_listings_one_primary')")
             ).scalar()
 
-    def test_the_oldest_primary_is_kept_and_a_second_one_is_refused(self, database_url, engine):
+    def test_the_oldest_active_primary_is_kept_and_a_second_one_is_refused(self, database_url, engine):
         _alembic(database_url, "downgrade", "028")
         try:
             assert self._index(engine) is None
@@ -2443,7 +2447,7 @@ class TestSinglePrimaryListingOnPostgres:
                 connection.execute(text(self.LISTINGS))
             _alembic(database_url, "upgrade", "head")
 
-            assert self._primaries(engine) == [9011, 9021]
+            assert self._primaries(engine) == [9011, 9021, 9032]
             assert self._index(engine)
             with pytest.raises(IntegrityError, match="uq_asset_listings_one_primary"):
                 with engine.begin() as connection:
@@ -2453,9 +2457,9 @@ class TestSinglePrimaryListingOnPostgres:
 
             _alembic(database_url, "downgrade", "028")
             assert self._index(engine) is None
-            assert self._primaries(engine) == [9011, 9021]
+            assert self._primaries(engine) == [9011, 9021, 9032]
             _alembic(database_url, "upgrade", "head")
-            assert self._primaries(engine) == [9011, 9021]
+            assert self._primaries(engine) == [9011, 9021, 9032]
         finally:
             _alembic(database_url, "upgrade", "head")
             with engine.begin() as connection:

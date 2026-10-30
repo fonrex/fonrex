@@ -1,6 +1,14 @@
-import asyncio
+"""ZoneBourseProvider — the figures of a share from its ZoneBourse synthesis page.
+
+A quote page is found through ``/async/search/quick`` (ISIN first when given,
+otherwise the ticker sent without its Yahoo suffix and matched by the country
+flag and currency of the row) or read directly when a ``provider_url`` is
+supplied. One fixed set of browser headers is used for the session; the
+``User-Agent`` can be overridden with ``ZONEBOURSE_USER_AGENT``.
+"""
+
 import logging
-import random
+import os
 import re
 from typing import List, Optional, Tuple
 
@@ -15,108 +23,198 @@ logger = logging.getLogger(__name__)
 
 _ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}\d")
 _CURRENCY = re.compile(r"[A-Z]{3}")
+_FLAG = re.compile(r"\bflag__([a-z]{2})\b", re.IGNORECASE)
+_COTATIONS_SUFFIX = re.compile(r"/cotations/\d+/?$")
 
-# List of modern User-Agents for rotation
-USER_AGENTS = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
-]
+USER_AGENT_ENV_VAR = "ZONEBOURSE_USER_AGENT"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/18.1 Safari/605.1.15"
+)
+
+SEARCH_HEADERS = {
+    "Accept": "*/*",
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "X-Requested-With": "XMLHttpRequest",
+    "Origin": "https://www.zonebourse.com",
+    "Referer": "https://www.zonebourse.com/",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+}
+
+# Yahoo suffix -> country flags (``flag__xx``) and currencies of that place on ZoneBourse.
+PLACES: dict[str, tuple[set[str], set[str]]] = {
+    "PA": ({"fr"}, {"EUR"}),
+    "AS": ({"nl"}, {"EUR"}),
+    "BR": ({"be"}, {"EUR"}),
+    "LS": ({"pt"}, {"EUR"}),
+    "IR": ({"ie"}, {"EUR"}),
+    "DE": ({"de"}, {"EUR"}),
+    "F": ({"de"}, {"EUR"}),
+    "MI": ({"it"}, {"EUR"}),
+    "MC": ({"es"}, {"EUR"}),
+    "HE": ({"fi"}, {"EUR"}),
+    "VI": ({"at"}, {"EUR"}),
+    "L": ({"gb"}, {"GBP", "GBX"}),
+    "SW": ({"ch"}, {"CHF"}),
+    "ST": ({"se"}, {"SEK"}),
+    "CO": ({"dk"}, {"DKK"}),
+    "OL": ({"no"}, {"NOK"}),
+    "TO": ({"ca"}, {"CAD"}),
+    "T": ({"jp"}, {"JPY"}),
+    "HK": ({"hk"}, {"HKD"}),
+    "AX": ({"au"}, {"AUD"}),
+}
+
+
+def user_agent() -> str:
+    """User-Agent sent to ZoneBourse, configurable with ``ZONEBOURSE_USER_AGENT``."""
+    return (os.environ.get(USER_AGENT_ENV_VAR) or "").strip() or DEFAULT_USER_AGENT
+
+
+def session_headers() -> dict[str, str]:
+    """Fixed headers shared by the requests of one ZoneBourse session."""
+    return {
+        "User-Agent": user_agent(),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+    }
+
+
+def _ticker_and_place(ticker: str) -> tuple[str, Optional[tuple[set[str], set[str]]]]:
+    """The bare symbol and the place of a Yahoo ticker: ``"AIR.PA"`` -> ``("AIR", Paris)``.
+
+    A suffix that names no known place (``BRK.B`` is a share class) stays in the symbol.
+    """
+    symbol, _, suffix = ticker.rpartition(".")
+    if symbol and suffix in PLACES:
+        return symbol, PLACES[suffix]
+    return ticker, None
+
+
+def _search_term(identifier: str) -> str:
+    """What the search endpoint is asked: an ISIN as it is, a ticker without its Yahoo suffix."""
+    wanted = identifier.strip().upper()
+    if _ISIN.fullmatch(wanted):
+        return wanted
+    return _ticker_and_place(wanted)[0]
+
+
+def _matches_place(row: dict[str, str], flags: set[str], currencies: set[str]) -> bool:
+    """Tell whether a search result row belongs to the requested place."""
+    flag = row["flag"]
+    currency = row["currency"]
+    if flag and currency:
+        return flag in flags and currency in currencies
+    if flag:
+        return flag in flags
+    if currency:
+        return currency in currencies
+    return False
 
 
 class ZoneBourseProvider(BaseProvider):
-    """
-    Modern, asynchronous provider for ZoneBourse using httpx and selectolax.
-    Features:
-    - Async fetching with httpx
-    - Fast parsing with selectolax
-    - User-Agent rotation
-    - Retries with exponential backoff
-    - Data mapping to FinancialMetrics
-    """
+    """Asynchronous provider for ZoneBourse using httpx and selectolax."""
 
     BASE_URL = "https://www.zonebourse.com"
     SEARCH_URL = "https://www.zonebourse.com/recherche/?q={symbol}"
 
-    def __init__(self, max_retries: int = 3, timeout: int = 10, concurrent_requests: int = 5):
+    def __init__(self, max_retries: int = 3, timeout: int = 10):
         self.max_retries = max_retries
         self.timeout = timeout
-        # Semaphore for concurrency control if needed internally, though typically handled by caller
-        self.semaphore = asyncio.Semaphore(concurrent_requests)
 
-    async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
-        """
-        Fetches financial data for a given ticker or ISIN.
-        """
-        async with self._session() as client:
+    async def fetch(
+        self,
+        ticker: Optional[str] = None,
+        isin: Optional[str] = None,
+        provider_url: Optional[str] = None,
+        **kwargs,
+    ) -> Optional[FinancialMetrics]:
+        return await self.get_financials(ticker, isin=isin, provider_url=provider_url)
+
+    async def get_financials(
+        self,
+        ticker: Optional[str] = None,
+        isin: Optional[str] = None,
+        provider_url: Optional[str] = None,
+    ) -> Optional[FinancialMetrics]:
+        """Fetches financial data for a given ticker, ISIN or ZoneBourse URL."""
+        ticker_input = (ticker or isin or provider_url or "").strip()
+        if not ticker_input:
+            return None
+
+        async with self._session(headers=session_headers()) as client:
             try:
-                # 1. Search for the security URL
-                url = await self._search_symbol(client, ticker)
+                url = self.direct_url(provider_url or ticker_input)
                 if not url:
-                    logger.warning(f"Ticker/ISIN {ticker} not found on ZoneBourse")
+                    url = await self._resolve_url(client, ticker=ticker, isin=isin)
+                if not url:
+                    logger.warning(f"Ticker/ISIN {ticker_input} not found on ZoneBourse")
                     return None
 
-                # 2. Fetch the profile page
                 html = await self._fetch_page(client, url)
                 if not html:
-                    logger.error(f"Failed to fetch profile page for {ticker}")
+                    logger.error(f"Failed to fetch profile page for {ticker_input}")
                     return None
 
-                # 3. Parse data
-                return self._parse_page(html, ticker, url)
+                return self._parse_page(html, ticker_input, url)
 
             except Exception as e:
-                logger.error(f"Global error fetching {ticker}: {e}")
-                import traceback
-
-                logger.debug(traceback.format_exc())
+                logger.error(f"Global error fetching {ticker_input}: {e}")
                 return None
 
+    @classmethod
+    def direct_url(cls, identifier: Optional[str]) -> Optional[str]:
+        """The page address when the caller already gave a ZoneBourse URL or path."""
+        value = (identifier or "").strip()
+        if value.startswith(("https://", "http://")):
+            return value
+        if value.startswith("/cours/"):
+            return f"{cls.BASE_URL}{value}"
+        return None
+
+    @classmethod
+    def _full_url(cls, href: str) -> str:
+        """Full synthesis URL of a search result row (secondary ``/cotations/`` stripped)."""
+        clean_href = _COTATIONS_SUFFIX.sub("/", href.strip())
+        return f"{cls.BASE_URL}{clean_href}" if clean_href.startswith("/") else clean_href
+
+    async def _resolve_url(
+        self,
+        client: ProviderSession,
+        *,
+        ticker: Optional[str] = None,
+        isin: Optional[str] = None,
+    ) -> Optional[str]:
+        """Search by ISIN first when available, then fall back to the ticker."""
+        candidates: list[str] = []
+        for candidate in (isin, ticker):
+            cleaned = (candidate or "").strip()
+            if cleaned and cleaned not in candidates:
+                candidates.append(cleaned)
+        candidates.sort(key=lambda item: not bool(_ISIN.fullmatch(item.upper())))
+
+        for candidate in candidates:
+            url = await self._search_symbol(client, candidate)
+            if url:
+                return url
+        return None
+
     async def _search_symbol(self, client: ProviderSession, symbol: str) -> Optional[str]:
-        """
-        Searches for the symbol/ISIN using the internal async search API and returns the profile URL.
-        """
+        """Searches for the symbol/ISIN via ``/async/search/quick`` and selects the profile URL."""
         url = f"{self.BASE_URL}/async/search/quick"
-
-        # Generate random tokens/IDs as requested
-        import string
-
-        def random_string(length=10):
-            return "".join(random.choices(string.ascii_letters + string.digits, k=length))
-
-        def random_hex(length=32):
-            return "".join(random.choices("0123456789abcdef", k=length))
-
-        # Randomize payload values
         payload = {
-            "search": symbol,
+            "search": _search_term(symbol),
             "type": "company",
-            "search-type": random_string(20),  # Random value
-            "token": random_string(50) + "." + random_string(40),  # Mock token structure
-        }
-
-        # Randomize headers
-        headers = {
-            "Host": "www.zonebourse.com",
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept": "*/*",
-            "Accept-Language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-            "Origin": self.BASE_URL,
-            "Referer": f"{self.BASE_URL}/",
-            # Mock cookies
-            "Cookie": f'PHPSESSID={random_hex(26)}; pv_r0_rand=16; pv_r0_date=2025-12-31; pv_r0=1; g_state={{"i_l":1}}; _lr_geo_location=CA',
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
         }
 
         try:
             logger.debug(f"Searching for {symbol} via POST {url}")
-            response = await client.post(url, data=payload, headers=headers)
+            response = await client.post(url, data=payload, headers=SEARCH_HEADERS)
 
             if response.status_code != 200:
                 logger.warning(f"Search failed with status {response.status_code}")
@@ -132,17 +230,10 @@ class ZoneBourseProvider(BaseProvider):
                 logger.warning("No HTML content in search response")
                 return None
 
-            # Parse the returned HTML fragment
-            parser = HTMLParser(html_content)
-
-            # Find the first row with data-href
-            first_row = parser.css_first("tr[data-href]")
-            if first_row:
-                href = first_row.attributes.get("data-href")
-                if href:
-                    full_url = f"{self.BASE_URL}{href}" if href.startswith("/") else href
-                    logger.info(f"Found URL for {symbol}: {full_url}")
-                    return full_url
+            full_url = self.select_url(html_content, symbol)
+            if full_url:
+                logger.info(f"Found URL for {symbol}: {full_url}")
+                return full_url
 
             logger.warning(f"No matching symbol found in search results for {symbol}")
             return None
@@ -150,6 +241,48 @@ class ZoneBourseProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Error searching symbol {symbol}: {e}")
             return None
+
+    @classmethod
+    def select_url(cls, html_content: str, identifier: str) -> Optional[str]:
+        """Select the synthesis URL matching ``identifier`` from the search HTML fragment."""
+        parser = HTMLParser(html_content)
+        rows: list[dict[str, str]] = []
+        for node in parser.css("tr[data-href]"):
+            href = (node.attributes.get("data-href") or "").strip()
+            if not href:
+                continue
+            symbol_cell = node.css_first("td.table-child--w80")
+            flag_node = node.css_first("i.flag")
+            flag_match = (
+                _FLAG.search(flag_node.attributes.get("class") or "") if flag_node else None
+            )
+            ccy_node = node.css_first("span.txt-muted")
+            rows.append(
+                {
+                    "href": href,
+                    "symbol": symbol_cell.text(strip=True).upper() if symbol_cell else "",
+                    "flag": flag_match.group(1).lower() if flag_match else "",
+                    "currency": ccy_node.text(strip=True).upper() if ccy_node else "",
+                }
+            )
+
+        if not rows:
+            return None
+
+        wanted = identifier.strip().upper()
+        if _ISIN.fullmatch(wanted):
+            return cls._full_url(rows[0]["href"])
+
+        # Minimal test fixtures with ``<tr data-href="..."></tr>`` carry no inner cells.
+        if not any(r["symbol"] or r["flag"] or r["currency"] for r in rows):
+            return cls._full_url(rows[0]["href"])
+
+        symbol, place = _ticker_and_place(wanted)
+        matches = [r for r in rows if r["symbol"] == symbol]
+        if place is not None:
+            flags, currencies = place
+            matches = [r for r in matches if _matches_place(r, flags, currencies)]
+        return cls._full_url(matches[0]["href"]) if matches else None
 
     async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:
         """Fetches the page content and returns a parser."""
@@ -161,18 +294,9 @@ class ZoneBourseProvider(BaseProvider):
     async def _fetch_with_retry(
         self, client: ProviderSession, url: str
     ) -> Optional[httpx.Response]:
-        """Fetch a page; retries, pauses and limits come from the shared session."""
-
-        def headers() -> dict:
-            # Called at each attempt: the User-Agent rotates between retries.
-            return {
-                "User-Agent": random.choice(USER_AGENTS),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-            }
-
+        """Fetch a page; headers, retries, pauses and limits come from the shared session."""
         try:
-            response = await client.get(url, headers=headers)
+            response = await client.get(url)
         except Exception as e:
             logger.error(f"Network error for {url}: {e}")
             return None

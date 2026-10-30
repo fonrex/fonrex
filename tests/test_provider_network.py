@@ -247,6 +247,151 @@ class TestZoneBourse:
         assert fake_network.calls(self.PAGE) == 3
         assert len(fake_network.backoffs) == 2
 
+    async def test_session_headers_are_fixed_and_user_agent_is_configurable(
+        self, fake_network, monkeypatch
+    ):
+        from financials.providers.ZoneBourse_provider import (
+            DEFAULT_USER_AGENT,
+            USER_AGENT_ENV_VAR,
+        )
+
+        monkeypatch.delenv(USER_AGENT_ENV_VAR, raising=False)
+        self._routes(
+            fake_network, page=[status(502), status(504), ok(fixture("zonebourse_air.html"))]
+        )
+
+        await ZoneBourseProvider().get_financials(AIRBUS_ISIN)
+
+        # Search + 3 page attempts all share the exact same User-Agent (no rotation).
+        assert [r.headers["User-Agent"] for r in fake_network.requests] == [DEFAULT_USER_AGENT] * 4
+        page_req = fake_network.requests[1]
+        assert page_req.headers["Sec-Fetch-Dest"] == "document"
+        assert page_req.headers["Sec-Fetch-Mode"] == "navigate"
+        assert page_req.headers["Sec-Fetch-Site"] == "none"
+
+        fake_network.requests.clear()
+        monkeypatch.setenv(USER_AGENT_ENV_VAR, "  CustomZoneBourseAgent/1.0  ")
+        self._routes(fake_network)
+
+        await ZoneBourseProvider().get_financials(AIRBUS_ISIN)
+
+        assert [r.headers["User-Agent"] for r in fake_network.requests] == [
+            "CustomZoneBourseAgent/1.0"
+        ] * 2
+
+    async def test_direct_provider_url_skips_the_search(self, fake_network):
+        url = "https://www.zonebourse.com/cours/action/AIRBUS-SE-4637/"
+        fake_network.get(self.PAGE, ok(fixture("zonebourse_air.html")))
+
+        metrics = await ZoneBourseProvider().get_financials("AIR.PA", provider_url=url)
+        assert metrics.ticker == "AIR.PA"
+        assert metrics.provider_url == url
+        assert fake_network.calls(self.SEARCH) == 0
+
+        fake_network.get(self.PAGE, ok(fixture("zonebourse_air.html")))
+        by_path = await ZoneBourseProvider().fetch(
+            ticker="/cours/action/AIRBUS-SE-4637/",
+        )
+        assert by_path.provider_url == url
+        assert fake_network.calls(self.SEARCH) == 0
+
+    async def test_isin_is_searched_before_ticker_and_falls_back_to_ticker(self, fake_network):
+        search_rows = (
+            "<table>"
+            '<tr data-href="/cours/action/SANOFI-4698/">'
+            '<td><i class="flag flag--16 flag__fr"></i></td>'
+            '<td><a>SANOFI <span class="txt-muted">EUR</span></a></td>'
+            '<td class="table-child--w80">SAN</td></tr>'
+            '<tr data-href="/cours/action/BANCO-SANTANDER-S-A-69308/">'
+            '<td><i class="flag flag--16 flag__es"></i></td>'
+            '<td><a>BANCO SANTANDER <span class="txt-muted">EUR</span></a></td>'
+            '<td class="table-child--w80">SAN</td></tr>'
+            "</table>"
+        )
+        fake_network.post(
+            self.SEARCH,
+            ok_json({"error": False, "data": "<table></table>"}),
+            ok_json({"error": False, "data": search_rows}),
+        )
+        fake_network.get(
+            "zonebourse.com/cours/action/BANCO-SANTANDER-S-A-69308/",
+            ok("<html><body><h1>Cours Banco Santander</h1></body></html>"),
+        )
+
+        metrics = await ZoneBourseProvider().get_financials("SAN.MC", isin="ES0113900J37")
+
+        assert [r.content.decode() for r in fake_network.requests[:2]] == [
+            "search=ES0113900J37&type=company",
+            "search=SAN&type=company",
+        ]
+        assert (
+            metrics.provider_url == "https://www.zonebourse.com/cours/action/BANCO-SANTANDER-S-A-69308/"
+        )
+
+    @pytest.mark.parametrize(
+        ("ticker", "expected_url"),
+        [
+            ("SAN.PA", "https://www.zonebourse.com/cours/action/SANOFI-4698/"),
+            ("SAN.MC", "https://www.zonebourse.com/cours/action/BANCO-SANTANDER-S-A-69308/"),
+            ("AZN.ST", "https://www.zonebourse.com/cours/action/ASTRAZENECA-PLC-4000930/"),
+            ("SAN.DE", None),
+        ],
+    )
+    def test_select_url_filters_by_flag_and_currency_and_strips_cotations_suffix(
+        self, ticker, expected_url
+    ):
+        html = (
+            "<table>"
+            '<tr data-href=""><td>ignored</td></tr>'
+            '<tr data-href="/cours/action/SANOFI-4698/">'
+            '<td><i class="flag flag--16 flag__fr"></i></td>'
+            '<td><a>SANOFI <span class="txt-muted">EUR</span></a></td>'
+            '<td class="table-child--w80">SAN</td></tr>'
+            '<tr data-href="/cours/action/BANCO-SANTANDER-S-A-69308/">'
+            '<td><i class="flag flag--16 flag__es"></i></td>'
+            '<td><a>BANCO SANTANDER <span class="txt-muted">EUR</span></a></td>'
+            '<td class="table-child--w80">SAN</td></tr>'
+            '<tr data-href="/cours/action/ASTRAZENECA-PLC-4000930/cotations/9065830">'
+            '<td><i class="flag flag--16 flag__se"></i></td>'
+            '<td><a>ASTRAZENECA PLC <span class="txt-muted">SEK</span></a></td>'
+            '<td class="table-child--w80">AZN</td></tr>'
+            "</table>"
+        )
+        assert ZoneBourseProvider.select_url(html, ticker) == expected_url
+
+    def test_select_url_handles_partial_place_metadata_and_share_classes(self):
+        flag_only = (
+            '<table><tr data-href="/cours/action/AIRBUS-SE-4637/">'
+            '<td><i class="flag flag__fr"></i></td>'
+            '<td class="table-child--w80">AIR</td></tr></table>'
+        )
+        currency_only = (
+            '<table><tr data-href="/cours/action/AIRBUS-SE-4637/">'
+            '<td><span class="txt-muted">EUR</span></td>'
+            '<td class="table-child--w80">AIR</td></tr></table>'
+        )
+        symbol_only = (
+            '<table><tr data-href="/cours/action/BERKSHIRE-4812/">'
+            '<td class="table-child--w80">BRK.B</td></tr></table>'
+        )
+        assert (
+            ZoneBourseProvider.select_url(flag_only, "AIR.PA")
+            == "https://www.zonebourse.com/cours/action/AIRBUS-SE-4637/"
+        )
+        assert (
+            ZoneBourseProvider.select_url(currency_only, "AIR.PA")
+            == "https://www.zonebourse.com/cours/action/AIRBUS-SE-4637/"
+        )
+        assert ZoneBourseProvider.select_url(symbol_only, "BRK.B.PA") is None
+        assert (
+            ZoneBourseProvider.select_url(symbol_only, "BRK.B")
+            == "https://www.zonebourse.com/cours/action/BERKSHIRE-4812/"
+        )
+
+    async def test_empty_identifier_returns_none_without_network(self, fake_network):
+        assert await ZoneBourseProvider().get_financials("   ") is None
+        assert fake_network.requests == []
+
 
 # ── Google Finance ───────────────────────────────────────────────────────────
 

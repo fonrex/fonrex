@@ -105,10 +105,13 @@ documentation to an LLM, use [llms.txt](https://fonrex.io/llms.txt).
 | **US** | Barron's, WSJ, MarketWatch, Gurufocus |
 | **Specialised** | JustETF (UCITS ETFs), SEC Edgar (insider transactions), OpenFIGI, index constituents, US Treasury (yield curves), CFTC (Commitments of Traders), ESEF (annual reports of European listed companies) |
 
-`GET /fundamental` returns one document in the EODHD layout. Each figure is taken from Yahoo
+`GET /fundamental` returns one document in a layout compatible with the EODHD fundamentals format,
+so that tools written for that format can read it. Each figure is taken from Yahoo
 (with the symbol verified for the listing, never the bare ticker), then from the stored
 figures, then from the providers that publish the same quantity; the `Sources` section names
 the source of every figure. Ratios are ratios: a 0.32 % dividend yield is `0.0032`.
+Fonrex is not affiliated with or endorsed by EODHD: the name only says which format the
+document follows, and no request is sent to EODHD.
 
 ### Technical Indicators (18 indicators)
 
@@ -303,7 +306,9 @@ make ci
 ## License and responsible use
 
 AGPL-3.0 — see [LICENSE](LICENSE). Fonrex reads public web pages on your behalf: you are
-responsible for respecting the terms of use of each source. Read the [DISCLAIMER](DISCLAIMER.md).
+responsible for respecting the terms of use of each source. Fonrex is not affiliated with any of
+the sources or formats it names (EODHD included); their names are trademarks of their owners.
+Read the [DISCLAIMER](DISCLAIMER.md).
 
 <p align="center">
   Built for people who want to own their financial data stack.<br/>

@@ -395,6 +395,21 @@ class TestAssetImporter(SqliteTestMixin):
         self.assertTrue(created)
         self.assertEqual(listing.exchange, "XETR")
 
+    def test_isin_split_across_batches_keeps_one_primary(self):
+        """The USD row and the EUR row of one ISIN fall in two batches."""
+        rows = [self._csv_row(currency="USD"), self._csv_row(currency="EUR")]
+        AssetImporter(self.session, batch_size=1).run(rows)
+
+        primaries = self.session.query(AssetListing).filter_by(is_primary=True).all()
+        self.assertEqual([listing.currency for listing in primaries], ["USD"])
+
+    def test_second_import_does_not_add_a_primary(self):
+        AssetImporter(self.session).run([self._csv_row(currency="USD")])
+        AssetImporter(self.session).run([self._csv_row(currency="EUR")])
+
+        primaries = self.session.query(AssetListing).filter_by(is_primary=True).all()
+        self.assertEqual([listing.currency for listing in primaries], ["USD"])
+
     def test_stats_track_listings_skipped(self):
         rows = [self._csv_row()]
         AssetImporter(self.session).run(rows)

@@ -177,6 +177,13 @@ class AssetListing(Base):
         ),
         Index("idx_asset_listings_ticker_identity", "ticker", "exchange", "currency"),
         Index("idx_asset_listings_asset", "asset_id"),
+        Index(
+            "uq_asset_listings_one_primary",
+            "asset_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+            sqlite_where=text("is_primary"),
+        ),
     )
 
 

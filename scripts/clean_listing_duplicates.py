@@ -23,9 +23,12 @@ duplicate is deleted: the bars whose (resolution, time) the kept listing does no
 have are moved, the others (a second copy of the same session) are dropped. When
 the kept listing has prices of its own, the two series must agree on the sessions
 they share (close within 1 %, and a close missing on one side only counts as a
-difference); otherwise, or when they share no session, nothing is moved and the
-duplicate is reported. The weekly and monthly aggregates are refreshed on the
-range of the duplicate's bars once the change is committed.
+difference; a session without close on both sides is not compared); otherwise,
+or when they share no compared session, nothing is moved and the duplicate is
+reported. A series of the kept listing that receives bars loses its row of
+``price_series_adjustments``: the next ingestion fetches it again in full, on one
+adjustment basis. The weekly and monthly aggregates are refreshed on the range
+of the duplicate's bars once the change is committed.
 
 Usage
 ─────
@@ -152,14 +155,15 @@ def _series_agree(session, duplicate_id: int, kept_id: int) -> bool:
     and agree on every one of them.
 
     A close missing on one side only is a difference: otherwise the bar of the kept
-    listing, without close, would win over the one of the duplicate, and series
-    whose shared sessions have no close would agree without being compared.
+    listing, without close, would win over the one of the duplicate. A session
+    without close on both sides compares nothing, so it is not counted as shared:
+    series whose shared sessions all lack a close do not agree.
     """
     if not _holds_prices(session, kept_id):
         return True
     shared, differ = session.execute(
         text("""
-            SELECT count(*),
+            SELECT count(*) FILTER (WHERE d.close IS NOT NULL OR k.close IS NOT NULL),
                    coalesce(sum(CASE
                        WHEN (d.close IS NULL) <> (k.close IS NULL) THEN 1
                        WHEN abs(d.close - k.close) > :tolerance * abs(k.close) THEN 1
@@ -188,6 +192,24 @@ def _move_prices(session, duplicate_id: int, kept_id: int) -> PriceMove:
     ).one()
     total = _count_bars(session, duplicate_id)
     kept_before = _count_bars(session, kept_id)
+    # The resolutions in which the kept listing receives bars, read before the copy.
+    received = (
+        session.execute(
+            text("""
+                SELECT DISTINCT d.resolution FROM prices_eod d
+                WHERE d.asset_listing_id = :duplicate
+                  AND NOT EXISTS (
+                      SELECT 1 FROM prices_eod k
+                      WHERE k.asset_listing_id = :kept
+                        AND k.resolution = d.resolution
+                        AND k.time = d.time
+                  )
+            """),
+            {"duplicate": duplicate_id, "kept": kept_id},
+        )
+        .scalars()
+        .all()
+    )
 
     copied = [c.name for c in PriceEOD.__table__.columns if c.name != "asset_listing_id"]
     columns = ", ".join(copied)
@@ -203,6 +225,18 @@ def _move_prices(session, duplicate_id: int, kept_id: int) -> PriceMove:
         text("DELETE FROM prices_eod WHERE asset_listing_id = :duplicate"),
         {"duplicate": duplicate_id},
     )
+    # The moved bars may follow another adjustment basis than the kept ones (the
+    # closes are only compared within 1 %, and a dividend changes adj_close only).
+    # Without its row, a series is fetched again in full at the next ingestion
+    # (historical/adjustment.py), so it comes back on one basis.
+    for resolution in received:
+        session.execute(
+            text("""
+                DELETE FROM price_series_adjustments
+                WHERE asset_listing_id = :kept AND resolution = :resolution
+            """),
+            {"kept": kept_id, "resolution": resolution},
+        )
     # PriceEOD objects of the duplicate still in the session are gone from the table.
     session.expire_all()
     moved = _count_bars(session, kept_id) - kept_before

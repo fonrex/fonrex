@@ -7,8 +7,9 @@ from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
 from database.service import DatabaseService
+from historical.adjustment import ADJUSTMENT_SCHEME
 from import_assets import AssetImporter, CSVRow
-from models import Asset, AssetListing, AssetMapping, Base, PriceEOD
+from models import Asset, AssetListing, AssetMapping, Base, PriceEOD, PriceSeriesAdjustment
 from scripts.clean_listing_duplicates import (
     PriceMove,
     clean_duplicates,
@@ -306,6 +307,67 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         self.assertEqual(result["series_differ"], [duplicate.id])
         self.assertEqual(result["price_moves"], [])
         self.assertEqual(self._closes(duplicate.id), {1: 10.0})
+
+    def test_sessions_without_close_on_both_sides_are_not_an_agreement(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._price(kept, date(2026, 10, 1), None)
+        self._price(duplicate, date(2026, 10, 1), None)
+        self._price(duplicate, date(2026, 10, 2), 10.0)
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["series_differ"], [duplicate.id])
+        self.assertEqual(result["price_moves"], [])
+        self.assertEqual(self._closes(duplicate.id), {1: None, 2: 10.0})
+
+    def _scheme(self, listing, resolution: str = "1D") -> None:
+        self.session.add(
+            PriceSeriesAdjustment(
+                asset_listing_id=listing.id,
+                resolution=resolution,
+                scheme=ADJUSTMENT_SCHEME,
+                fetched_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+            )
+        )
+        self.session.flush()
+
+    def _schemes(self, listing_id: int) -> list[str]:
+        rows = self.session.query(PriceSeriesAdjustment).filter_by(asset_listing_id=listing_id)
+        return sorted(row.resolution for row in rows)
+
+    def test_a_series_that_receives_bars_is_fetched_again_in_full(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._price(kept, date(2026, 10, 1), 10.0)
+        self._price(duplicate, date(2026, 10, 1), 10.0)
+        self._price(duplicate, date(2026, 10, 2), 11.0)  # may be on another basis
+        self._scheme(kept, "1D")
+        self._scheme(kept, "1W")  # receives nothing: stays
+        self.session.commit()
+
+        [move] = self._clean()["price_moves"]
+
+        self.assertEqual(move.moved, 1)
+        # Without its row, the daily series is fetched again in one piece.
+        self.assertEqual(self._schemes(kept.id), ["1W"])
+
+    def test_a_series_whose_bars_were_all_dropped_keeps_its_scheme(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._price(kept, date(2026, 10, 1), 10.0)
+        self._price(duplicate, date(2026, 10, 1), 10.0)
+        self._scheme(kept, "1D")
+        self.session.commit()
+
+        [move] = self._clean()["price_moves"]
+
+        self.assertEqual(move.moved, 0)
+        self.assertEqual(self._schemes(kept.id), ["1D"])
 
     def test_bars_all_dropped_still_report_their_range(self):
         asset = self._asset("US0378331005", "AAPL")

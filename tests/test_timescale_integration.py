@@ -781,7 +781,21 @@ class TestListingDuplicatesOnPostgres:
          -- sessions the kept listing lacks: moved
          ('2020-06-03 00:00+00', 9101, 9112, 52, 52, 52, 52.0, 52.0, 100, '1D'),
          ('2020-06-08 00:00+00', 9101, 9112, 53, 53, 53, 53.0, 53.0, 100, '1D');
+        INSERT INTO price_series_adjustments (asset_listing_id, resolution, scheme, fetched_at)
+        VALUES (9111, '1D', 'close:splits;adj_close:splits+dividends', now());
     """
+
+    @staticmethod
+    def _schemes(engine) -> list[str]:
+        with engine.connect() as connection:
+            return list(
+                connection.execute(
+                    text("""
+                        SELECT resolution FROM price_series_adjustments
+                        WHERE asset_listing_id = 9111 ORDER BY 1
+                    """)
+                ).scalars()
+            )
 
     @staticmethod
     def _weekly(engine) -> dict[tuple[int, date], float]:
@@ -829,6 +843,7 @@ class TestListingDuplicatesOnPostgres:
                 rehearsal = clean_duplicates(session, duplicates, dry_run=True, move_prices=True)
                 assert [(m.moved, m.dropped) for m in rehearsal["price_moves"]] == [(2, 1)]
                 assert _series(engine, 9111) == {date(2020, 6, 1): 50.0, date(2020, 6, 2): 51.0}
+                assert self._schemes(engine) == ["1D"]
 
                 result = clean_duplicates(session, duplicates, dry_run=False, move_prices=True)
             finally:
@@ -843,6 +858,8 @@ class TestListingDuplicatesOnPostgres:
                 date(2020, 6, 8): 53.0,
             }
             assert _series(engine, 9112) == {}
+            # The daily series received bars: it is fetched again in full next time.
+            assert self._schemes(engine) == []
             with engine.connect() as connection:
                 listings = connection.execute(
                     text("SELECT id, is_primary FROM asset_listings WHERE asset_id = 9101")

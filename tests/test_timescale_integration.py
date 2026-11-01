@@ -758,6 +758,107 @@ class TestMigrationIsReversible:
         assert _series(engine, 20) == single_listing_before
 
 
+class TestListingDuplicatesOnPostgres:
+    """``scripts/clean_listing_duplicates.py --move-prices`` on compressed chunks."""
+
+    DATA = """
+        INSERT INTO assets (id, ticker, name, currency, is_active, isin) VALUES
+         (9101, 'DUPL', 'Duplicated ETF', 'USD', true, 'IE00TEST0461');
+        INSERT INTO asset_listings
+         (id, asset_id, ticker, exchange, currency, source, is_primary, is_active,
+          created_at, updated_at)
+        VALUES
+         (9111, 9101, 'DUPL', 'NMS', 'USD', 'csv_import', false, true, now(), now()),
+         (9112, 9101, 'DUPL', '', 'USD', 'csv_import', true, true, now(), now());
+        INSERT INTO prices_eod
+         (time, asset_id, asset_listing_id, open, high, low, close, adj_close, volume,
+          resolution)
+        VALUES
+         ('2020-06-01 00:00+00', 9101, 9111, 50, 50, 50, 50.0, 50.0, 100, '1D'),
+         ('2020-06-02 00:00+00', 9101, 9111, 51, 51, 51, 51.0, 51.0, 100, '1D'),
+         -- the same session again, within the tolerance: dropped
+         ('2020-06-02 00:00+00', 9101, 9112, 51, 51, 51, 51.2, 51.2, 100, '1D'),
+         -- sessions the kept listing lacks: moved
+         ('2020-06-03 00:00+00', 9101, 9112, 52, 52, 52, 52.0, 52.0, 100, '1D'),
+         ('2020-06-08 00:00+00', 9101, 9112, 53, 53, 53, 53.0, 53.0, 100, '1D');
+    """
+
+    @staticmethod
+    def _weekly(engine) -> dict[tuple[int, date], float]:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT asset_listing_id, (bucket AT TIME ZONE 'UTC')::date, close
+                    FROM prices_weekly WHERE asset_id = 9101 ORDER BY 1, 2
+                """)
+            ).all()
+        return {(listing, day): close for listing, day, close in rows}
+
+    @staticmethod
+    def _materialise(engine) -> None:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(
+                text("CALL refresh_continuous_aggregate('prices_weekly', '2020-05-25', '2020-06-22')")
+            )
+
+    def test_bars_of_compressed_chunks_move_and_the_aggregates_follow(self, engine):
+        from scripts.clean_listing_duplicates import clean_duplicates, find_duplicates
+
+        try:
+            with engine.begin() as connection:
+                connection.execute(text(self.DATA))
+                compressed = connection.execute(
+                    text("""
+                        SELECT count(compress_chunk(c, if_not_compressed => true))
+                        FROM show_chunks('prices_eod', older_than => DATE '2021-01-01') c
+                    """)
+                ).scalar()
+            assert compressed >= 1
+            self._materialise(engine)
+            # Materialised: the aggregates no longer read prices_eod for these weeks.
+            assert self._weekly(engine) == {
+                (9111, date(2020, 6, 1)): 51.0,
+                (9112, date(2020, 6, 1)): 52.0,
+                (9112, date(2020, 6, 8)): 53.0,
+            }
+
+            session = sessionmaker(bind=engine)()
+            try:
+                duplicates = find_duplicates(session, isin_filter="IE00TEST0461")
+                assert [(d.duplicate_id, d.kept_id) for d in duplicates] == [(9112, 9111)]
+                rehearsal = clean_duplicates(session, duplicates, dry_run=True, move_prices=True)
+                assert [(m.moved, m.dropped) for m in rehearsal["price_moves"]] == [(2, 1)]
+                assert _series(engine, 9111) == {date(2020, 6, 1): 50.0, date(2020, 6, 2): 51.0}
+
+                result = clean_duplicates(session, duplicates, dry_run=False, move_prices=True)
+            finally:
+                session.close()
+
+            assert [(m.moved, m.dropped) for m in result["price_moves"]] == [(2, 1)]
+            assert result["listings_deleted"] == 1 and result["primaries_moved"] == 1
+            assert _series(engine, 9111) == {
+                date(2020, 6, 1): 50.0,
+                date(2020, 6, 2): 51.0,
+                date(2020, 6, 3): 52.0,
+                date(2020, 6, 8): 53.0,
+            }
+            assert _series(engine, 9112) == {}
+            with engine.connect() as connection:
+                listings = connection.execute(
+                    text("SELECT id, is_primary FROM asset_listings WHERE asset_id = 9101")
+                ).all()
+            assert listings == [(9111, True)]
+            # Refreshed by the script after its commit: the duplicate is gone from them.
+            assert self._weekly(engine) == {
+                (9111, date(2020, 6, 1)): 52.0,
+                (9111, date(2020, 6, 8)): 53.0,
+            }
+        finally:
+            with engine.begin() as connection:
+                connection.execute(text("DELETE FROM prices_eod WHERE asset_id = 9101"))
+                connection.execute(text("DELETE FROM assets WHERE id = 9101"))
+
+
 class TestCleanupOnPostgres:
     """Runs last: it deletes rows the other tests read."""
 

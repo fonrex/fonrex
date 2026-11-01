@@ -4,11 +4,17 @@ import os
 import tempfile
 import unittest
 from datetime import date, datetime, timezone
+from unittest.mock import MagicMock
 
 from database.service import DatabaseService
 from import_assets import AssetImporter, CSVRow
 from models import Asset, AssetListing, AssetMapping, Base, PriceEOD
-from scripts.clean_listing_duplicates import clean_duplicates, find_duplicates
+from scripts.clean_listing_duplicates import (
+    PriceMove,
+    clean_duplicates,
+    find_duplicates,
+    refresh_price_aggregates,
+)
 
 
 class CleanListingDuplicatesTest(unittest.TestCase):
@@ -53,7 +59,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         self.session.flush()
         return listing
 
-    def _price(self, listing, day: date = date(2026, 10, 1), close: float = 1.0) -> None:
+    def _price(self, listing, day: date = date(2026, 10, 1), close: float | None = 1.0) -> None:
         self.session.add(
             PriceEOD(
                 asset_listing_id=listing.id,
@@ -286,6 +292,43 @@ class CleanListingDuplicatesTest(unittest.TestCase):
 
         self.assertEqual(result["series_differ"], [duplicate.id])
         self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
+
+    def test_a_close_missing_on_one_side_only_is_a_difference(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._price(kept, date(2026, 10, 1), None)
+        self._price(duplicate, date(2026, 10, 1), 10.0)
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["series_differ"], [duplicate.id])
+        self.assertEqual(result["price_moves"], [])
+        self.assertEqual(self._closes(duplicate.id), {1: 10.0})
+
+    def test_bars_all_dropped_still_report_their_range(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._price(kept, date(2026, 10, 1), 10.0)
+        self._price(duplicate, date(2026, 10, 1), 10.0)
+        self.session.commit()
+
+        [move] = self._clean()["price_moves"]
+
+        self.assertEqual((move.moved, move.dropped), (0, 1))
+        self.assertIsNotNone(move.first)  # the aggregates get refreshed on this range
+        self.assertEqual(self._listing_ids(), [kept.id])
+
+    def test_aggregates_are_refreshed_when_bars_were_only_dropped(self):
+        engine = MagicMock()
+        engine.dialect.name = "postgresql"
+        day = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        move = PriceMove(duplicate_id=2, kept_id=1, moved=0, dropped=1, first=day, last=day)
+
+        self.assertTrue(refresh_price_aggregates(engine, [move]))
+        engine.connect.assert_called_once()
 
     def test_dry_run_reports_the_moves_and_writes_nothing(self):
         asset = self._asset("US0378331005", "AAPL")

@@ -1047,9 +1047,9 @@ docker compose exec fonrex-api python scripts/clean_listing_duplicates.py --move
 ```
 
 - The bars whose `(resolution, time)` the kept listing does not have are copied to it (`INSERT … SELECT … ON CONFLICT DO NOTHING`), then every bar of the duplicate is deleted: a bar the kept listing already had is a second copy of the same session and is dropped. The bars are copied rather than updated in place because the listing is part of the key and of the compression segments of `prices_eod`.
-- When the kept listing has prices of its own, the two series must share at least one session and agree on every shared session (close within 1 %). Otherwise nothing is moved and the duplicate is reported ("series differ or share no session"): it may hold another instrument's series, fetched with a symbol that was not verified. Check it by hand before deleting its bars.
+- When the kept listing has prices of its own, the two series must share at least one session and agree on every shared session (close within 1 %; a close missing on one side only is a difference, so a bar without close never wins over one with a close). Otherwise nothing is moved and the duplicate is reported ("series differ or share no session"): it may hold another instrument's series, fetched with a symbol that was not verified. Check it by hand before deleting its bars.
 - Both listings are locked during the move, so an ingestion that writes either series waits for the end of the run.
-- After the commit, the script refreshes `prices_weekly` and `prices_monthly` on the moved range (a refresh cannot run inside a transaction). If that refresh fails, the cleanup stays committed and the daily job of the aggregates catches up.
+- After the commit, the script refreshes `prices_weekly` and `prices_monthly` on the range of the duplicate's bars, dropped ones included (a refresh cannot run inside a transaction). If that refresh fails, the cleanup stays committed and the daily job of the aggregates catches up.
 
 ## EOD And Historical Data
 

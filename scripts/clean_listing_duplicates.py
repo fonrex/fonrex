@@ -22,9 +22,10 @@ With ``--move-prices``, the bars of a duplicate go to the kept listing before th
 duplicate is deleted: the bars whose (resolution, time) the kept listing does not
 have are moved, the others (a second copy of the same session) are dropped. When
 the kept listing has prices of its own, the two series must agree on the sessions
-they share (close within 1 %); otherwise, or when they share no session, nothing
-is moved and the duplicate is reported. The weekly and monthly aggregates are
-refreshed on the moved range once the change is committed.
+they share (close within 1 %, and a close missing on one side only counts as a
+difference); otherwise, or when they share no session, nothing is moved and the
+duplicate is reported. The weekly and monthly aggregates are refreshed on the
+range of the duplicate's bars once the change is committed.
 
 Usage
 ─────
@@ -148,16 +149,21 @@ def find_duplicates(session, isin_filter: str | None = None) -> list[ListingDupl
 
 def _series_agree(session, duplicate_id: int, kept_id: int) -> bool:
     """True when the kept listing has no bar, or when the two series share sessions
-    and agree on every one of them."""
+    and agree on every one of them.
+
+    A close missing on one side only is a difference: otherwise the bar of the kept
+    listing, without close, would win over the one of the duplicate, and series
+    whose shared sessions have no close would agree without being compared.
+    """
     if not _holds_prices(session, kept_id):
         return True
     shared, differ = session.execute(
         text("""
             SELECT count(*),
                    coalesce(sum(CASE
-                       WHEN d.close IS NOT NULL AND k.close IS NOT NULL
-                        AND abs(d.close - k.close) > :tolerance * abs(k.close)
-                       THEN 1 ELSE 0 END), 0)
+                       WHEN (d.close IS NULL) <> (k.close IS NULL) THEN 1
+                       WHEN abs(d.close - k.close) > :tolerance * abs(k.close) THEN 1
+                       ELSE 0 END), 0)
             FROM prices_eod d
             JOIN prices_eod k
               ON k.asset_listing_id = :kept
@@ -211,14 +217,16 @@ def _move_prices(session, duplicate_id: int, kept_id: int) -> PriceMove:
 
 
 def refresh_price_aggregates(engine, moves: list[PriceMove]) -> bool:
-    """Refresh the weekly and monthly aggregates on the range of the moved bars.
+    """Refresh the weekly and monthly aggregates on the range of the duplicates' bars.
 
+    The range covers the dropped bars too: when every bar of a duplicate was already
+    on the kept listing, nothing moves but the aggregates still hold the duplicate.
     A refresh cannot run inside a transaction, so it runs after the commit, on its
     own connection. Without it the aggregates still show the duplicate until their
     daily job. Returns False when there was nothing to refresh or it could not run.
     """
-    starts = [move.first for move in moves if move.moved and move.first is not None]
-    ends = [move.last for move in moves if move.moved and move.last is not None]
+    starts = [move.first for move in moves if move.first is not None]
+    ends = [move.last for move in moves if move.last is not None]
     if not starts or engine.dialect.name != "postgresql":
         return False
     try:

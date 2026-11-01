@@ -23,12 +23,15 @@ duplicate is deleted: the bars whose (resolution, time) the kept listing does no
 have are moved, the others (a second copy of the same session) are dropped. When
 the kept listing has prices of its own, the two series must agree on the sessions
 they share (close within 1 %, and a close missing on one side only counts as a
-difference; a session without close on both sides is not compared); otherwise,
-or when they share no compared session, nothing is moved and the duplicate is
-reported. A series of the kept listing that receives bars loses its row of
+difference; a session without close on both sides is not compared), and enough
+sessions must be compared (:data:`MIN_SHARED_SESSIONS`, or every bar of the
+shorter series); otherwise nothing is moved and the duplicate is reported. A series of the kept listing that receives bars loses its row of
 ``price_series_adjustments``: the next ingestion fetches it again in full, on one
 adjustment basis. The weekly and monthly aggregates are refreshed on the range
 of the duplicate's bars once the change is committed.
+
+The mappings of a deleted duplicate go with it, except a trusted Yahoo symbol
+(verified, or set by hand): it goes to the kept listing when that one has none.
 
 Usage
 ─────
@@ -61,13 +64,18 @@ from sqlalchemy import exists, text
 from sqlalchemy.orm import aliased
 
 from database.service import DatabaseService
-from models import Asset, AssetListing, PriceEOD
+from historical.yahoo_symbols import SET_BY_HAND, YAHOO_PROVIDER
+from models import Asset, AssetListing, AssetMapping, PriceEOD
 
 logger = logging.getLogger("clean_listing_duplicates")
 
 # Two copies of the same session agree when their closes differ by at most this
 # share of the close of the kept listing.
 CLOSE_TOLERANCE = 0.01
+
+# Sessions the two series must share, and agree on, before bars are merged (or
+# every bar of the shorter series when it holds fewer).
+MIN_SHARED_SESSIONS = 5
 
 # Continuous aggregates built on the daily bars of prices_eod, with their bucket.
 PRICE_AGGREGATES = (("prices_weekly", "1 week"), ("prices_monthly", "1 month"))
@@ -150,18 +158,37 @@ def find_duplicates(session, isin_filter: str | None = None) -> list[ListingDupl
     return duplicates
 
 
-def _series_agree(session, duplicate_id: int, kept_id: int) -> bool:
-    """True when the kept listing has no bar, or when the two series share sessions
-    and agree on every one of them.
+@dataclass(frozen=True)
+class SeriesComparison:
+    """How the series of a duplicate compares with the one of the kept listing."""
+
+    compared: int  # shared sessions whose closes were compared
+    required: int  # compared sessions needed before the series are merged
+    differ: int  # compared sessions on which the closes disagree
+
+    @property
+    def agree(self) -> bool:
+        return self.differ == 0 and self.compared >= self.required
+
+
+def _compare_series(session, duplicate_id: int, kept_id: int) -> SeriesComparison:
+    """Compare the two series on the sessions they share.
+
+    They agree when no compared session differs and enough sessions were compared:
+    :data:`MIN_SHARED_SESSIONS`, or every bar of the shorter series when it holds
+    fewer. A single matching bar must not carry thousands of bars nobody compared.
+    When the kept listing has no bar, nothing can be compared and nothing is required.
 
     A close missing on one side only is a difference: otherwise the bar of the kept
     listing, without close, would win over the one of the duplicate. A session
-    without close on both sides compares nothing, so it is not counted as shared:
-    series whose shared sessions all lack a close do not agree.
+    without close on both sides compares nothing, so it is not counted: series
+    whose shared sessions all lack a close do not agree.
     """
-    if not _holds_prices(session, kept_id):
-        return True
-    shared, differ = session.execute(
+    kept_bars = _count_bars(session, kept_id)
+    if not kept_bars:
+        return SeriesComparison(compared=0, required=0, differ=0)
+    required = min(MIN_SHARED_SESSIONS, kept_bars, _count_bars(session, duplicate_id))
+    compared, differ = session.execute(
         text("""
             SELECT count(*) FILTER (WHERE d.close IS NOT NULL OR k.close IS NOT NULL),
                    coalesce(sum(CASE
@@ -177,7 +204,8 @@ def _series_agree(session, duplicate_id: int, kept_id: int) -> bool:
         """),
         {"duplicate": duplicate_id, "kept": kept_id, "tolerance": CLOSE_TOLERANCE},
     ).one()
-    return shared > 0 and differ == 0
+    # At least one compared session, even between two series of bars without close.
+    return SeriesComparison(compared=compared, required=max(required, 1), differ=differ)
 
 
 def _move_prices(session, duplicate_id: int, kept_id: int) -> PriceMove:
@@ -292,6 +320,44 @@ def refresh_price_aggregates(engine, moves: list[PriceMove]) -> bool:
     return True
 
 
+def _trusted_yahoo(mapping: AssetMapping | None) -> bool:
+    """A Yahoo symbol the ingestion uses without asking Yahoo again
+    (``YahooSymbolResolver._stored`` of ``historical/yahoo_symbols.py``)."""
+    return bool(
+        mapping is not None
+        and mapping.is_active
+        and mapping.provider_ticker
+        and (mapping.source == SET_BY_HAND or mapping.last_verified_at)
+    )
+
+
+def _hand_over_yahoo_mapping(session, duplicate: AssetListing, kept_id: int) -> bool:
+    """Give the trusted Yahoo mapping of the duplicate to the kept listing.
+
+    The mappings of a listing go with it (cascade). The duplicate that holds prices
+    is usually the former primary listing, the one that was ingested: its symbol,
+    verified or set by hand, is the one the kept listing needs. Without a trusted
+    symbol the kept listing is not ingested (AGENTS.md, rule 13), so its series
+    would not be fetched again in full. A kept listing that already has a trusted
+    mapping keeps it; an untrusted one (not found, switched off) is replaced.
+    """
+    mine = next((m for m in duplicate.mappings if m.provider_name == YAHOO_PROVIDER), None)
+    if not _trusted_yahoo(mine):
+        return False
+    kept = session.get(AssetListing, kept_id)
+    theirs = next((m for m in kept.mappings if m.provider_name == YAHOO_PROVIDER), None)
+    if _trusted_yahoo(theirs):
+        return False
+    if theirs is not None:
+        kept.mappings.remove(theirs)
+        # One mapping per listing and provider: the old one leaves first.
+        session.flush()
+    duplicate.mappings.remove(mine)
+    kept.mappings.append(mine)
+    session.flush()
+    return True
+
+
 def clean_duplicates(
     session,
     duplicates: list[ListingDuplicate],
@@ -301,14 +367,20 @@ def clean_duplicates(
     """
     Delete the duplicates without prices; their mappings go with them. With
     ``move_prices``, the bars of a duplicate go to the kept listing first.
+    A trusted Yahoo mapping of a deleted duplicate goes to the kept listing when
+    that one has none (:func:`_hand_over_yahoo_mapping`).
     Returns the number of listings deleted, of primaries moved to the kept listing,
     the ids of the duplicates left alone because they hold prices (and, among them,
-    those whose series disagrees with the kept one), and the bars moved and dropped.
+    those whose series disagrees with the kept one), the comparison of each series,
+    the ids of the duplicates whose Yahoo mapping went to the kept listing, and the
+    bars moved and dropped.
     """
     deleted = primaries_moved = 0
     held_prices = []
     series_differ = []
     price_moves = []
+    comparisons: dict[int, SeriesComparison] = {}
+    mappings_moved = []
     for duplicate in duplicates:
         if duplicate.has_prices and not move_prices:
             held_prices.append(duplicate.duplicate_id)
@@ -330,11 +402,15 @@ def clean_duplicates(
             if not move_prices:
                 held_prices.append(duplicate.duplicate_id)
                 continue
-            if not _series_agree(session, listing.id, duplicate.kept_id):
+            comparison = _compare_series(session, listing.id, duplicate.kept_id)
+            comparisons[duplicate.duplicate_id] = comparison
+            if not comparison.agree:
                 held_prices.append(duplicate.duplicate_id)
                 series_differ.append(duplicate.duplicate_id)
                 continue
             price_moves.append(_move_prices(session, listing.id, duplicate.kept_id))
+        if _hand_over_yahoo_mapping(session, listing, duplicate.kept_id):
+            mappings_moved.append(duplicate.duplicate_id)
         session.delete(listing)
         # The delete reaches the database before the kept listing becomes primary:
         # an instrument may hold a single primary listing.
@@ -358,6 +434,8 @@ def clean_duplicates(
         "primaries_moved": primaries_moved,
         "held_prices": held_prices,
         "series_differ": series_differ,
+        "comparisons": comparisons,
+        "mappings_moved": mappings_moved,
         "price_moves": price_moves,
     }
 
@@ -379,15 +457,27 @@ def print_report(
         print(f"  Bars moved to kept listing   : {sum(move.moved for move in moves)}")
         print(f"  Bars dropped (already there) : {sum(move.dropped for move in moves)}")
         for move in moves:
+            comparison = result["comparisons"].get(move.duplicate_id)
+            compared = (
+                f", {comparison.compared} shared sessions compared"
+                if comparison and comparison.required
+                else ", kept listing had no bar: nothing compared"
+            )
             print(
                 f"    listing {move.duplicate_id} -> listing {move.kept_id}: "
-                f"{move.moved} moved, {move.dropped} dropped"
+                f"{move.moved} moved, {move.dropped} dropped{compared}"
             )
+    if result["mappings_moved"]:
+        print(f"  Yahoo symbols handed over    : {len(result['mappings_moved'])}")
     print(f"  Left alone (they hold prices): {len(kept_with_prices)}")
     for duplicate in kept_with_prices:
         reason = ""
         if duplicate.duplicate_id in result["series_differ"]:
-            reason = " — series differ or share no session, nothing moved"
+            comparison = result["comparisons"][duplicate.duplicate_id]
+            reason = (
+                f" — {comparison.compared} shared sessions compared "
+                f"({comparison.required} required), {comparison.differ} differ: nothing moved"
+            )
         print(
             f"    listing {duplicate.duplicate_id} ({duplicate.isin} {duplicate.ticker} "
             f"{duplicate.currency}) duplicates listing {duplicate.kept_id} "

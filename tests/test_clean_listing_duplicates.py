@@ -55,6 +55,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
                 asset_listing_id=listing.id,
                 provider_name="YahooFinance",
                 provider_ticker=listing.ticker,
+                source="csv_import",  # what the importer writes: not a verified symbol
             )
         )
         self.session.flush()
@@ -119,6 +120,8 @@ class CleanListingDuplicatesTest(unittest.TestCase):
                 "primaries_moved": 0,
                 "held_prices": [],
                 "series_differ": [],
+                "comparisons": {},
+                "mappings_moved": [],
                 "price_moves": [],
             },
         )
@@ -162,6 +165,8 @@ class CleanListingDuplicatesTest(unittest.TestCase):
                 "primaries_moved": 0,
                 "held_prices": [duplicate.id],
                 "series_differ": [],
+                "comparisons": {},
+                "mappings_moved": [],
                 "price_moves": [],
             },
         )
@@ -183,6 +188,8 @@ class CleanListingDuplicatesTest(unittest.TestCase):
                 "primaries_moved": 1,
                 "held_prices": [],
                 "series_differ": [],
+                "comparisons": {},
+                "mappings_moved": [],
                 "price_moves": [],
             },
         )
@@ -249,19 +256,58 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         asset = self._asset("US0378331005", "AAPL")
         kept = self._listing(asset, "NMS")
         duplicate = self._listing(asset, "")
-        self._price(kept, date(2026, 10, 1), 10.0)
-        self._price(kept, date(2026, 10, 2), 11.0)
-        self._price(duplicate, date(2026, 10, 2), 11.05)  # same session, within 1 %
-        self._price(duplicate, date(2026, 10, 3), 12.0)  # a session the kept one lacks
+        for day in range(1, 6):
+            self._price(kept, date(2026, 10, day), 10.0 + day)
+            # Day 2 differs within 1 %: the same session, from another source.
+            self._price(duplicate, date(2026, 10, day), 12.05 if day == 2 else 10.0 + day)
+        self._price(duplicate, date(2026, 10, 6), 16.0)  # a session the kept one lacks
         self.session.commit()
 
         result = self._clean()
 
         [move] = result["price_moves"]
-        self.assertEqual((move.moved, move.dropped), (1, 1))
+        self.assertEqual((move.moved, move.dropped), (1, 5))
+        self.assertEqual(result["comparisons"][duplicate.id].compared, 5)
         self.assertEqual(self._listing_ids(), [kept.id])
         # The bar the kept listing already had is not replaced.
-        self.assertEqual(self._closes(kept.id), {1: 10.0, 2: 11.0, 3: 12.0})
+        self.assertEqual(
+            self._closes(kept.id), {1: 11.0, 2: 12.0, 3: 13.0, 4: 14.0, 5: 15.0, 6: 16.0}
+        )
+
+    def test_one_shared_session_does_not_carry_a_long_series(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        for day in range(1, 6):
+            self._price(kept, date(2026, 10, day), 10.0)
+        for day in range(5, 20):
+            self._price(duplicate, date(2026, 10, day), 10.0)  # one session in common
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["series_differ"], [duplicate.id])
+        comparison = result["comparisons"][duplicate.id]
+        self.assertEqual((comparison.compared, comparison.required), (1, 5))
+        self.assertEqual(result["price_moves"], [])
+        self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
+
+    def test_a_short_series_compared_in_full_is_merged(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        for day in (1, 2):
+            self._price(kept, date(2026, 10, day), 10.0)
+        for day in (1, 2, 3):
+            self._price(duplicate, date(2026, 10, day), 10.0)
+        self.session.commit()
+
+        result = self._clean()
+
+        # The kept series holds two bars, both compared: that is all there is to compare.
+        self.assertEqual(result["comparisons"][duplicate.id].required, 2)
+        [move] = result["price_moves"]
+        self.assertEqual((move.moved, move.dropped), (1, 2))
 
     def test_a_duplicate_whose_series_differs_is_reported_and_kept(self):
         asset = self._asset("US0378331005", "AAPL")
@@ -391,6 +437,92 @@ class CleanListingDuplicatesTest(unittest.TestCase):
 
         self.assertTrue(refresh_price_aggregates(engine, [move]))
         engine.connect.assert_called_once()
+
+    def _yahoo(self, listing, source: str, verified: bool = True, active: bool = True):
+        mapping = (
+            self.session.query(AssetMapping)
+            .filter_by(asset_listing_id=listing.id, provider_name="YahooFinance")
+            .one()
+        )
+        mapping.source = source
+        mapping.provider_ticker = f"{listing.ticker}.{listing.id}"
+        mapping.is_active = active
+        mapping.last_verified_at = datetime(2026, 10, 1, tzinfo=timezone.utc) if verified else None
+        self.session.flush()
+        return mapping.provider_ticker
+
+    def _yahoo_of(self, listing_id: int) -> tuple[str, str] | None:
+        mapping = (
+            self.session.query(AssetMapping)
+            .filter_by(asset_listing_id=listing_id, provider_name="YahooFinance")
+            .one_or_none()
+        )
+        return (mapping.provider_ticker, mapping.source) if mapping else None
+
+    def test_a_verified_yahoo_symbol_goes_to_the_kept_listing(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "", is_primary=True)
+        self._yahoo(kept, "symbol_not_found", verified=False, active=False)
+        symbol = self._yahoo(duplicate, "isin_search")
+        self._price(duplicate)
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["mappings_moved"], [duplicate.id])
+        self.assertEqual(self._yahoo_of(kept.id), (symbol, "isin_search"))
+        self.assertEqual(self._listing_ids(), [kept.id])
+
+    def test_a_symbol_set_by_hand_is_not_lost(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        symbol = self._yahoo(duplicate, "manual", verified=False)
+        self.session.commit()
+
+        result = self._clean(move_prices=False)
+
+        self.assertEqual(result["mappings_moved"], [duplicate.id])
+        self.assertEqual(self._yahoo_of(kept.id), (symbol, "manual"))
+
+    def test_a_trusted_symbol_of_the_kept_listing_stays(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        mine = self._yahoo(kept, "isin_search")
+        self._yahoo(duplicate, "manual")
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["mappings_moved"], [])
+        self.assertEqual(self._yahoo_of(kept.id), (mine, "isin_search"))
+
+    def test_an_unverified_symbol_of_the_duplicate_is_not_handed_over(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._yahoo(duplicate, "csv_import", verified=False)
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["mappings_moved"], [])
+        self.assertEqual(self._yahoo_of(kept.id), (kept.ticker, "csv_import"))
+
+    def test_a_dry_run_hands_over_no_symbol(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._yahoo(duplicate, "isin_search")
+        self.session.commit()
+
+        result = self._clean(dry_run=True)
+
+        self.assertEqual(result["mappings_moved"], [duplicate.id])
+        self.assertEqual(self._yahoo_of(kept.id), (kept.ticker, "csv_import"))
+        self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
 
     def test_dry_run_reports_the_moves_and_writes_nothing(self):
         asset = self._asset("US0378331005", "AAPL")

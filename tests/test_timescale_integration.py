@@ -776,7 +776,8 @@ class TestListingDuplicatesOnPostgres:
         VALUES
          ('2020-06-01 00:00+00', 9101, 9111, 50, 50, 50, 50.0, 50.0, 100, '1D'),
          ('2020-06-02 00:00+00', 9101, 9111, 51, 51, 51, 51.0, 51.0, 100, '1D'),
-         -- the same session again, within the tolerance: dropped
+         -- the same sessions again, within the tolerance: compared, then dropped
+         ('2020-06-01 00:00+00', 9101, 9112, 50, 50, 50, 50.0, 50.0, 100, '1D'),
          ('2020-06-02 00:00+00', 9101, 9112, 51, 51, 51, 51.2, 51.2, 100, '1D'),
          -- sessions the kept listing lacks: moved
          ('2020-06-03 00:00+00', 9101, 9112, 52, 52, 52, 52.0, 52.0, 100, '1D'),
@@ -841,7 +842,7 @@ class TestListingDuplicatesOnPostgres:
                 duplicates = find_duplicates(session, isin_filter="IE00TEST0461")
                 assert [(d.duplicate_id, d.kept_id) for d in duplicates] == [(9112, 9111)]
                 rehearsal = clean_duplicates(session, duplicates, dry_run=True, move_prices=True)
-                assert [(m.moved, m.dropped) for m in rehearsal["price_moves"]] == [(2, 1)]
+                assert [(m.moved, m.dropped) for m in rehearsal["price_moves"]] == [(2, 2)]
                 assert _series(engine, 9111) == {date(2020, 6, 1): 50.0, date(2020, 6, 2): 51.0}
                 assert self._schemes(engine) == ["1D"]
 
@@ -849,7 +850,7 @@ class TestListingDuplicatesOnPostgres:
             finally:
                 session.close()
 
-            assert [(m.moved, m.dropped) for m in result["price_moves"]] == [(2, 1)]
+            assert [(m.moved, m.dropped) for m in result["price_moves"]] == [(2, 2)]
             assert result["listings_deleted"] == 1 and result["primaries_moved"] == 1
             assert _series(engine, 9111) == {
                 date(2020, 6, 1): 50.0,

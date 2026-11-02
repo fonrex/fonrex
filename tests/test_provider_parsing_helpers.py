@@ -305,6 +305,52 @@ class TestMarketwatchKeyData:
         assert m.currency == "EUR"
         assert m.dividend_rate == pytest.approx(1.1)
 
+    def test_range_and_sibling_fallback_and_dylan_edge_cases(self):
+        from financials.models import FinancialMetrics
+
+        html = page(
+            '<ul class="list list--kv">'
+            '<li class="kv__item"><small class="label">52 Week Range</small>'
+            '<span class="primary">N/A</span></li>'
+            "</ul>"
+            "<div><span>P/E Ratio</span><span>18.5</span></div>"
+        )
+        provider = MarketwatchProvider()
+        metrics = provider._parse_page(html, "TST")
+        assert metrics.pe_ratio == pytest.approx(18.5)
+        assert getattr(metrics, "week_52_low", None) is None
+
+        assert provider.extract_entitlement_token("") is None
+        assert provider.extract_entitlement_token("<html>no token</html>") is None
+
+        m = FinancialMetrics(ticker="TST")
+        provider.read_dylan_quote(m, {})
+        provider.read_dylan_quote(m, {"InstrumentResponses": [{}]})
+        provider.read_dylan_quote(
+            m,
+            {
+                "InstrumentResponses": [
+                    {
+                        "Matches": [
+                            {
+                                "Trading": {"Last": {"Price": {"Iso": "EUR", "Value": 12.34}}},
+                                "TradingStatistics": {
+                                    "PriceStatistics": [
+                                        {"Range": {"Duration": {"ValueString": "P50D"}}},
+                                    ],
+                                    "VolumeStatistics": [
+                                        {"Range": {"Duration": {"ValueString": "P50D"}}},
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+        assert m.price == pytest.approx(12.34)
+        assert m.currency == "EUR"
+
 
 class TestBoursoramaHelpers:
     @pytest.mark.parametrize(

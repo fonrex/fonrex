@@ -62,7 +62,7 @@ MODULE_THRESHOLDS = {
     "financials/providers/InvestirLesEchos_provider.py": 96.0,
     "financials/providers/justetf.py": 87.0,
     "financials/providers/JustETF_provider.py": 87.0,
-    "financials/providers/Marketwatch_provider.py": 93.0,
+    "financials/providers/Marketwatch_provider.py": 96.0,
     "financials/providers/MorningStar_provider.py": 97.0,
     "financials/providers/Msn_provider.py": 100.0,
     "financials/providers/openfigi.py": 90.0,

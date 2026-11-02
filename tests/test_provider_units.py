@@ -311,6 +311,25 @@ class TestPercentProvidersPassValidation:
 
         assert results["GoogleFinance"]["operating_margin"] == pytest.approx(9.8)
 
+    async def test_barrons_real_page_and_short_float_pass_validation(self):
+        from pathlib import Path
+
+        from financials.providers.Barrons_provider import BarronsProvider
+
+        html = (Path(__file__).parent / "fixtures/providers/barrons_aca.html").read_text()
+        payload = BarronsProvider()._parse_page(HTMLParser(html), "ACA").model_dump()
+        payload["short_percent_float"] = 0.90
+
+        results = await ValidationLayer().validate_results(
+            ticker="ACA.PA", results={"Barrons": payload}
+        )
+
+        kept = results["Barrons"]
+        assert kept["dividend_yield"] == pytest.approx(0.0)
+        assert kept["short_percent_float"] == pytest.approx(0.90)
+        assert kept["pe_ratio"] == pytest.approx(7.19)
+        assert to_ratio("Barrons", "short_percent_float", Decimal("0.90")) == Decimal("0.0090")
+
     async def test_pydantic_payload_is_kept(self):
         metrics = FinancialMetrics(dividend_yield=3.45, pe_ratio=24.1)
 

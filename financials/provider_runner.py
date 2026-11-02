@@ -143,6 +143,7 @@ class FinancialProviderRunner:
             in {
                 "zonebourse",
                 "investing",
+                "barrons",
                 "wallstreetjournal",
                 "marketwatch",
                 "fortuneo",
@@ -280,7 +281,11 @@ class FinancialProviderRunner:
                         # ("SPFF" is another fund in the US): its figures are not
                         # those of the instrument, and must not carry its ISIN.
                         logger.warning(
-                            "%s answered with ISIN %s for %s (%s)", provider_name, found, ticker, target_isin
+                            "%s answered with ISIN %s for %s (%s)",
+                            provider_name,
+                            found,
+                            ticker,
+                            target_isin,
                         )
                         return provider_name, {
                             "error": f"Another instrument was found (ISIN {found}, expected {target_isin})"

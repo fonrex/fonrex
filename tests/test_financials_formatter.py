@@ -229,17 +229,37 @@ def test_unusable_values_are_skipped_not_rendered():
 
 
 def test_wall_street_journal_insiders_are_found_under_the_name_of_the_provider():
-    results = {
-        "wallStreetJournal": {
-            "insider_transactions": {
-                "Transactions": [{"date": "2026-05-11", "ownerName": "Lourd Jean", "shares": 1000}]
-            }
-        }
+    from financials.models import FinancialMetrics
+    from financials.provider_runner import FinancialProviderRunner
+
+    metrics = FinancialMetrics(
+        ticker="ACA",
+        insider_transactions={
+            "Transactions": [
+                {
+                    "date": "08/12/26",
+                    "ownerName": "Benoit Tassou",
+                    "ownerTitle": "Officer",
+                    "shares": "1018",
+                    "description": "Disposition at $20.05 per share",
+                    "value": "20,411",
+                }
+            ]
+        },
+    )
+    dumped = FinancialProviderRunner._dump_payload(metrics, expose_extra_fields=False)
+    transactions = FinancialsFormatter.to_eodhd({"wallStreetJournal": dumped})["InsiderTransactions"]
+
+    assert transactions["0"] == {
+        "date": "08/12/26",
+        "ownerName": "Benoit Tassou",
+        "ownerTitle": "Officer",
+        "shares": "1018",
+        "transactionCode": None,
+        "transactionAmount": 20411.0,
+        "transactionPrice": 20.05,
+        "description": "Disposition at $20.05 per share",
     }
-
-    transactions = FinancialsFormatter.to_eodhd(results)["InsiderTransactions"]
-
-    assert transactions["0"]["ownerName"] == "Lourd Jean"
 
 
 def test_insider_transactions_of_the_sec_provider_are_rendered():

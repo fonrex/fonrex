@@ -577,6 +577,10 @@ class WallStreetJournalProvider(BaseProvider):
             metrics.week_52_high = high_52
 
         self._parse_window_state(parser, metrics)
+        if parser.css_first("table.cr_mod_insider, table.cr_mod_transactions"):
+            insider_data = self._parse_insider_transactions(parser)
+            if insider_data["Summary"] or insider_data["Transactions"]:
+                metrics.insider_transactions = insider_data
         return metrics
 
     @classmethod
@@ -664,15 +668,18 @@ class WallStreetJournalProvider(BaseProvider):
                         if owner_node is not None
                         else cols[1].text(strip=True)
                     )
-                    data["Transactions"].append(
-                        {
-                            "date": cols[0].text(strip=True),
-                            "ownerName": owner_name,
-                            "shares": cols[2].text(strip=True),
-                            "description": _collapse_ws(cols[3].text(strip=False)),
-                            "value": cols[4].text(strip=True),
-                        }
-                    )
+                    title_node = cols[1].css_first(".data_lbl")
+                    owner_title = title_node.text(strip=True) if title_node is not None else ""
+                    tx_entry = {
+                        "date": cols[0].text(strip=True),
+                        "ownerName": owner_name,
+                        "shares": cols[2].text(strip=True),
+                        "description": _collapse_ws(cols[3].text(strip=False)),
+                        "value": cols[4].text(strip=True),
+                    }
+                    if owner_title:
+                        tx_entry["ownerTitle"] = owner_title
+                    data["Transactions"].append(tx_entry)
 
         return data
 

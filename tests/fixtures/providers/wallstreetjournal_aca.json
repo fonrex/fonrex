@@ -9,6 +9,31 @@
     "dividend_rate": 1.13,
     "eps": 2.09,
     "float_shares": 1120000000.0,
+    "insider_transactions": {
+      "Summary": {
+        "Last 3 Months": {
+          "transactions": "0 Purchases 1 Sales",
+          "shares": "0 / 1,018"
+        },
+        "Last 6 Months": {
+          "transactions": "0 Purchases 1 Sales",
+          "shares": "0 / 1,018"
+        },
+        "Last 12 Months": {
+          "transactions": "0 Purchases 1 Sales",
+          "shares": "0 / 1,018"
+        }
+      },
+      "Transactions": [
+        {
+          "date": "08/12/26",
+          "ownerName": "Benoit Tassou",
+          "shares": "1018",
+          "description": "Disposition at $20.05 per share",
+          "value": "20,411"
+        }
+      ]
+    },
     "market_cap": 45340000000.0,
     "name": "Credit Agricole S.A.",
     "pe_ratio": 7.17,

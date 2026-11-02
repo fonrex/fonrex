@@ -238,6 +238,7 @@ class TestWallStreetJournalHelpers:
         assert insiders["Transactions"][0] == {
             "date": "08/12/26",
             "ownerName": "Benoit Tassou",
+            "ownerTitle": "Officer",
             "shares": "1018",
             "description": "Disposition at $20.05 per share",
             "value": "20,411",

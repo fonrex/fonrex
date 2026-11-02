@@ -325,7 +325,8 @@ class TestZoneBourse:
             "search=SAN&type=company",
         ]
         assert (
-            metrics.provider_url == "https://www.zonebourse.com/cours/action/BANCO-SANTANDER-S-A-69308/"
+            metrics.provider_url
+            == "https://www.zonebourse.com/cours/action/BANCO-SANTANDER-S-A-69308/"
         )
 
     @pytest.mark.parametrize(

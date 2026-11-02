@@ -112,7 +112,16 @@ class MarketWatchNewsProvider(BaseFinancialProvider):
             title_tag = container.find(
                 class_=re.compile(r"headline|title", re.I)
             ) or container.find(["h3", "h4"])
-            title = title_tag.get_text(strip=True) if title_tag else link_tag.get_text(strip=True)
+            if title_tag:
+                inner_link = title_tag.find("a")
+                if inner_link:
+                    title = inner_link.get_text(strip=True)
+                else:
+                    for badge in title_tag.select(".article__label, .article__flashline"):
+                        badge.decompose()
+                    title = title_tag.get_text(strip=True)
+            else:
+                title = link_tag.get_text(strip=True)
             if not title or len(title) < 5:
                 continue
 

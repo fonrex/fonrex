@@ -1,0 +1,22 @@
+{
+  "provider": "Marketwatch",
+  "ticker": "TSLA",
+  "source_url": "https://www.marketwatch.com/investing/stock/tsla",
+  "captured_on": "2026-11-02",
+  "expected": {
+    "average_volume": 36680000.0,
+    "beta": 2.06,
+    "eps": 0.91,
+    "float_shares": 2820000000.0,
+    "market_cap": 1580000000000.0,
+    "name": "Tesla Inc.",
+    "pe_ratio": 439.79,
+    "price": 402.38,
+    "shares_outstanding": 3950000000.0,
+    "shares_short": 69350000.0,
+    "short_percent_float": 2.46,
+    "week_52_high": 498.83,
+    "week_52_low": 297.38
+  },
+  "known_gaps": {}
+}

@@ -50,6 +50,9 @@ class FinancialMetrics(StandardFinancials):
     altman_z_score: Optional[float] = Field(None, description="Altman Z-Score")
     roic: Optional[float] = Field(None, description="ROIC (%)")
     gf_score: Optional[float] = Field(None, description="Score Gurufocus")
+    insider_transactions: Optional[dict] = Field(
+        None, description="Insider transactions summary and recent filings"
+    )
 
     # Metadata
     provider_url: Optional[str] = Field(None, description="URL de la source")

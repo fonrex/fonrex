@@ -15,7 +15,7 @@ from typing import List, Optional
 from bs4 import BeautifulSoup
 
 from financials.providers.base import BaseFinancialProvider
-from financials.providers.ZoneBourse_provider import session_headers
+from financials.providers.ZoneBourse_provider import ZoneBourseProvider, session_headers
 from schemas.news import RawNewsItem
 
 logger = logging.getLogger(__name__)
@@ -69,12 +69,9 @@ class ZoneBourseNewsProvider(BaseFinancialProvider):
             logger.debug("[zonebourse] Cannot build the URL of %s", ticker)
             return []
 
-        headers = self._get_headers(
-            {
-                **session_headers(),
-                "Referer": self.BASE_URL + "/",
-            }
-        )
+        # A navigation typed in the address bar (``Sec-Fetch-Site: none``) carries no
+        # Referer: sending both would be a combination no browser produces.
+        headers = self._get_headers(session_headers())
 
         html = await self._get(url, headers=headers)
         if not html:
@@ -90,8 +87,10 @@ class ZoneBourseNewsProvider(BaseFinancialProvider):
         provider_url: Optional[str],
         provider_ticker: Optional[str],
     ) -> Optional[str]:
-        if provider_url:
-            base = provider_url.rstrip("/")
+        # Only a quote page of zonebourse.com is followed (same rule as ZoneBourseProvider).
+        page = ZoneBourseProvider.direct_url(provider_url) if provider_url else None
+        if page:
+            base = page.rstrip("/")
             if not base.endswith("/actualites"):
                 base += "/actualites/"
             return base

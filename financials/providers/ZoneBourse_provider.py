@@ -3,14 +3,20 @@
 A quote page is found through ``/async/search/quick`` (ISIN first when given,
 otherwise the ticker sent without its Yahoo suffix and matched by the country
 flag and currency of the row) or read directly when a ``provider_url`` is
-supplied. One fixed set of browser headers is used for the session; the
-``User-Agent`` can be overridden with ``ZONEBOURSE_USER_AGENT``.
+supplied (only on ``zonebourse.com``). A ticker without a known Yahoo suffix
+prefers the United States row. One fixed set of browser headers is used for the
+session; the ``User-Agent`` can be overridden with ``ZONEBOURSE_USER_AGENT``.
+
+The synthesis page shows the main listing of the company: when its currency is
+not one of the place the ticker names, the figures of the listing (price,
+currency, target price) are left out.
 """
 
 import logging
 import os
 import re
 from typing import List, Optional, Tuple
+from urllib.parse import urlsplit
 
 import httpx
 from selectolax.parser import HTMLParser, Node
@@ -66,6 +72,15 @@ PLACES: dict[str, tuple[set[str], set[str]]] = {
     "HK": ({"hk"}, {"HKD"}),
     "AX": ({"au"}, {"AUD"}),
 }
+
+# Preferred (not required) place of a ticker without a known suffix: Yahoo writes
+# United States tickers bare (``TSLA``, ``BRK.B``).
+US_PLACE: tuple[set[str], set[str]] = ({"us"}, {"USD"})
+
+ZONEBOURSE_HOSTS = frozenset({"www.zonebourse.com", "zonebourse.com"})
+
+# Figures of the listing shown on the page, dropped when it is not the listing asked.
+LISTING_FIELDS = ("price", "currency", "target_price")
 
 
 def user_agent() -> str:
@@ -149,7 +164,7 @@ class ZoneBourseProvider(BaseProvider):
 
         async with self._session(headers=session_headers()) as client:
             try:
-                url = self.direct_url(provider_url or ticker_input)
+                url = self.direct_url(provider_url) or self.direct_url(ticker)
                 if not url:
                     url = await self._resolve_url(client, ticker=ticker, isin=isin)
                 if not url:
@@ -161,21 +176,60 @@ class ZoneBourseProvider(BaseProvider):
                     logger.error(f"Failed to fetch profile page for {ticker_input}")
                     return None
 
-                return self._parse_page(html, ticker_input, url)
+                metrics = self._parse_page(html, ticker_input, url)
+                self._drop_other_listing_figures(metrics, ticker)
+                return metrics
 
             except Exception as e:
                 logger.error(f"Global error fetching {ticker_input}: {e}")
                 return None
 
+    @staticmethod
+    def _looks_like_url(value: str) -> bool:
+        return value.startswith(("https://", "http://", "/"))
+
     @classmethod
     def direct_url(cls, identifier: Optional[str]) -> Optional[str]:
-        """The page address when the caller already gave a ZoneBourse URL or path."""
+        """The page address when the caller already gave a ZoneBourse URL or path.
+
+        Only ``zonebourse.com`` is followed, always in HTTPS: an address on another
+        host is refused, so that a mapping can never make the provider read another site.
+        """
         value = (identifier or "").strip()
-        if value.startswith(("https://", "http://")):
-            return value
         if value.startswith("/cours/"):
             return f"{cls.BASE_URL}{value}"
-        return None
+        if not value.startswith(("https://", "http://")):
+            return None
+        parts = urlsplit(value)
+        if (parts.hostname or "").lower() not in ZONEBOURSE_HOSTS or parts.port is not None:
+            logger.warning(f"Refused provider URL outside zonebourse.com: {value}")
+            return None
+        if not parts.path.startswith("/cours/"):
+            logger.warning(f"Refused ZoneBourse URL that is not a quote page: {value}")
+            return None
+        query = f"?{parts.query}" if parts.query else ""
+        return f"{cls.BASE_URL}{parts.path}{query}"
+
+    @staticmethod
+    def _drop_other_listing_figures(metrics: FinancialMetrics, ticker: Optional[str]) -> None:
+        """Leave out price, currency and target price when the page shows another listing.
+
+        The synthesis page is the one of the main listing: ``AZN.ST`` (SEK) reads the
+        AstraZeneca page quoted in GBP. Only a ticker whose suffix names a place is checked;
+        the figures of the company (revenue, market capitalisation, ...) are kept.
+        """
+        currency = (getattr(metrics, "currency", None) or "").upper()
+        if not ticker or not currency:
+            return
+        _, place = _ticker_and_place(ticker.strip().upper())
+        if place is None or currency in place[1]:
+            return
+        logger.warning(
+            f"ZoneBourse page of {ticker} is quoted in {currency}, not in "
+            f"{'/'.join(sorted(place[1]))}: price, currency and target price left out"
+        )
+        for field in LISTING_FIELDS:
+            setattr(metrics, field, None)
 
     @classmethod
     def _full_url(cls, href: str) -> str:
@@ -194,7 +248,8 @@ class ZoneBourseProvider(BaseProvider):
         candidates: list[str] = []
         for candidate in (isin, ticker):
             cleaned = (candidate or "").strip()
-            if cleaned and cleaned not in candidates:
+            # A refused URL is never sent to the search as if it were a symbol.
+            if cleaned and not self._looks_like_url(cleaned) and cleaned not in candidates:
                 candidates.append(cleaned)
         candidates.sort(key=lambda item: not bool(_ISIN.fullmatch(item.upper())))
 
@@ -273,15 +328,16 @@ class ZoneBourseProvider(BaseProvider):
         if _ISIN.fullmatch(wanted):
             return cls._full_url(rows[0]["href"])
 
-        # Minimal test fixtures with ``<tr data-href="..."></tr>`` carry no inner cells.
-        if not any(r["symbol"] or r["flag"] or r["currency"] for r in rows):
-            return cls._full_url(rows[0]["href"])
-
+        # A ticker is matched on the symbol of the row, never on its rank: a row whose
+        # cells cannot be read (the page changed) gives no result rather than a wrong share.
         symbol, place = _ticker_and_place(wanted)
         matches = [r for r in rows if r["symbol"] == symbol]
         if place is not None:
             flags, currencies = place
             matches = [r for r in matches if _matches_place(r, flags, currencies)]
+        else:
+            us_rows = [r for r in matches if _matches_place(r, *US_PLACE)]
+            matches = us_rows or matches
         return cls._full_url(matches[0]["href"]) if matches else None
 
     async def _fetch_page(self, client: ProviderSession, url: str) -> Optional[HTMLParser]:

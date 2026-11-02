@@ -9,6 +9,7 @@ from financials.providers.GoogleFinance_provider import GoogleFinanceProvider
 from financials.providers.Investing_provider import InvestingProvider
 from financials.providers.Marketwatch_provider import MarketwatchProvider
 from financials.providers.Msn_provider import MsnProvider
+from financials.providers.wallStreetJournal_provider import WallStreetJournalProvider
 from financials.providers.ZoneBourse_provider import ZoneBourseProvider
 
 
@@ -194,6 +195,86 @@ class TestMarketwatchKeyData:
         )
 
         assert self._find(item, ["Dividend"]) is None
+
+
+class TestWallStreetJournalHelpers:
+    def test_window_state_and_sibling_fallback_and_insider_titles(self):
+        from financials.models import FinancialMetrics
+
+        html = page(
+            '<div class="WSJTheme--cr_data_field--1"><span class="WSJTheme--data_lbl--1">52 Week Range</span>'
+            '<span class="WSJTheme--data_data--1">N/A</span></div>'
+            '<div class="WSJTheme--cr_data_field--1"><span class="WSJTheme--data_lbl--1">Yield</span>'
+            '<span class="WSJTheme--data_none--1">Not paying dividend</span></div>'
+            "<div><span>Beta</span><span>1.25</span></div>"
+            "<script>window.__STATE__ = not_json;</script>"
+            '<script>window.__STATE__ = {"context":{"tickerData":{"Financials":{"PriceToEarningsRatio":14.5}}}};</script>'
+        )
+        provider = WallStreetJournalProvider()
+        metrics = provider._parse_page(html, "ACA")
+        assert metrics.beta == pytest.approx(1.25)
+        assert metrics.pe_ratio == pytest.approx(14.5)
+        assert metrics.dividend_yield is None
+        assert getattr(metrics, "week_52_low", None) is None
+
+        people = page(
+            '<table class="cr_mod_insider"><tbody><tr>'
+            "<td>Last 3 Months</td>"
+            '<td><span class="data_data"><span>0</span> Purchases</span>'
+            '<span class="data_data"><span>1</span> Sales</span></td>'
+            '<td><span class="data_data">0</span><span class="data_data">1,018</span></td>'
+            "</tr></tbody></table>"
+            '<table class="cr_mod_transactions"><tbody><tr>'
+            '<td>08/12/26</td><td><span class="data_data">Benoit Tassou</span>'
+            '<span class="data_lbl">Officer</span></td>'
+            '<td>1018</td><td><span class="data_data">Disposition at <sup>$</sup>20.05 per share</span></td>'
+            "<td>20,411</td></tr></tbody></table>"
+        )
+        insiders = provider._parse_insider_transactions(people)
+        assert insiders["Summary"]["Last 3 Months"] == {
+            "transactions": "0 Purchases 1 Sales",
+            "shares": "0 / 1,018",
+        }
+        assert insiders["Transactions"][0] == {
+            "date": "08/12/26",
+            "ownerName": "Benoit Tassou",
+            "shares": "1018",
+            "description": "Disposition at $20.05 per share",
+            "value": "20,411",
+        }
+
+        assert provider.extract_entitlement_token("") is None
+        assert provider.extract_entitlement_token("<html>no token</html>") is None
+        assert provider._people_params({}) is None
+
+        m = FinancialMetrics(ticker="ACA")
+        provider.read_dylan_quote(m, {})
+        provider.read_dylan_quote(m, {"InstrumentResponses": [{}]})
+        provider.read_dylan_match(m, {})
+        provider.read_dylan_quote(
+            m,
+            {
+                "InstrumentResponses": [
+                    {
+                        "Matches": [
+                            {
+                                "Trading": {"Last": {"Price": {"Iso": "EUR", "Value": 14.92}}},
+                                "TradingStatistics": {
+                                    "PriceStatistics": [
+                                        {"Range": {"Duration": {"ValueString": "P50D"}}},
+                                    ],
+                                    "VolumeStatistics": [
+                                        {"Range": {"Duration": {"ValueString": "P50D"}}},
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+        assert m.price == pytest.approx(14.92)
+        assert m.currency == "EUR"
 
 
 class TestBoursoramaHelpers:

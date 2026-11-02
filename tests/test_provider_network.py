@@ -503,9 +503,74 @@ WSJ_SYMBOLS = {
 }
 
 
+DYLAN_ACA_RESPONSE = {
+    "InstrumentResponses": [
+        {
+            "RequestId": "STOCK/FR/XPAR/ACA",
+            "Matches": [
+                {
+                    "Instrument": {
+                        "CommonName": "Credit Agricole S.A.",
+                        "Ticker": "ACA",
+                        "Isin": "FR0000045072",
+                        "Exchange": {
+                            "CommonName": "France: Euronext Paris",
+                            "CountryCode": "FR",
+                            "IsoCode": "XPAR",
+                        },
+                    },
+                    "CompositeTrading": {
+                        "Last": {"Price": {"Iso": "EUR", "Value": 14.92}},
+                    },
+                    "TradingStatistics": {
+                        "PriceStatistics": [
+                            {
+                                "Range": {"Duration": {"ValueString": "P364D"}},
+                                "Minimum": {"Value": 14.685},
+                                "Maximum": {"Value": 20.4},
+                            }
+                        ],
+                        "VolumeStatistics": [
+                            {
+                                "Range": {"Duration": {"ValueString": "P3M"}},
+                                "Average": 4962284.32,
+                            }
+                        ],
+                    },
+                    "Financials": {
+                        "PriceToEarningsRatio": 7.15,
+                        "LastEarningsPerShare": {"Iso": "EUR", "Value": 2.09},
+                        "Yield": 0.0,
+                        "AnnualizedDividend": 0.0,
+                        "LastDividendPerShare": {"Iso": "EUR", "Value": 1.13},
+                        "MarketCapitalization": {"Iso": "EUR", "Value": 45340350386.8},
+                        "SharesOutstanding": 3025902300.0,
+                        "PublicFloat": 1124369225.6,
+                        "Beta": 1.05,
+                        "ShortInterest": 1200000.0,
+                        "PercentOfFloatShorted": 0.11,
+                    },
+                    "IndustryClassification": {
+                        "Sector": {"DisplayName": "Financial Services"},
+                        "Industry": {"DisplayName": "Banking"},
+                    },
+                    "CompanyInfo": {
+                        "BusinessDescriptionShort": "Provides commercial banking services",
+                        "Url": "http://www.credit-agricole.com",
+                    },
+                }
+            ],
+        }
+    ]
+}
+
+
 class TestWallStreetJournal:
     SEARCH = "api.wsj.net/api/autocomplete/search"
+    DYLAN = "api.wsj.net/api/dylan/quotes/v2/comp/quoteByDialect"
+    TOKEN_SCRIPT = "wsj.com/asset/ace/ace.min.js"
     PAGE = "https://www.wsj.com/market-data/quotes/US/XNAS/AAPL"
+    ACA_PAGE = "https://www.wsj.com/market-data/quotes/FR/XPAR/ACA"
 
     async def test_french_listing_is_preferred_when_one_exists(self, fake_network):
         symbols = {
@@ -533,16 +598,25 @@ class TestWallStreetJournal:
 
         assert metrics.provider_url == "https://www.wsj.com/market-data/quotes/FR/XPAR/AIR"
 
-    @pytest.mark.parametrize("token", [None, "public-site-token"], ids=["no-token", "token"])
-    async def test_entitlement_token_is_sent_only_when_configured(
-        self, fake_network, monkeypatch, token
+    @pytest.mark.parametrize(
+        ("token", "expected"),
+        [
+            (None, "57494d5ed7ad44af85bc59a51dd87c90"),
+            ("public-site-token", "public-site-token"),
+        ],
+        ids=["default-token", "configured-token"],
+    )
+    async def test_entitlement_token_uses_default_or_configured_value(
+        self, fake_network, monkeypatch, token, expected
     ):
         monkeypatch.setattr(WallStreetJournalProvider, "TOKEN", token)
+        monkeypatch.setattr(WallStreetJournalProvider, "_dynamic_token", None)
+        monkeypatch.delenv("WSJ_TOKEN", raising=False)
         fake_network.get(self.SEARCH, ok_json({"symbols": []}))
 
         await WallStreetJournalProvider().get_financials("AAPL")
 
-        assert fake_network.requests[0].headers.get("dylan2010.entitlementtoken") == token
+        assert fake_network.requests[0].headers.get("dylan2010.entitlementtoken") == expected
 
     async def test_quote_and_insider_pages(self, fake_network):
         fake_network.get(self.SEARCH, ok_json(WSJ_SYMBOLS))
@@ -583,6 +657,7 @@ class TestWallStreetJournal:
     async def test_blocked_pages_keep_the_search_data(self, fake_network):
         fake_network.get(self.SEARCH, ok_json(WSJ_SYMBOLS))
         fake_network.get(self.PAGE, BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, status(401))
 
         metrics = dump(await WallStreetJournalProvider(max_retries=2).get_financials("AAPL"))
 
@@ -594,6 +669,161 @@ class TestWallStreetJournal:
         # requested once, without retry and without pause.
         assert fake_network.calls(self.PAGE) == 2
         assert fake_network.backoffs == []
+
+    async def test_dylan_fallback_when_page_is_blocked(self, fake_network):
+        aca_symbols = {
+            "symbols": [
+                {
+                    "ticker": "FR:ACA",
+                    "country": "FR",
+                    "type": "Stock",
+                    "score": 1.0,
+                    "company": "Credit Agricole S.A.",
+                    "isin": "FR0000045072",
+                    "exchangeIsoCode": "XPAR",
+                    "exchange": "France: Euronext Paris",
+                    "chartingSymbol": "STOCK/FR/XPAR/ACA",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(aca_symbols))
+        fake_network.get(self.ACA_PAGE + "/company-people", ok(WSJ_PEOPLE_PAGE))
+        fake_network.get(self.ACA_PAGE, BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, ok_json(DYLAN_ACA_RESPONSE))
+
+        metrics = await WallStreetJournalProvider().get_financials("FR0000045072")
+
+        assert metrics.name == "Credit Agricole S.A."
+        assert metrics.ticker == "ACA"
+        assert metrics.isin == "FR0000045072"
+        assert metrics.exchange == "XPAR"
+        assert metrics.price == pytest.approx(14.92)
+        assert metrics.currency == "EUR"
+        assert metrics.pe_ratio == pytest.approx(7.15)
+        assert metrics.eps == pytest.approx(2.09)
+        assert metrics.dividend_rate == pytest.approx(1.13)
+        assert metrics.market_cap == pytest.approx(45340350386.8)
+        assert metrics.shares_outstanding == pytest.approx(3025902300.0)
+        assert metrics.float_shares == pytest.approx(1124369225.6)
+        assert metrics.beta == pytest.approx(1.05)
+        assert metrics.shares_short == pytest.approx(1200000.0)
+        assert metrics.short_percent_float == pytest.approx(0.11)
+        assert metrics.week_52_low == pytest.approx(14.685)
+        assert metrics.week_52_high == pytest.approx(20.4)
+        assert metrics.average_volume == pytest.approx(4962284.32)
+        assert metrics.sector == "Financial Services"
+        assert metrics.industry == "Banking"
+        assert metrics.description == "Provides commercial banking services"
+        assert metrics.website == "http://www.credit-agricole.com"
+        assert metrics.insider_transactions["Transactions"][0]["ownerName"] == "Jane Doe"
+
+    async def test_dynamic_token_refresh_on_expired_default_token(self, fake_network, monkeypatch):
+        monkeypatch.setattr(WallStreetJournalProvider, "TOKEN", None)
+        monkeypatch.setattr(WallStreetJournalProvider, "_dynamic_token", None)
+        monkeypatch.delenv("WSJ_TOKEN", raising=False)
+
+        fresh_token = "aabbccddeeff00112233445566778899"
+        script_body = f'window.cfg={{"dylanEntitlementToken":"{fresh_token}"}};'
+        fake_network.get(self.SEARCH, status(400), ok_json(WSJ_SYMBOLS))
+        fake_network.get(self.TOKEN_SCRIPT, ok(script_body))
+        fake_network.get(self.PAGE + "/company-people", ok(WSJ_PEOPLE_PAGE))
+        fake_network.get(self.PAGE, ok(WSJ_QUOTE_PAGE))
+
+        metrics = await WallStreetJournalProvider().get_financials("AAPL")
+
+        assert metrics.pe_ratio == pytest.approx(38.25)
+        assert WallStreetJournalProvider._dynamic_token == fresh_token
+        assert fake_network.requests[2].headers.get("dylan2010.entitlementtoken") == fresh_token
+
+    async def test_yahoo_suffix_url_and_european_isin_avoid_otc(self, fake_network):
+        airbus_symbols = {
+            "symbols": [
+                {
+                    "ticker": "EADSF",
+                    "country": "US",
+                    "exchangeIsoCode": "OOTC",
+                    "isin": "NL0000235190",
+                    "type": "Stock",
+                    "score": 1.0,
+                    "company": "Airbus SE",
+                },
+                {
+                    "ticker": "FR:AIR",
+                    "country": "FR",
+                    "exchangeIsoCode": "XPAR",
+                    "isin": "NL0000235190",
+                    "type": "Stock",
+                    "score": 0.8,
+                    "company": "Airbus SE",
+                },
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(airbus_symbols))
+        fake_network.get("wsj.com/market-data/quotes/FR/XPAR/AIR", BOT_CHALLENGE)
+
+        by_isin = await WallStreetJournalProvider().get_financials("NL0000235190")
+        by_suffix = await WallStreetJournalProvider().get_financials("AIR.PA")
+        by_url = await WallStreetJournalProvider().get_financials(
+            "https://www.wsj.com/market-data/quotes/FR/XPAR/AIR"
+        )
+
+        assert by_isin.exchange == "XPAR"
+        assert by_suffix.exchange == "XPAR"
+        assert by_url.exchange == "XPAR"
+        assert "q=FR%3AAIR" in fake_network.urls(self.SEARCH)[1]
+        assert "q=FR%3AAIR" in fake_network.urls(self.SEARCH)[2]
+
+    async def test_german_url_and_colon_prefixed_ticker_and_isin_country_match(
+        self, fake_network, monkeypatch
+    ):
+        monkeypatch.setattr(WallStreetJournalProvider, "TOKEN", None)
+        monkeypatch.setattr(
+            WallStreetJournalProvider, "_dynamic_token", "cached_wsj_token_0000000000000000"
+        )
+        monkeypatch.delenv("WSJ_TOKEN", raising=False)
+
+        sap_symbols = {
+            "symbols": [
+                {
+                    "ticker": "XE:SAP",
+                    "country": "XE",
+                    "exchangeIsoCode": "XETR",
+                    "isin": "DE0007164600",
+                    "type": "Stock",
+                    "score": 1.0,
+                    "company": "SAP SE",
+                    "chartingSymbol": "STOCK/XE/XETR/SAP",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(sap_symbols))
+        fake_network.get("wsj.com/market-data/quotes/XE/XETR/SAP", BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, httpx.ConnectError("dylan down"))
+
+        p = WallStreetJournalProvider(max_retries=1)
+        m1 = await p.get_financials("https://www.wsj.com/market-data/quotes/DE/XETR/SAP")
+        m2 = await p.get_financials("DE:SAP")
+        m3 = await p.get_financials("DE0007164600")
+        assert await p.get_financials("   ") is None
+
+        assert m1.exchange == "XETR"
+        assert m2.exchange == "XETR"
+        assert m3.exchange == "XETR"
+        assert (
+            fake_network.requests[0].headers.get("dylan2010.entitlementtoken")
+            == "cached_wsj_token_0000000000000000"
+        )
+
+    async def test_token_refresh_failure_and_unusable_search(self, fake_network, monkeypatch):
+        monkeypatch.setattr(WallStreetJournalProvider, "TOKEN", None)
+        monkeypatch.setattr(WallStreetJournalProvider, "_dynamic_token", None)
+        monkeypatch.delenv("WSJ_TOKEN", raising=False)
+
+        fake_network.get(self.SEARCH, status(400))
+        fake_network.get(self.TOKEN_SCRIPT, httpx.ConnectError("script down"))
+
+        p = WallStreetJournalProvider(max_retries=1)
+        assert await p.get_financials("AAPL") is None
 
     async def test_unusable_search_gives_none(self, fake_network):
         fake_network.get(self.SEARCH, status(403))

@@ -320,6 +320,26 @@ class TestPercentProvidersPassValidation:
 
         assert results["Boursorama"].dividend_yield == pytest.approx(3.45)
 
+    async def test_wallstreetjournal_real_page_and_short_float_pass_validation(self):
+        from pathlib import Path
+
+        html = (Path(__file__).parent / "fixtures/providers/wallstreetjournal_aca.html").read_text()
+        payload = WallStreetJournalProvider()._parse_page(HTMLParser(html), "ACA").model_dump()
+        payload["short_percent_float"] = 0.90
+
+        results = await ValidationLayer().validate_results(
+            ticker="ACA.PA", results={"wallStreetJournal": payload}
+        )
+
+        kept = results["wallStreetJournal"]
+        assert kept["price"] == pytest.approx(14.98)
+        assert kept["pe_ratio"] == pytest.approx(7.17)
+        assert kept["eps"] == pytest.approx(2.09)
+        assert kept["short_percent_float"] == pytest.approx(0.90)
+        assert to_ratio("wallStreetJournal", "short_percent_float", Decimal("0.90")) == Decimal(
+            "0.0090"
+        )
+
 
 class TestNormalisationKeepsRejectingBadValues:
     async def test_implausible_percent_yield_is_still_rejected(self):

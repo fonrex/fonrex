@@ -115,6 +115,7 @@ class TestRealPages:
             "InvestirLesEchos",
             "Marketwatch",
             "ZoneBourse",
+            "wallStreetJournal",
         }
 
     @pytest.mark.parametrize(

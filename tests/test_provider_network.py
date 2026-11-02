@@ -879,11 +879,12 @@ INVESTING_PAGE = """
 
 
 class TestInvesting:
+    SEARCH_INNER = "investing.com/search/service/SearchInnerPage"
     SEARCH = "api.investing.com/api/search/v2/search"
     PAGE = "https://www.investing.com/equities/apple-computer-inc"
 
     async def test_search_then_page(self, fake_network):
-        fake_network.get(self.SEARCH, ok_json(INVESTING_QUOTES))
+        fake_network.post(self.SEARCH_INNER, ok_json(INVESTING_QUOTES))
         fake_network.get(self.PAGE, ok(INVESTING_PAGE))
 
         metrics = await InvestingProvider().get_financials("AAPL")
@@ -894,8 +895,50 @@ class TestInvesting:
         assert metrics.exchange == "NASDAQ"
         assert fake_network.requests[1].headers["Referer"] == "https://www.investing.com/"
 
-    async def test_cloudflare_challenge_keeps_the_search_data(self, fake_network):
+    async def test_falls_back_to_v2_search_when_inner_search_returns_no_quote(self, fake_network):
+        fake_network.post(self.SEARCH_INNER, ok_json({"quotes": []}))
         fake_network.get(self.SEARCH, ok_json(INVESTING_QUOTES))
+        fake_network.get(self.PAGE, ok(INVESTING_PAGE))
+
+        metrics = await InvestingProvider().get_financials("AAPL")
+
+        assert metrics.pe_ratio == pytest.approx(38.25)
+        assert fake_network.calls(self.SEARCH_INNER) == 1
+        assert fake_network.calls(self.SEARCH) == 1
+
+    async def test_session_headers_are_fixed_and_user_agent_is_configurable(
+        self, fake_network, monkeypatch
+    ):
+        from financials.providers.Investing_provider import (
+            DEFAULT_USER_AGENT,
+            USER_AGENT_ENV_VAR,
+        )
+
+        monkeypatch.delenv(USER_AGENT_ENV_VAR, raising=False)
+        fake_network.post(self.SEARCH_INNER, ok_json(INVESTING_QUOTES))
+        fake_network.get(self.PAGE, status(502), status(504), ok(INVESTING_PAGE))
+
+        await InvestingProvider().get_financials("AAPL")
+
+        assert [r.headers["User-Agent"] for r in fake_network.requests] == [DEFAULT_USER_AGENT] * 4
+        page_req = fake_network.requests[1]
+        assert page_req.headers["Sec-Fetch-Dest"] == "document"
+        assert page_req.headers["Sec-Fetch-Mode"] == "navigate"
+        assert page_req.headers["Sec-Fetch-Site"] == "none"
+
+        fake_network.requests.clear()
+        monkeypatch.setenv(USER_AGENT_ENV_VAR, "  CustomInvestingAgent/1.0  ")
+        fake_network.post(self.SEARCH_INNER, ok_json(INVESTING_QUOTES))
+        fake_network.get(self.PAGE, ok(INVESTING_PAGE))
+
+        await InvestingProvider().get_financials("AAPL")
+
+        assert [r.headers["User-Agent"] for r in fake_network.requests] == [
+            "CustomInvestingAgent/1.0"
+        ] * 2
+
+    async def test_cloudflare_challenge_keeps_the_search_data(self, fake_network):
+        fake_network.post(self.SEARCH_INNER, ok_json(INVESTING_QUOTES))
         fake_network.get(self.PAGE, CLOUDFLARE_CHALLENGE)
 
         metrics = dump(await InvestingProvider().get_financials("AAPL"))
@@ -909,7 +952,7 @@ class TestInvesting:
         }
 
     async def test_page_network_error_keeps_the_search_data(self, fake_network):
-        fake_network.get(self.SEARCH, ok_json(INVESTING_QUOTES))
+        fake_network.post(self.SEARCH_INNER, ok_json(INVESTING_QUOTES))
         fake_network.get(self.PAGE, httpx.ReadTimeout("timed out"))
 
         metrics = await InvestingProvider().get_financials("AAPL")
@@ -925,10 +968,12 @@ class TestInvesting:
             "  <dt>Dividend (Yield)</dt>\n  <dd>1.04 (0.41%)</dd>\n"
             "  <dt>52 wk Range</dt>\n  <dd>164.08 - 260.10</dd>\n"
             "  <dt>Market Cap</dt>\n  <dd>3.86T</dd>\n"
+            "  <dt>Average Vol. (3m)</dt>\n  <dd>36.61M</dd>\n"
+            "  <dt>ISIN</dt>\n  <dd>US0378331005</dd>\n"
             "  <dt>Next Earnings Date</dt>\n  <dd>Jan 29, 2027</dd>\n"
             "</dl></body></html>"
         )
-        fake_network.get(self.SEARCH, ok_json(INVESTING_QUOTES))
+        fake_network.post(self.SEARCH_INNER, ok_json(INVESTING_QUOTES))
         fake_network.get(self.PAGE, ok(page))
 
         metrics = await InvestingProvider().get_financials("AAPL")
@@ -940,22 +985,123 @@ class TestInvesting:
         assert metrics.dividend_yield == pytest.approx(0.41)
         assert (metrics.week_52_low, metrics.week_52_high) == (164.08, 260.10)
         assert metrics.market_cap == pytest.approx(3.86e12)
+        assert metrics.average_volume == pytest.approx(36.61e6)
+        assert metrics.isin == "US0378331005"
 
     async def test_isin_query_is_recorded(self, fake_network):
-        fake_network.get(self.SEARCH, ok_json(INVESTING_QUOTES))
+        fake_network.post(self.SEARCH_INNER, ok_json(INVESTING_QUOTES))
         fake_network.get(self.PAGE, ok(INVESTING_PAGE))
 
         metrics = await InvestingProvider().get_financials("US0378331005")
 
         assert metrics.isin == "US0378331005"
 
-    async def test_page_path_skips_the_search(self, fake_network):
+    async def test_isin_is_searched_before_ticker_and_falls_back_to_ticker(self, fake_network):
+        airbus_quotes = {
+            "quotes": [
+                {
+                    "link": "/equities/aar-corp",
+                    "symbol": "AIR",
+                    "name": "AAR Corp",
+                    "flag": "USA",
+                    "exchange": "NYSE",
+                    "type": "Stock - NYSE",
+                    "pair_type": "equities",
+                },
+                {
+                    "link": "/equities/eads",
+                    "symbol": "AIR",
+                    "name": "Airbus SE",
+                    "flag": "France",
+                    "exchange": "Paris",
+                    "type": "Stock - Paris",
+                    "pair_type": "equities",
+                },
+            ]
+        }
+        fake_network.post(
+            self.SEARCH_INNER,
+            ok_json({"quotes": []}),
+            ok_json(airbus_quotes),
+        )
+        fake_network.get(self.SEARCH, ok_json({"quotes": []}))
+        fake_network.get(
+            "https://www.investing.com/equities/eads",
+            ok("<html><body><h1>Airbus SE (AIR)</h1><dl><dt>P/E Ratio</dt><dd>24.8</dd></dl></body></html>"),
+        )
+
+        metrics = await InvestingProvider().fetch(ticker="AIR.PA", isin=AIRBUS_ISIN)
+
+        assert metrics.provider_url == "https://www.investing.com/equities/eads"
+        assert metrics.isin == AIRBUS_ISIN
+        assert metrics.pe_ratio == pytest.approx(24.8)
+
+    @pytest.mark.parametrize(
+        ("query", "expected_link"),
+        [
+            ("AIR.PA", "/equities/eads"),
+            ("AIR", "/equities/aar-corp"),
+            (AIRBUS_ISIN, "/equities/aar-corp"),
+            ("AIR.DE", None),
+        ],
+    )
+    def test_select_quote_filters_by_place_and_prefers_us_for_bare_ticker(
+        self, query, expected_link
+    ):
+        data = {
+            "quotes": [
+                {
+                    "link": "/equities/aar-corp",
+                    "symbol": "AIR",
+                    "name": "AAR Corp",
+                    "flag": "USA",
+                    "exchange": "NYSE",
+                    "pair_type": "equities",
+                },
+                {
+                    "link": "/equities/eads",
+                    "symbol": "AIR",
+                    "name": "Airbus SE",
+                    "flag": "France",
+                    "exchange": "Paris",
+                    "pair_type": "equities",
+                },
+            ]
+        }
+        quote = InvestingProvider._select_quote(data, query)
+        assert (quote.get("link") if quote else None) == expected_link
+
+    def test_select_quote_handles_partial_place_metadata_and_share_classes(self):
+        flag_only = {"quotes": [{"link": "/equities/eads", "symbol": "AIR", "flag": "France"}]}
+        exchange_only = {"quotes": [{"link": "/equities/eads", "symbol": "AIR", "exchange": "Paris"}]}
+        symbol_only = {"quotes": [{"link": "/equities/berkshire", "symbol": "BRK.B"}]}
+
+        assert InvestingProvider._select_quote(flag_only, "AIR.PA")["link"] == "/equities/eads"
+        assert InvestingProvider._select_quote(exchange_only, "AIR.PA")["link"] == "/equities/eads"
+        assert InvestingProvider._select_quote(symbol_only, "BRK.B.PA") is None
+        assert InvestingProvider._select_quote(symbol_only, "BRK.B")["link"] == "/equities/berkshire"
+
+    async def test_page_path_and_provider_url_skip_the_search(self, fake_network):
         fake_network.get(self.PAGE, ok(INVESTING_PAGE))
 
         metrics = await InvestingProvider().get_financials("/equities/apple-computer-inc")
 
         assert metrics.pe_ratio == pytest.approx(38.25)
+        assert fake_network.calls(self.SEARCH_INNER) == 0
         assert fake_network.calls(self.SEARCH) == 0
+
+        fake_network.get(self.PAGE, ok(INVESTING_PAGE))
+        direct = await InvestingProvider().get_financials(
+            "AAPL", isin="US0378331005", provider_url=self.PAGE
+        )
+        assert direct.ticker == "AAPL"
+        assert direct.isin == "US0378331005"
+        assert direct.provider_url == self.PAGE
+        assert fake_network.calls(self.SEARCH_INNER) == 0
+
+    async def test_empty_identifier_returns_none_without_network(self, fake_network):
+        assert await InvestingProvider().get_financials("   ") is None
+        assert fake_network.requests == []
 
     @pytest.mark.parametrize(
         "search_response",
@@ -963,6 +1109,7 @@ class TestInvesting:
         ids=["http-403", "not-json", "no-quote", "network-error"],
     )
     async def test_unusable_search_gives_none(self, fake_network, search_response):
+        fake_network.post(self.SEARCH_INNER, search_response)
         fake_network.get(self.SEARCH, search_response)
 
         assert await InvestingProvider().get_financials("AAPL") is None

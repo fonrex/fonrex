@@ -25,6 +25,7 @@ SCALES = {
     "m": 1e6,
     "mio": 1e6,
     "mn": 1e6,
+    "mns": 1e6,
     "mln": 1e6,
     "million": 1e6,
     "millions": 1e6,

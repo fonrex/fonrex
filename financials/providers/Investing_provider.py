@@ -1,4 +1,15 @@
+"""InvestingProvider — the figures of a share from its Investing.com equity page.
+
+An equity page is found through ``/search/service/SearchInnerPage`` (ISIN first
+when given, otherwise the ticker sent without its Yahoo suffix and matched by
+the country flag and exchange of the quote; ``api.investing.com/api/search/v2/search``
+is kept as a fallback) or read directly when a ``provider_url`` is supplied. One
+fixed set of browser headers is used for the session; the ``User-Agent`` can be
+overridden with ``INVESTING_USER_AGENT``.
+"""
+
 import logging
+import os
 import re
 from typing import Optional
 
@@ -10,12 +21,105 @@ from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
 
+_ISIN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}\d")
+
+USER_AGENT_ENV_VAR = "INVESTING_USER_AGENT"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/18.1 Safari/605.1.15"
+)
+
+SEARCH_HEADERS = {
+    "Accept": "*/*",
+    "Content-Type": "application/x-www-form-urlencoded",
+    "X-Requested-With": "XMLHttpRequest",
+    "Origin": "https://www.investing.com",
+    "Referer": "https://www.investing.com/",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+}
+
+# Yahoo suffix -> country flags and exchange names returned by SearchInnerPage.
+PLACES: dict[str, tuple[set[str], set[str]]] = {
+    "PA": ({"france"}, {"paris"}),
+    "AS": ({"netherlands"}, {"amsterdam"}),
+    "BR": ({"belgium"}, {"brussels"}),
+    "LS": ({"portugal"}, {"lisbon"}),
+    "IR": ({"ireland"}, {"dublin"}),
+    "DE": ({"germany"}, {"xetra"}),
+    "F": ({"germany"}, {"frankfurt"}),
+    "MI": ({"italy"}, {"milan"}),
+    "MC": ({"spain"}, {"madrid"}),
+    "HE": ({"finland"}, {"helsinki"}),
+    "VI": ({"austria"}, {"vienna"}),
+    "L": ({"uk", "united_kingdom"}, {"london"}),
+    "SW": ({"switzerland"}, {"switzerland", "six"}),
+    "ST": ({"sweden"}, {"stockholm"}),
+    "CO": ({"denmark"}, {"copenhagen"}),
+    "OL": ({"norway"}, {"oslo"}),
+    "TO": ({"canada"}, {"toronto"}),
+    "T": ({"japan"}, {"tokyo"}),
+    "HK": ({"hong_kong", "hong kong"}, {"hong kong"}),
+    "AX": ({"australia"}, {"sydney"}),
+}
+US_FLAGS = {"usa", "united_states"}
+US_EXCHANGES = {"nasdaq", "nyse", "nyse arca", "nyse american"}
+
+
+def user_agent() -> str:
+    """User-Agent sent to Investing.com, configurable with ``INVESTING_USER_AGENT``."""
+    return (os.environ.get(USER_AGENT_ENV_VAR) or "").strip() or DEFAULT_USER_AGENT
+
+
+def session_headers() -> dict[str, str]:
+    """Fixed headers shared by the requests of one Investing.com session."""
+    return {
+        "User-Agent": user_agent(),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.investing.com/",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+    }
+
+
+def _ticker_and_place(ticker: str) -> tuple[str, Optional[tuple[set[str], set[str]]]]:
+    """The bare symbol and the place of a Yahoo ticker: ``"AIR.PA"`` -> ``("AIR", Paris)``."""
+    symbol, _, suffix = ticker.rpartition(".")
+    if symbol and suffix in PLACES:
+        return symbol, PLACES[suffix]
+    return ticker, None
+
+
+def _search_term(identifier: str) -> str:
+    """What the search endpoint is asked: an ISIN as it is, a ticker without its Yahoo suffix."""
+    wanted = identifier.strip().upper()
+    if _ISIN.fullmatch(wanted):
+        return wanted
+    return _ticker_and_place(wanted)[0]
+
+
+def _matches_place(quote: dict, flags: set[str], exchanges: set[str]) -> bool:
+    """Tell whether a search quote belongs to the requested place."""
+    flag = (quote.get("flag") or "").strip().lower()
+    exchange = (quote.get("exchange") or "").strip().lower()
+    if flag and exchange:
+        return flag in flags and exchange in exchanges
+    if flag:
+        return flag in flags
+    if exchange:
+        return exchange in exchanges
+    return False
+
 
 class InvestingProvider(BaseProvider):
     """
     Investing.com Provider.
     """
 
+    SEARCH_INNER_URL = "https://www.investing.com/search/service/SearchInnerPage"
     SEARCH_API = "https://api.investing.com/api/search/v2/search"
     ROOT_URL = "https://www.investing.com"
 
@@ -23,27 +127,47 @@ class InvestingProvider(BaseProvider):
         self.max_retries = max_retries
         self.timeout = timeout
 
-    async def get_financials(self, identifier: str) -> Optional[FinancialMetrics]:
-        async with self._session() as client:
-            search_result = self._direct_search_result(identifier)
+    async def fetch(
+        self,
+        ticker: Optional[str] = None,
+        isin: Optional[str] = None,
+        provider_url: Optional[str] = None,
+        **kwargs,
+    ) -> Optional[FinancialMetrics]:
+        return await self.get_financials(ticker, isin=isin, provider_url=provider_url)
+
+    async def get_financials(
+        self,
+        identifier: Optional[str] = None,
+        *,
+        isin: Optional[str] = None,
+        provider_url: Optional[str] = None,
+    ) -> Optional[FinancialMetrics]:
+        target = (identifier or isin or provider_url or "").strip()
+        if not target:
+            return None
+
+        async with self._session(headers=session_headers()) as client:
+            search_result = self._direct_search_result(provider_url or target)
+            if search_result and identifier and not self._direct_search_result(identifier):
+                search_result["ticker"] = identifier.strip()
+            if search_result and isin and self._looks_like_isin(isin):
+                search_result["isin"] = isin.strip().upper()
             if not search_result:
-                search_result = await self._search_result(client, identifier)
+                search_result = await self._resolve_search_result(
+                    client, identifier=identifier, isin=isin
+                )
             if not search_result:
                 return None
 
-            fallback_metrics = self._metrics_from_search_result(search_result, identifier)
+            fallback_metrics = self._metrics_from_search_result(search_result, target)
             full_url = search_result["provider_url"]
 
-            # Fetch
             try:
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Referer": "https://www.investing.com/",
-                }
-                resp = await client.get(full_url, headers=headers)
+                resp = await client.get(full_url)
                 if resp.status_code == 200:
                     metrics = self._parse_page(
-                        HTMLParser(resp.text), search_result.get("ticker") or identifier
+                        HTMLParser(resp.text), search_result.get("ticker") or target
                     )
                     return self._merge_search_result(metrics, fallback_metrics)
                 logger.warning(
@@ -54,14 +178,12 @@ class InvestingProvider(BaseProvider):
                 logger.error(f"Investing fetch error: {e}")
                 return fallback_metrics
 
-        return None
-
     @classmethod
-    def _direct_search_result(cls, identifier: str) -> Optional[dict]:
+    def _direct_search_result(cls, identifier: Optional[str]) -> Optional[dict]:
         if not identifier:
             return None
         identifier = identifier.strip()
-        if identifier.startswith("http") or identifier.startswith("/equities/"):
+        if identifier.startswith(("http://", "https://")) or identifier.startswith("/equities/"):
             return {
                 "url": identifier,
                 "provider_url": cls._full_url(identifier),
@@ -82,30 +204,53 @@ class InvestingProvider(BaseProvider):
     @staticmethod
     def _looks_like_isin(value: str) -> bool:
         value = (value or "").strip().upper()
-        return len(value) == 12 and value.isalnum() and value[:2].isalpha()
+        return bool(_ISIN.fullmatch(value))
 
     @classmethod
     def _select_quote(cls, data: dict, query: str) -> Optional[dict]:
-        quotes = data.get("quotes") or []
+        raw_quotes = data.get("quotes") if isinstance(data, dict) else None
+        quotes = [
+            q for q in (raw_quotes or []) if isinstance(q, dict) and (q.get("link") or q.get("url"))
+        ]
         if not quotes:
             return None
-        return quotes[0]
+
+        equities = [
+            q for q in quotes if (q.get("pair_type") or "equities").strip().lower() == "equities"
+        ]
+        candidates = equities or quotes
+
+        wanted = (query or "").strip().upper()
+        if cls._looks_like_isin(wanted):
+            return candidates[0]
+
+        symbol, place = _ticker_and_place(wanted)
+        by_symbol = [q for q in candidates if (q.get("symbol") or "").strip().upper() == symbol]
+
+        if place is not None:
+            flags, exchanges = place
+            matches = [q for q in by_symbol if _matches_place(q, flags, exchanges)]
+            return matches[0] if matches else None
+
+        pool = by_symbol or candidates
+        us_matches = [q for q in pool if _matches_place(q, US_FLAGS, US_EXCHANGES)]
+        return us_matches[0] if us_matches else pool[0]
 
     @classmethod
-    def _search_result_from_quote(cls, quote: dict, query: str) -> Optional[dict]:
-        if not quote or not quote.get("url"):
+    def _search_result_from_quote(cls, quote: Optional[dict], query: str) -> Optional[dict]:
+        url = (quote or {}).get("link") or (quote or {}).get("url")
+        if not quote or not url:
             return None
 
-        result = {
-            "url": quote.get("url"),
-            "provider_url": cls._full_url(quote.get("url")),
+        return {
+            "url": url,
+            "provider_url": cls._full_url(url),
             "ticker": quote.get("symbol"),
-            "name": quote.get("description"),
+            "name": quote.get("name") or quote.get("description"),
             "exchange": quote.get("exchange"),
             "instrument_type": quote.get("type"),
             "isin": query.strip().upper() if cls._looks_like_isin(query) else None,
         }
-        return result
 
     @classmethod
     def _metrics_from_search_result(cls, search_result: dict, identifier: str) -> FinancialMetrics:
@@ -128,9 +273,49 @@ class InvestingProvider(BaseProvider):
                 setattr(metrics, field, value)
         return metrics
 
+    async def _resolve_search_result(
+        self,
+        client: ProviderSession,
+        *,
+        identifier: Optional[str] = None,
+        isin: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Search by ISIN first when available, then fall back to the ticker."""
+        candidates: list[str] = []
+        for candidate in (isin, identifier):
+            cleaned = (candidate or "").strip()
+            if cleaned and cleaned not in candidates:
+                candidates.append(cleaned)
+        candidates.sort(key=lambda item: not self._looks_like_isin(item))
+
+        found_isin = next((c.upper() for c in candidates if self._looks_like_isin(c)), None)
+        for candidate in candidates:
+            result = await self._search_result(client, candidate)
+            if result:
+                if found_isin and not result.get("isin"):
+                    result["isin"] = found_isin
+                return result
+        return None
+
     async def _search_result(self, client: ProviderSession, query: str) -> Optional[dict]:
+        term = _search_term(query)
         try:
-            resp = await client.get(self.SEARCH_API, params={"q": query})
+            resp = await client.post(
+                self.SEARCH_INNER_URL,
+                data={"search_text": term, "tab": "quotes", "isFilter": "true"},
+                headers=SEARCH_HEADERS,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                quote = self._select_quote(data, query)
+                result = self._search_result_from_quote(quote, query)
+                if result:
+                    return result
+        except Exception as e:
+            logger.warning(f"Investing inner search error: {e}")
+
+        try:
+            resp = await client.get(self.SEARCH_API, params={"q": term})
             if resp.status_code == 200:
                 data = resp.json()
                 quote = self._select_quote(data, query)
@@ -195,9 +380,16 @@ class InvestingProvider(BaseProvider):
                     setattr(metrics, field, value)
         return metrics
 
-    @staticmethod
-    def _assign_key_figure(metrics: FinancialMetrics, label: str, text: str, decimal: str):
+    @classmethod
+    def _assign_key_figure(
+        cls, metrics: FinancialMetrics, label: str, text: str, decimal: str
+    ) -> None:
         """Set the field of a key figure; the first value of a field wins."""
+        if label == "isin":
+            candidate = text.strip().upper()
+            if cls._looks_like_isin(candidate) and metrics.isin is None:
+                metrics.isin = candidate
+            return
         if label in DIVIDEND_LABELS:
             # "0.24 (0.11%)": the dividend per share, then the yield in parentheses
             yield_match = re.search(r"\(([^()]*%)\)", text)
@@ -273,6 +465,7 @@ KEY_FIGURES = {
     "clôture précédente": "previous_close",
     "volume": "volume",
     "average volume (3m)": "average_volume",
+    "average vol. (3m)": "average_volume",
     "volume moyen (3m)": "average_volume",
 }
 DIVIDEND_LABELS = {"dividend (yield)", "dividende"}

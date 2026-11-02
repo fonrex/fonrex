@@ -53,6 +53,14 @@ def test_investing_build_url():
         p._build_url(None, "apple-computer-inc")
         == "https://www.investing.com/equities/apple-computer-inc-news"
     )
+    assert (
+        p._build_url("https://www.investing.com/equities/tesla-motors", None)
+        == "https://www.investing.com/equities/tesla-motors-news"
+    )
+    assert (
+        p._build_url(None, "eads")
+        == "https://www.investing.com/equities/eads-news"
+    )
     assert p._build_url(None, None) is None
 
 
@@ -90,3 +98,36 @@ async def test_investing_fetch_nominal():
     with patch.object(p, "_get", new_callable=AsyncMock, return_value=SAMPLE_INVESTING_HTML):
         items = await p.fetch(provider_ticker="apple-computer-inc")
         assert len(items) == 2
+
+
+def test_investing_parse_current_article_item_layout():
+    html = """
+    <article data-test="article-item" class="flex py-6">
+      <figure><a href="https://www.investing.com/news/stock-market-news/tesla-registrations-4990675">
+        <img src="https://content-media.investing.com/trkd-images/LYNXNPEMA10O0_L.jpg" data-test="item-image">
+      </a></figure>
+      <div>
+        <a data-test="article-title-link" href="/news/stock-market-news/tesla-registrations-4990675">
+          Tesla’s monthly registrations surge in Northern Europe
+        </a>
+        <ul>
+          <li><span>By</span><span data-test="news-provider-name">Reuters</span></li>
+          <li><time data-test="article-publish-date" datetime="2026-11-02 11:25:50">1 hour ago</time></li>
+        </ul>
+      </div>
+    </article>
+    """
+    items = InvestingComNewsProvider()._parse(html, limit=10)
+    assert len(items) == 1
+    assert items[0].title == "Tesla’s monthly registrations surge in Northern Europe"
+    assert (
+        items[0].url
+        == "https://www.investing.com/news/stock-market-news/tesla-registrations-4990675"
+    )
+    assert items[0].source == "Reuters"
+    assert items[0].published_at == datetime(2026, 11, 2, 11, 25, 50, tzinfo=timezone.utc)
+    assert (
+        items[0].image_url
+        == "https://content-media.investing.com/trkd-images/LYNXNPEMA10O0_L.jpg"
+    )
+

@@ -15,7 +15,7 @@ from typing import List, Optional
 from bs4 import BeautifulSoup
 
 from financials.providers.base import BaseFinancialProvider
-from financials.providers.Investing_provider import session_headers
+from financials.providers.Investing_provider import equity_page_url, session_headers
 from schemas.news import RawNewsItem
 
 logger = logging.getLogger(__name__)
@@ -65,12 +65,14 @@ class InvestingComNewsProvider(BaseFinancialProvider):
         provider_url: Optional[str],
         provider_ticker: Optional[str],
     ) -> Optional[str]:
-        if provider_url:
-            base = provider_url.rstrip("/").removesuffix("-news")
-            return base + "-news"
+        # Only an equity page of investing.com is followed (same rule as InvestingProvider).
+        page = equity_page_url(provider_url) if provider_url else None
+        if page:
+            return page.rstrip("/").removesuffix("-news") + "-news"
         if provider_ticker:
-            slug = provider_ticker.lower().rstrip("/").removesuffix("-news")
-            return f"{self.BASE_URL}/{slug}-news"
+            slug = provider_ticker.strip().lower().rstrip("/").removesuffix("-news")
+            page = equity_page_url(slug) if slug and "/" not in slug else None
+            return page + "-news" if page else None
         return None
 
     # ── parsing ───────────────────────────────────────────────────────────────
@@ -100,9 +102,7 @@ class InvestingComNewsProvider(BaseFinancialProvider):
 
             # Title
             title_tag = (
-                title_link
-                or container.find(class_=re.compile(r"title|headline", re.I))
-                or link_tag
+                title_link or container.find(class_=re.compile(r"title|headline", re.I)) or link_tag
             )
             title = title_tag.get_text(strip=True)
             if not title or len(title) < 5:

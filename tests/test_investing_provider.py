@@ -57,11 +57,27 @@ def test_investing_build_url():
         p._build_url("https://www.investing.com/equities/tesla-motors", None)
         == "https://www.investing.com/equities/tesla-motors-news"
     )
+    assert p._build_url(None, "eads") == "https://www.investing.com/equities/eads-news"
+    assert p._build_url(None, None) is None
+
+
+def test_investing_build_url_only_follows_investing_equity_pages():
+    p = InvestingComNewsProvider()
+    # Another site, or a path outside /equities/, is never followed.
+    assert p._build_url("http://169.254.169.254/latest/meta-data", None) is None
+    assert p._build_url("https://evil.example/equities/eads", None) is None
+    assert p._build_url(None, "../../admin") is None
+    assert p._build_url(None, "eads/../admin") is None
+    # A refused URL falls back to the provider ticker, as for ZoneBourse.
     assert (
-        p._build_url(None, "eads")
+        p._build_url("https://evil.example/equities/eads", "eads")
         == "https://www.investing.com/equities/eads-news"
     )
-    assert p._build_url(None, None) is None
+    # The French edition is kept.
+    assert (
+        p._build_url("https://fr.investing.com/equities/eads", None)
+        == "https://fr.investing.com/equities/eads-news"
+    )
 
 
 def test_investing_parse_html():
@@ -127,7 +143,5 @@ def test_investing_parse_current_article_item_layout():
     assert items[0].source == "Reuters"
     assert items[0].published_at == datetime(2026, 11, 2, 11, 25, 50, tzinfo=timezone.utc)
     assert (
-        items[0].image_url
-        == "https://content-media.investing.com/trkd-images/LYNXNPEMA10O0_L.jpg"
+        items[0].image_url == "https://content-media.investing.com/trkd-images/LYNXNPEMA10O0_L.jpg"
     )
-

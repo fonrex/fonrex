@@ -58,7 +58,7 @@ MODULE_THRESHOLDS = {
     "financials/providers/GoogleFinance_provider.py": 86.0,
     "financials/providers/Gurufocus_provider.py": 92.0,
     "financials/providers/index_constituents.py": 69.0,
-    "financials/providers/Investing_provider.py": 93.0,
+    "financials/providers/Investing_provider.py": 96.0,
     "financials/providers/InvestirLesEchos_provider.py": 96.0,
     "financials/providers/justetf.py": 87.0,
     "financials/providers/JustETF_provider.py": 83.0,

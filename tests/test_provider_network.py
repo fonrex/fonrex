@@ -893,7 +893,10 @@ class TestInvesting:
         assert metrics.eps == pytest.approx(8.72)
         assert metrics.provider_url == self.PAGE
         assert metrics.exchange == "NASDAQ"
-        assert fake_network.requests[1].headers["Referer"] == "https://www.investing.com/"
+        # The search is an XHR of the site; the page is a navigation typed in the
+        # address bar (Sec-Fetch-Site: none), which carries no Referer.
+        assert fake_network.requests[0].headers["Referer"] == "https://www.investing.com/"
+        assert "Referer" not in fake_network.requests[1].headers
 
     async def test_falls_back_to_v2_search_when_inner_search_returns_no_quote(self, fake_network):
         fake_network.post(self.SEARCH_INNER, ok_json({"quotes": []}))
@@ -1027,13 +1030,16 @@ class TestInvesting:
         fake_network.get(self.SEARCH, ok_json({"quotes": []}))
         fake_network.get(
             "https://www.investing.com/equities/eads",
-            ok("<html><body><h1>Airbus SE (AIR)</h1><dl><dt>P/E Ratio</dt><dd>24.8</dd></dl></body></html>"),
+            ok(
+                "<html><body><h1>Airbus SE (AIR)</h1><dl><dt>P/E Ratio</dt><dd>24.8</dd></dl></body></html>"
+            ),
         )
 
         metrics = await InvestingProvider().fetch(ticker="AIR.PA", isin=AIRBUS_ISIN)
 
         assert metrics.provider_url == "https://www.investing.com/equities/eads"
-        assert metrics.isin == AIRBUS_ISIN
+        # Found by ticker only: the ISIN asked is not stated for it (the page shows none).
+        assert metrics.isin is None
         assert metrics.pe_ratio == pytest.approx(24.8)
 
     @pytest.mark.parametrize(
@@ -1041,7 +1047,6 @@ class TestInvesting:
         [
             ("AIR.PA", "/equities/eads"),
             ("AIR", "/equities/aar-corp"),
-            (AIRBUS_ISIN, "/equities/aar-corp"),
             ("AIR.DE", None),
         ],
     )
@@ -1073,13 +1078,162 @@ class TestInvesting:
 
     def test_select_quote_handles_partial_place_metadata_and_share_classes(self):
         flag_only = {"quotes": [{"link": "/equities/eads", "symbol": "AIR", "flag": "France"}]}
-        exchange_only = {"quotes": [{"link": "/equities/eads", "symbol": "AIR", "exchange": "Paris"}]}
+        exchange_only = {
+            "quotes": [{"link": "/equities/eads", "symbol": "AIR", "exchange": "Paris"}]
+        }
         symbol_only = {"quotes": [{"link": "/equities/berkshire", "symbol": "BRK.B"}]}
 
         assert InvestingProvider._select_quote(flag_only, "AIR.PA")["link"] == "/equities/eads"
         assert InvestingProvider._select_quote(exchange_only, "AIR.PA")["link"] == "/equities/eads"
         assert InvestingProvider._select_quote(symbol_only, "BRK.B.PA") is None
-        assert InvestingProvider._select_quote(symbol_only, "BRK.B")["link"] == "/equities/berkshire"
+        assert (
+            InvestingProvider._select_quote(symbol_only, "BRK.B")["link"] == "/equities/berkshire"
+        )
+
+    AIRBUS_LISTINGS = {
+        "quotes": [
+            {
+                "link": "/equities/airbus-group-de",
+                "symbol": "AIR",
+                "name": "Airbus SE",
+                "flag": "Germany",
+                "exchange": "Xetra",
+                "pair_type": "equities",
+            },
+            {
+                "link": "/equities/eads",
+                "symbol": "AIR",
+                "name": "Airbus SE",
+                "flag": "France",
+                "exchange": "Paris",
+                "pair_type": "equities",
+            },
+        ]
+    }
+
+    @pytest.mark.parametrize(
+        ("ticker", "expected_link"),
+        [
+            ("AIR.PA", "/equities/eads"),
+            ("AIR.DE", "/equities/airbus-group-de"),
+            ("AIR.MI", None),
+            (None, "/equities/airbus-group-de"),
+        ],
+    )
+    def test_isin_listings_are_chosen_by_the_place_of_the_ticker(self, ticker, expected_link):
+        quote = InvestingProvider._select_quote(self.AIRBUS_LISTINGS, AIRBUS_ISIN, ticker=ticker)
+        assert (quote.get("link") if quote else None) == expected_link
+
+    def test_isin_with_bare_ticker_prefers_a_us_listing(self):
+        data = {
+            "quotes": [
+                {"link": "/equities/apple-computer-inc-de", "symbol": "APC", "flag": "Germany"},
+                {"link": "/equities/apple-computer-inc", "symbol": "AAPL", "flag": "USA"},
+            ]
+        }
+        quote = InvestingProvider._select_quote(data, "US0378331005", ticker="AAPL")
+        assert quote["link"] == "/equities/apple-computer-inc"
+
+    async def test_isin_search_reads_the_listing_of_the_place(self, fake_network):
+        fake_network.post(self.SEARCH_INNER, ok_json(self.AIRBUS_LISTINGS))
+        fake_network.get(
+            "https://www.investing.com/equities/eads",
+            ok(
+                "<html><body><h1>Airbus SE (AIR)</h1><dl><dt>ISIN</dt><dd>NL0000235190</dd>"
+                "</dl></body></html>"
+            ),
+        )
+
+        metrics = await InvestingProvider().get_financials("AIR.PA", isin=AIRBUS_ISIN)
+
+        assert metrics.provider_url == "https://www.investing.com/equities/eads"
+        assert metrics.isin == AIRBUS_ISIN
+        assert fake_network.calls(self.SEARCH_INNER) == 1
+        assert fake_network.calls(self.SEARCH) == 0
+
+    async def test_isin_without_the_place_falls_back_to_the_ticker_search(self, fake_network):
+        xetra_only = {"quotes": [self.AIRBUS_LISTINGS["quotes"][0]]}
+        fake_network.post(self.SEARCH_INNER, ok_json(xetra_only), ok_json(self.AIRBUS_LISTINGS))
+        fake_network.get(self.SEARCH, ok_json({"quotes": []}))
+        fake_network.get("https://www.investing.com/equities/eads", ok(INVESTING_PAGE))
+
+        metrics = await InvestingProvider().get_financials("AIR.PA", isin=AIRBUS_ISIN)
+
+        assert metrics.provider_url == "https://www.investing.com/equities/eads"
+        assert fake_network.calls(self.SEARCH_INNER) == 2
+
+    async def test_page_showing_another_isin_gives_none(self, fake_network):
+        fake_network.post(self.SEARCH_INNER, ok_json(INVESTING_QUOTES))
+        fake_network.get(
+            self.PAGE,
+            ok(
+                "<html><body><h1>Apple Inc (AAPL)</h1><dl><dt>ISIN</dt><dd>US0378331005</dd>"
+                "</dl></body></html>"
+            ),
+        )
+
+        assert await InvestingProvider().get_financials("AAPL", isin=AIRBUS_ISIN) is None
+
+    def test_bare_ticker_without_its_symbol_gives_none(self):
+        data = {"quotes": [{"link": "/equities/other", "symbol": "ZZZW", "flag": "USA"}]}
+        assert InvestingProvider._select_quote(data, "ZZZZ") is None
+
+    def test_search_link_to_another_host_is_ignored(self):
+        data = {"quotes": [{"link": "https://evil.example/equities/aapl", "symbol": "AAPL"}]}
+        assert InvestingProvider._select_quote(data, "AAPL") is None
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("/equities/eads", "https://www.investing.com/equities/eads"),
+            ("eads", "https://www.investing.com/equities/eads"),
+            (
+                "http://www.investing.com/equities/eads?x=1#y",
+                "https://www.investing.com/equities/eads",
+            ),
+            ("https://fr.investing.com/equities/eads", "https://fr.investing.com/equities/eads"),
+            (
+                "https://WWW.Investing.com/equities/eads/",
+                "https://www.investing.com/equities/eads/",
+            ),
+            ("http://169.254.169.254/latest/meta-data/", None),
+            ("https://evil.example/equities/eads", None),
+            ("https://www.investing.com.evil.example/equities/eads", None),
+            ("https://www.investing.com:8443/equities/eads", None),
+            ("https://user:pw@www.investing.com/equities/eads", None),
+            ("https://www.investing.com/news/eads", None),
+            ("https://www.investing.com/equities/../admin", None),
+            ("//evil.example/equities/eads", None),
+            ("https://www.investing.com:bad/equities/eads", None),
+            ("../etc/passwd", None),
+            ("", None),
+        ],
+    )
+    def test_equity_page_url_only_accepts_investing_equity_pages(self, value, expected):
+        from financials.providers.Investing_provider import equity_page_url
+
+        assert equity_page_url(value) == expected
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"identifier": "http://169.254.169.254/latest/meta-data/"},
+            {"identifier": "AAPL", "provider_url": "https://evil.example/equities/aapl"},
+        ],
+        ids=["identifier", "provider_url"],
+    )
+    async def test_foreign_url_is_refused_without_any_request(self, fake_network, kwargs):
+        assert await InvestingProvider().get_financials(**kwargs) is None
+        assert fake_network.requests == []
+
+    async def test_french_edition_is_kept(self, fake_network):
+        page = "https://fr.investing.com/equities/apple-computer-inc"
+        fake_network.get(page, ok(INVESTING_PAGE))
+
+        metrics = await InvestingProvider().get_financials(page + "?utm=x")
+
+        assert metrics.provider_url == page
+        assert str(fake_network.requests[0].url) == page
 
     async def test_page_path_and_provider_url_skip_the_search(self, fake_network):
         fake_network.get(self.PAGE, ok(INVESTING_PAGE))

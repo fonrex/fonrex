@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import re
 from typing import Any, Dict, Iterable, Optional, Tuple
@@ -178,15 +179,46 @@ class FinancialProviderRunner:
             )
         return data
 
+    @staticmethod
+    def _accepts_isin(method: Any) -> bool:
+        """Tell whether a ``get_financials`` takes an ``isin`` argument besides the ticker."""
+        try:
+            parameter = inspect.signature(method).parameters.get("isin")
+        except (TypeError, ValueError):
+            return False
+        return parameter is not None and parameter.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+
     async def _execute_provider(
-        self, provider_name: str, search_term: str, ticker: str, expose_extra_fields: bool
+        self,
+        provider_name: str,
+        search_term: str,
+        ticker: str,
+        expose_extra_fields: bool,
+        listing_ticker: Optional[str] = None,
     ):
+        """Run one provider with its search term.
+
+        ``listing_ticker`` is given when the search term is the ISIN: a provider whose
+        ``get_financials`` takes ``isin`` then receives the ticker as well
+        (``get_financials("AIR.PA", isin="NL0000235190")``), so that it can choose the
+        listing of the place among those of the ISIN instead of losing the suffix.
+        """
         provider_info = self.providers_available[provider_name]
 
         async def run_provider():
             if provider_info["type"] == "async":
                 provider_instance = provider_info["class"]()
-                data = await provider_instance.get_financials(search_term)
+                if (
+                    listing_ticker
+                    and listing_ticker.strip().upper() != search_term.strip().upper()
+                    and self._accepts_isin(provider_instance.get_financials)
+                ):
+                    data = await provider_instance.get_financials(listing_ticker, isin=search_term)
+                else:
+                    data = await provider_instance.get_financials(search_term)
                 # A provider returning the search term (e.g. the ISIN) as ticker gets the original ticker back
                 if hasattr(data, "ticker") and data.ticker == search_term and search_term != ticker:
                     data.ticker = ticker
@@ -261,8 +293,20 @@ class FinancialProviderRunner:
                     provider_name.lower() in requested_set
                     or provider_name.lower() == "yahoofinance"
                 )
+                searched_by_isin = bool(target_isin and search_term) and (
+                    search_term.strip().upper() == target_isin.strip().upper()
+                )
+                listing_ticker = (
+                    (provider_default_tickers or {}).get(provider_name.lower()) or ticker
+                    if searched_by_isin
+                    else None
+                )
                 payload, provider_url = await self._execute_provider(
-                    provider_name, search_term, ticker, expose_extra_fields=expose_extra_fields
+                    provider_name,
+                    search_term,
+                    ticker,
+                    expose_extra_fields=expose_extra_fields,
+                    listing_ticker=listing_ticker,
                 )
                 if provider_url:
                     raw_providers[provider_name] = provider_url

@@ -19,6 +19,16 @@ class EchoProvider:
         return StandardFinancials(isin=ticker)
 
 
+class IsinAwareProvider:
+    """Takes the ISIN besides the ticker, like InvestingProvider and ZoneBourseProvider."""
+
+    calls: list = []
+
+    async def get_financials(self, ticker, isin=None):
+        type(self).calls.append((ticker, isin))
+        return StandardFinancials(isin=isin or "NL0000235190", revenue=1.0)
+
+
 class ParallelProbeProvider:
     active = 0
     max_active = 0
@@ -125,6 +135,63 @@ class FinancialProviderRunnerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(raw_providers["Investing"], "ISIN: FR0000045072")
         self.assertEqual(results["Investing"]["isin"], "FR0000045072")
+
+    async def test_isin_search_keeps_the_ticker_for_providers_taking_isin(self):
+        """The ISIN replaces the search term, but the ticker names the place of the listing."""
+        IsinAwareProvider.calls = []
+        runner = FinancialProviderRunner(
+            {"Investing": {"type": "async", "class": IsinAwareProvider}}
+        )
+
+        results, raw_providers = await runner.run(
+            ticker="AIR.PA", isin="NL0000235190", provider_params=[], asset_mappings={}
+        )
+
+        self.assertEqual(IsinAwareProvider.calls, [("AIR.PA", "NL0000235190")])
+        self.assertEqual(raw_providers["Investing"], "ISIN: NL0000235190")
+        self.assertEqual(results["Investing"]["isin"], "NL0000235190")
+
+    async def test_isin_search_uses_the_default_ticker_of_the_provider(self):
+        IsinAwareProvider.calls = []
+        runner = FinancialProviderRunner(
+            {"Investing": {"type": "async", "class": IsinAwareProvider}}
+        )
+
+        await runner.run(
+            ticker="XCA",
+            isin="FR0000045072",
+            provider_params=[],
+            asset_mappings={},
+            provider_default_tickers={"investing": "ACA.PA"},
+        )
+
+        self.assertEqual(IsinAwareProvider.calls, [("ACA.PA", "FR0000045072")])
+
+    async def test_mapping_search_term_is_not_combined_with_the_isin(self):
+        IsinAwareProvider.calls = []
+        mapping = SimpleNamespace(
+            provider_url="https://www.investing.com/equities/eads", provider_ticker=None
+        )
+        runner = FinancialProviderRunner(
+            {"Investing": {"type": "async", "class": IsinAwareProvider}}
+        )
+
+        await runner.run(
+            ticker="AIR.PA",
+            isin="NL0000235190",
+            provider_params=[],
+            asset_mappings={"investing": mapping},
+        )
+
+        self.assertEqual(
+            IsinAwareProvider.calls, [("https://www.investing.com/equities/eads", None)]
+        )
+
+    def test_accepts_isin_reads_the_signature(self):
+        accepts = FinancialProviderRunner._accepts_isin
+        self.assertTrue(accepts(IsinAwareProvider().get_financials))
+        self.assertFalse(accepts(EchoProvider().get_financials))
+        self.assertFalse(accepts(len))
 
     async def test_morningstar_uses_isin_before_generic_ticker(self):
         """Issue #32: MorningStar searches by ISIN, the ticker found nothing."""

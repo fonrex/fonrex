@@ -54,6 +54,17 @@ TRADED_TYPES = ("ETF", "EQUITY")
 NORTH_AMERICAN_ISIN_PREFIXES = ("US", "CA")
 
 
+def is_trusted_symbol(
+    symbol: str | None, *, source: str | None, active: bool, verified: bool
+) -> bool:
+    """A stored Yahoo symbol the ingestion uses without asking Yahoo again.
+
+    It is active, and verified earlier or set by hand. The resolver and
+    ``scripts/clean_listing_duplicates.py`` read a stored mapping with this rule.
+    """
+    return bool(active and symbol and (source == SET_BY_HAND or verified))
+
+
 class YahooLookupError(Exception):
     """Yahoo could not be queried: nothing can be concluded about the listing."""
 
@@ -264,8 +275,12 @@ class YahooSymbolResolver:
 
     def _stored(self, listing: _Listing) -> SymbolResolution | None:
         """A symbol verified earlier (or set by hand), or a recent failure."""
-        trusted = listing.mapping_source == SET_BY_HAND or listing.mapping_verified
-        if listing.mapping_active and listing.mapped_symbol and trusted:
+        if is_trusted_symbol(
+            listing.mapped_symbol,
+            source=listing.mapping_source,
+            active=listing.mapping_active,
+            verified=listing.mapping_verified,
+        ):
             return SymbolResolution(listing.mapped_symbol, origin=listing.mapping_source)
 
         if listing.mapping_source == NOT_FOUND and listing.mapping_updated_at is not None:

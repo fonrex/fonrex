@@ -775,10 +775,11 @@ class TestListingDuplicatesOnPostgres:
           resolution)
         VALUES
          ('2020-06-01 00:00+00', 9101, 9111, 50, 50, 50, 50.0, 50.0, 100, '1D'),
-         ('2020-06-02 00:00+00', 9101, 9111, 51, 51, 51, 51.0, 51.0, 100, '1D'),
+         -- no volume on the kept bar: the duplicate's bar of the session fills it
+         ('2020-06-02 00:00+00', 9101, 9111, 51, 51, 51, 51.0, 51.0, NULL, '1D'),
          -- the same sessions again, within the tolerance: compared, then dropped
          ('2020-06-01 00:00+00', 9101, 9112, 50, 50, 50, 50.0, 50.0, 100, '1D'),
-         ('2020-06-02 00:00+00', 9101, 9112, 51, 51, 51, 51.2, 51.2, 100, '1D'),
+         ('2020-06-02 00:00+00', 9101, 9112, 51, 51, 51, 51.2, 51.2, 300, '1D'),
          -- sessions the kept listing lacks: moved
          ('2020-06-03 00:00+00', 9101, 9112, 52, 52, 52, 52.0, 52.0, 100, '1D'),
          ('2020-06-08 00:00+00', 9101, 9112, 53, 53, 53, 53.0, 53.0, 100, '1D');
@@ -850,8 +851,17 @@ class TestListingDuplicatesOnPostgres:
             finally:
                 session.close()
 
-            assert [(m.moved, m.dropped) for m in result["price_moves"]] == [(2, 2)]
+            assert [(m.moved, m.dropped, m.filled) for m in result["price_moves"]] == [(2, 2, 1)]
             assert result["listings_deleted"] == 1 and result["primaries_moved"] == 1
+            with engine.connect() as connection:
+                # Updated in its compressed chunk: the kept close stays, the volume is filled.
+                kept_bar = connection.execute(
+                    text("""
+                        SELECT close, volume FROM prices_eod
+                        WHERE asset_listing_id = 9111 AND time = '2020-06-02 00:00+00'
+                    """)
+                ).one()
+            assert tuple(kept_bar) == (51.0, 300)
             assert _series(engine, 9111) == {
                 date(2020, 6, 1): 50.0,
                 date(2020, 6, 2): 51.0,

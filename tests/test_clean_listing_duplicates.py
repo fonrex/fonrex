@@ -61,17 +61,32 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         self.session.flush()
         return listing
 
-    def _price(self, listing, day: date = date(2026, 10, 1), close: float | None = 1.0) -> None:
+    def _price(
+        self,
+        listing,
+        day: date = date(2026, 10, 1),
+        close: float | None = 1.0,
+        resolution: str = "1D",
+        **fields,
+    ) -> None:
         self.session.add(
             PriceEOD(
                 asset_listing_id=listing.id,
                 asset_id=listing.asset_id,
-                resolution="1D",
+                resolution=resolution,
                 timestamp=datetime(day.year, day.month, day.day, tzinfo=timezone.utc),
                 close=close,
+                **fields,
             )
         )
         self.session.flush()
+
+    @staticmethod
+    def _comparison(result: dict, duplicate_id: int, resolution: str = "1D"):
+        [comparison] = [
+            c for c in result["comparisons"][duplicate_id] if c.resolution == resolution
+        ]
+        return comparison
 
     def _closes(self, listing_id: int) -> dict[int, float]:
         """Closes of a listing by day of October 2026."""
@@ -120,6 +135,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
                 "primaries_moved": 0,
                 "held_prices": [],
                 "series_differ": [],
+                "series_unchecked": [],
                 "comparisons": {},
                 "mappings_moved": [],
                 "price_moves": [],
@@ -165,6 +181,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
                 "primaries_moved": 0,
                 "held_prices": [duplicate.id],
                 "series_differ": [],
+                "series_unchecked": [],
                 "comparisons": {},
                 "mappings_moved": [],
                 "price_moves": [],
@@ -188,6 +205,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
                 "primaries_moved": 1,
                 "held_prices": [],
                 "series_differ": [],
+                "series_unchecked": [],
                 "comparisons": {},
                 "mappings_moved": [],
                 "price_moves": [],
@@ -235,6 +253,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         asset = self._asset("US0378331005", "AAPL")
         kept = self._listing(asset, "NMS")
         duplicate = self._listing(asset, "", is_primary=True)
+        self._yahoo(kept, "isin_search")  # ingested: the series is fetched again in full
         self._price(duplicate, date(2026, 10, 1), 10.0)
         self._price(duplicate, date(2026, 10, 2), 11.0)
         self.session.commit()
@@ -251,6 +270,40 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         self.assertEqual(self._closes(kept.id), {1: 10.0, 2: 11.0})
         self.assertEqual(self._closes(duplicate.id), {})
         self.assertTrue(self.session.get(AssetListing, kept.id).is_primary)
+        self.assertFalse(self._comparison(result, duplicate.id).checked)
+
+    def test_a_series_nobody_compared_needs_a_trusted_symbol_to_move(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "", is_primary=True)
+        # Fetched before rule 13 with the ticker as typed: maybe another fund's series.
+        self._yahoo(duplicate, "csv_import", verified=False)
+        self._price(duplicate, date(2026, 10, 1), 10.0)
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["held_prices"], [duplicate.id])
+        self.assertEqual(result["series_unchecked"], [duplicate.id])
+        self.assertEqual(result["series_differ"], [])
+        self.assertEqual(result["price_moves"], [])
+        self.assertEqual(self._closes(kept.id), {})
+        self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
+
+    def test_a_trusted_symbol_handed_over_lets_the_series_move(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "", is_primary=True)
+        symbol = self._yahoo(duplicate, "isin_search")
+        self._price(duplicate, date(2026, 10, 1), 10.0)
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["series_unchecked"], [])
+        self.assertEqual(result["mappings_moved"], [duplicate.id])
+        self.assertEqual(self._yahoo_of(kept.id), (symbol, "isin_search"))
+        self.assertEqual(self._closes(kept.id), {1: 10.0})
 
     def test_only_the_missing_sessions_move_when_the_series_agree(self):
         asset = self._asset("US0378331005", "AAPL")
@@ -267,7 +320,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
 
         [move] = result["price_moves"]
         self.assertEqual((move.moved, move.dropped), (1, 5))
-        self.assertEqual(result["comparisons"][duplicate.id].compared, 5)
+        self.assertEqual(self._comparison(result, duplicate.id).compared, 5)
         self.assertEqual(self._listing_ids(), [kept.id])
         # The bar the kept listing already had is not replaced.
         self.assertEqual(
@@ -287,10 +340,86 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         result = self._clean()
 
         self.assertEqual(result["series_differ"], [duplicate.id])
-        comparison = result["comparisons"][duplicate.id]
+        comparison = self._comparison(result, duplicate.id)
         self.assertEqual((comparison.compared, comparison.required), (1, 5))
         self.assertEqual(result["price_moves"], [])
         self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
+
+    def test_a_single_kept_bar_does_not_carry_a_long_series(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._price(kept, date(2026, 10, 1), 10.0)
+        for day in range(1, 16):
+            self._price(duplicate, date(2026, 10, day), 10.0)  # the one shared bar matches
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["series_differ"], [duplicate.id])
+        comparison = self._comparison(result, duplicate.id)
+        self.assertEqual((comparison.compared, comparison.required), (1, 5))
+        self.assertEqual(self._closes(kept.id), {1: 10.0})
+
+    def test_each_resolution_is_compared_on_its_own(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        for day in range(1, 6):
+            self._price(kept, date(2026, 10, day), 10.0)
+            self._price(duplicate, date(2026, 10, day), 10.0)  # the daily series agree
+        # A weekly series the kept listing lacks: nothing to compare it with.
+        self._price(duplicate, date(2026, 9, 28), 30.0, resolution="1W")
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["series_unchecked"], [duplicate.id])
+        self.assertTrue(self._comparison(result, duplicate.id, "1D").agree)
+        self.assertFalse(self._comparison(result, duplicate.id, "1W").checked)
+        self.assertEqual(result["price_moves"], [])
+        self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
+
+    def test_a_weekly_series_moves_when_the_kept_listing_is_ingested(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._yahoo(kept, "isin_search")
+        for day in range(1, 6):
+            self._price(kept, date(2026, 10, day), 10.0)
+            self._price(duplicate, date(2026, 10, day), 10.0)
+        self._price(duplicate, date(2026, 9, 28), 30.0, resolution="1W")
+        self._scheme(kept, "1D")
+        self._scheme(kept, "1W")
+        self.session.commit()
+
+        [move] = self._clean()["price_moves"]
+
+        self.assertEqual((move.moved, move.dropped), (1, 5))
+        weekly = self.session.query(PriceEOD).filter_by(asset_listing_id=kept.id, resolution="1W")
+        self.assertEqual([bar.close for bar in weekly], [30.0])
+        # The daily series received nothing; the weekly one is fetched again in full.
+        self.assertEqual(self._schemes(kept.id), ["1D"])
+
+    def test_one_resolution_that_differs_keeps_the_whole_duplicate(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        for day in range(1, 6):
+            self._price(kept, date(2026, 10, day), 10.0)
+            self._price(duplicate, date(2026, 10, day), 10.0)
+        self._price(kept, date(2026, 9, 28), 30.0, resolution="1W")
+        self._price(duplicate, date(2026, 9, 28), 45.0, resolution="1W")
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["series_differ"], [duplicate.id])
+        self.assertFalse(self._comparison(result, duplicate.id, "1W").agree)
+        self.assertEqual(result["price_moves"], [])
+        self.assertEqual(
+            self._closes(duplicate.id), {1: 10.0, 2: 10.0, 3: 10.0, 4: 10.0, 5: 10.0, 28: 45.0}
+        )
 
     def test_a_short_series_compared_in_full_is_merged(self):
         asset = self._asset("US0378331005", "AAPL")
@@ -304,8 +433,8 @@ class CleanListingDuplicatesTest(unittest.TestCase):
 
         result = self._clean()
 
-        # The kept series holds two bars, both compared: that is all there is to compare.
-        self.assertEqual(result["comparisons"][duplicate.id].required, 2)
+        # A short duplicate series: the two sessions it shares with the kept one are enough.
+        self.assertEqual(self._comparison(result, duplicate.id).required, 2)
         [move] = result["price_moves"]
         self.assertEqual((move.moved, move.dropped), (1, 2))
 
@@ -401,6 +530,24 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         # Without its row, the daily series is fetched again in one piece.
         self.assertEqual(self._schemes(kept.id), ["1W"])
 
+    def test_fields_only_the_duplicate_has_fill_the_kept_bar(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._price(kept, date(2026, 10, 1), 10.0, volume=500)
+        self._price(duplicate, date(2026, 10, 1), 10.05, volume=900, adj_close=9.5, open=9.9)
+        self._scheme(kept, "1D")
+        self.session.commit()
+
+        [move] = self._clean()["price_moves"]
+
+        self.assertEqual((move.moved, move.dropped, move.filled), (0, 1, 1))
+        bar = self.session.query(PriceEOD).filter_by(asset_listing_id=kept.id).one()
+        # The kept values stay; the missing ones come from the duplicate.
+        self.assertEqual((bar.close, bar.volume, bar.adj_close, bar.open), (10.0, 500, 9.5, 9.9))
+        # An adjusted close from another source: the series is fetched again in full.
+        self.assertEqual(self._schemes(kept.id), [])
+
     def test_a_series_whose_bars_were_all_dropped_keeps_its_scheme(self):
         asset = self._asset("US0378331005", "AAPL")
         kept = self._listing(asset, "NMS")
@@ -437,6 +584,36 @@ class CleanListingDuplicatesTest(unittest.TestCase):
 
         self.assertTrue(refresh_price_aggregates(engine, [move]))
         engine.connect.assert_called_once()
+
+    def test_each_range_is_refreshed_on_its_own(self):
+        engine = MagicMock()
+        engine.dialect.name = "postgresql"
+        connection = engine.connect.return_value.execution_options.return_value.__enter__()
+
+        def move(first: date, last: date) -> PriceMove:
+            return PriceMove(
+                duplicate_id=2,
+                kept_id=1,
+                moved=1,
+                dropped=0,
+                first=datetime(first.year, first.month, first.day, tzinfo=timezone.utc),
+                last=datetime(last.year, last.month, last.day, tzinfo=timezone.utc),
+            )
+
+        moves = [
+            move(date(2025, 1, 2), date(2025, 3, 1)),
+            move(date(1995, 1, 2), date(1995, 2, 1)),
+            move(date(1995, 1, 20), date(1995, 6, 1)),  # overlaps the one above
+        ]
+        self.assertTrue(refresh_price_aggregates(engine, moves))
+
+        windows = [
+            (params["start"].year, params["end"].month)
+            for call in connection.execute.call_args_list
+            if len(call.args) > 1 and "start" in (params := call.args[1])
+        ]
+        # Two ranges for each of the two aggregates, not one of thirty years.
+        self.assertEqual(windows, [(1995, 6), (2025, 3)] * 2)
 
     def _yahoo(self, listing, source: str, verified: bool = True, active: bool = True):
         mapping = (
@@ -528,6 +705,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         asset = self._asset("US0378331005", "AAPL")
         kept = self._listing(asset, "NMS")
         duplicate = self._listing(asset, "")
+        self._yahoo(kept, "isin_search")
         self._price(duplicate, date(2026, 10, 1), 10.0)
         self.session.commit()
 

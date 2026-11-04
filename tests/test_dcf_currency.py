@@ -57,19 +57,11 @@ class TestCurrencyRule:
 
 class TestStatementsCurrencyFromYahoo:
     def test_financial_currency_is_read(self):
-        assert _statements_currency(SimpleNamespace(info={"financialCurrency": "eur"})) == "EUR"
+        assert _statements_currency({"financialCurrency": "eur"}) == "EUR"
 
     @pytest.mark.parametrize("info", [{}, {"financialCurrency": None}, {"financialCurrency": "€"}])
     def test_missing_or_odd_currency_is_unknown(self, info):
-        assert _statements_currency(SimpleNamespace(info=info)) is None
-
-    def test_info_that_fails_leaves_it_unknown(self):
-        class Broken:
-            @property
-            def info(self):
-                raise RuntimeError("Yahoo is down")
-
-        assert _statements_currency(Broken()) is None
+        assert _statements_currency(info) is None
 
 
 # ── The rate follows the currency ─────────────────────────────────────────────
@@ -184,7 +176,8 @@ def _company(financial_currency, listing_currency, last_close):
     )
     session.commit()
     session.close()
-    YFinanceEnricher(database)._fetch_statements(1, _yahoo(financial_currency))
+    yahoo = _yahoo(financial_currency)
+    YFinanceEnricher(database)._fetch_statements(1, yahoo, yahoo.info)
     return SimpleNamespace(database=database, Session=Session, engine=engine)
 
 

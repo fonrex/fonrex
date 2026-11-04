@@ -171,7 +171,7 @@ def stored():
     session.close()
 
     enricher = YFinanceEnricher(database)
-    enricher._fetch_statements(1, _yahoo_statements())
+    enricher._fetch_statements(1, _yahoo_statements(), {})
     yield SimpleNamespace(database=database, Session=Session, enricher=enricher)
     Session.remove()
     engine.dispose()

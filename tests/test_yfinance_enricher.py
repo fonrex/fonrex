@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from financials.enrichment.yfinance_enricher import (
     YFinanceEnricher,
+    _load_info,
     _safe_date,
     _to_decimal,
     _to_int,
@@ -240,6 +241,22 @@ class TestUtilityFunctions(unittest.TestCase):
         self.assertEqual(_safe_date(1786406400.0), date(2026, 8, 11))
         self.assertEqual(_safe_date(np.int64(1789430400)), date(2026, 9, 15))
 
+    def test_load_info_keeps_a_usable_info(self):
+        info = {"marketCap": 1, "currency": "EUR"}
+        self.assertEqual(_load_info(MagicMock(info=info)), info)
+
+    def test_load_info_without_data_is_empty(self):
+        for info in (None, {}, {"trailingPegRatio": None}):
+            self.assertEqual(_load_info(MagicMock(info=info)), {})
+
+    def test_load_info_that_fails_is_empty(self):
+        class Broken:
+            @property
+            def info(self):
+                raise RuntimeError("Yahoo is down")
+
+        self.assertEqual(_load_info(Broken()), {})
+
     def test_safe_date_odd_numbers_are_unknown(self):
         for value in (0, -1, float("nan"), float("inf"), 10**20, True):
             with self.subTest(value=value):
@@ -262,7 +279,7 @@ class TestFetchHighlights(_DatabaseTestCase):
 
     def test_highlights_inserted(self):
         mock_ticker = _make_mock_ticker()
-        self.enricher._fetch_highlights(1, mock_ticker)
+        self.enricher._fetch_highlights(1, mock_ticker.info)
 
         session = self.Session()
         highlight = session.query(FundamentalsHighlights).filter_by(asset_id=1).first()
@@ -280,7 +297,7 @@ class TestFetchHighlights(_DatabaseTestCase):
         mock_ticker.info.update(
             exDividendDate=1786406400, dividendDate=1786665600, dateShortInterest=1789430400
         )
-        self.enricher._fetch_highlights(1, mock_ticker)
+        self.enricher._fetch_highlights(1, mock_ticker.info)
 
         highlight = self.Session().query(FundamentalsHighlights).filter_by(asset_id=1).one()
         self.assertEqual(highlight.dividend_ex_date, date(2026, 8, 11))
@@ -290,27 +307,16 @@ class TestFetchHighlights(_DatabaseTestCase):
     def test_highlights_upsert(self):
         """The upsert must update, not duplicate."""
         mock_ticker = _make_mock_ticker()
-        self.enricher._fetch_highlights(1, mock_ticker)
+        self.enricher._fetch_highlights(1, mock_ticker.info)
         # Change and run again
         mock_ticker.info["marketCap"] = 200000000000
-        self.enricher._fetch_highlights(1, mock_ticker)
+        self.enricher._fetch_highlights(1, mock_ticker.info)
 
         session = self.Session()
         count = session.query(FundamentalsHighlights).filter_by(asset_id=1).count()
         self.assertEqual(count, 1)
         highlight = session.query(FundamentalsHighlights).filter_by(asset_id=1).first()
         self.assertEqual(float(highlight.market_cap), 200000000000.0)
-        session.close()
-
-    def test_highlights_empty_info(self):
-        """Must not crash with an empty info."""
-        mock_ticker = MagicMock()
-        mock_ticker.info = {}
-        self.enricher._fetch_highlights(1, mock_ticker)  # No exception
-
-        session = self.Session()
-        count = session.query(FundamentalsHighlights).filter_by(asset_id=1).count()
-        self.assertEqual(count, 0)
         session.close()
 
 
@@ -330,7 +336,7 @@ class TestFetchStatements(_DatabaseTestCase):
 
     def test_statements_inserted(self):
         mock_ticker = _make_mock_ticker()
-        self.enricher._fetch_statements(1, mock_ticker)
+        self.enricher._fetch_statements(1, mock_ticker, mock_ticker.info)
 
         session = self.Session()
         # 2 income annual + 1 balance + 1 cashflow = 4
@@ -363,7 +369,7 @@ class TestFetchStatements(_DatabaseTestCase):
         mock_ticker.cashflow = pd.DataFrame()
         mock_ticker.quarterly_cashflow = pd.DataFrame()
 
-        self.enricher._fetch_statements(1, mock_ticker)
+        self.enricher._fetch_statements(1, mock_ticker, {})
 
         session = self.Session()
         count = session.query(FinancialStatement).filter_by(asset_id=1).count()
@@ -373,8 +379,8 @@ class TestFetchStatements(_DatabaseTestCase):
     def test_statements_upsert(self):
         """The upsert must not create duplicates."""
         mock_ticker = _make_mock_ticker()
-        self.enricher._fetch_statements(1, mock_ticker)
-        self.enricher._fetch_statements(1, mock_ticker)
+        self.enricher._fetch_statements(1, mock_ticker, mock_ticker.info)
+        self.enricher._fetch_statements(1, mock_ticker, mock_ticker.info)
 
         session = self.Session()
         # Must have exactly the same number of entries
@@ -580,6 +586,62 @@ class TestEnrich(_DatabaseTestCase):
 
         # Restore
         self.enricher._fetch_earnings = original_fetch_earnings
+
+    @patch("financials.enrichment.yfinance_enricher.yf.Ticker")
+    def test_info_is_read_once_for_every_step(self, mock_yf_ticker_class):
+        """yfinance 1.7 gives parallel readers of .info one answer, the others get {}."""
+        mock_ticker = _make_mock_ticker()
+        info = mock_ticker.info
+        info["financialCurrency"] = "EUR"
+        info["sector"] = "Industrials"
+        reads = []
+
+        def read_info(_):
+            reads.append(1)
+            return info if len(reads) == 1 else {}
+
+        type(mock_ticker).info = property(read_info)
+        mock_yf_ticker_class.return_value = mock_ticker
+
+        result = asyncio.run(self.enricher.enrich(1, "AIR.PA"))
+
+        self.assertEqual(len(reads), 1)
+        self.assertEqual(result["skipped"], {})
+        session = self.Session()
+        self.assertEqual(session.query(FundamentalsHighlights).filter_by(asset_id=1).count(), 1)
+        currencies = {row.currency for row in session.query(FinancialStatement)}
+        self.assertEqual(currencies, {"EUR"})
+        self.assertEqual(session.get(Asset, 1).gic_sector, "Industrials")
+        session.close()
+
+    @patch("financials.enrichment.yfinance_enricher.yf.Ticker")
+    def test_empty_info_is_reported_as_skipped(self, mock_yf_ticker_class):
+        mock_ticker = _make_mock_ticker()
+        mock_ticker.info = {"trailingPegRatio": None}
+        mock_yf_ticker_class.return_value = mock_ticker
+
+        result = asyncio.run(self.enricher.enrich(1, "AIR.PA"))
+
+        self.assertFalse(result["highlights"])
+        self.assertFalse(result["gics"])
+        self.assertFalse(result["solvency"])
+        self.assertEqual(
+            result["skipped"],
+            {
+                "highlights": "Yahoo returned no info",
+                "gics": "Yahoo returned no info",
+                "statements_currency": "Yahoo returned no info",
+            },
+        )
+        self.assertEqual(result["errors"], [])
+        # The steps that do not need info still run.
+        self.assertTrue(result["statements"])
+        self.assertTrue(result["earnings"])
+        session = self.Session()
+        self.assertEqual(session.query(FundamentalsHighlights).filter_by(asset_id=1).count(), 0)
+        self.assertGreater(session.query(FinancialStatement).filter_by(asset_id=1).count(), 0)
+        self.assertIsNone(session.get(Asset, 1).gic_sector)
+        session.close()
 
 
 if __name__ == "__main__":

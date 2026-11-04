@@ -100,17 +100,34 @@ def _safe_date(value):
         return None
 
 
-def _statements_currency(t) -> str | None:
-    """Currency of the financial statements of a Yahoo ticker (``financialCurrency``).
+# Reason reported in the summary for the steps that need Yahoo's info.
+NO_INFO = "Yahoo returned no info"
+
+
+def _load_info(t) -> dict:
+    """``t.info`` read once; ``{}`` when Yahoo gives nothing usable.
+
+    With yfinance 1.7, threads reading ``.info`` of one Ticker at the same time
+    do not all get it: one gets the data, the others ``{}``, without an error.
+    The enrichment reads it here, before its parallel steps, and hands the dict
+    to every step that needs it.
+    """
+    try:
+        info = t.info or {}
+    except Exception as exc:
+        logger.warning("Yahoo info unavailable: %s", exc)
+        return {}
+    # yfinance sometimes returns {"trailingPegRatio": None} for missing tickers
+    return info if len(info) > 1 else {}
+
+
+def _statements_currency(info: dict) -> str | None:
+    """Currency of the financial statements in Yahoo's info (``financialCurrency``).
 
     It is not always the currency of the share price: Airbus reports in EUR,
     a London line is quoted in pence. ``None`` when Yahoo does not give it.
     """
-    try:
-        value = (t.info or {}).get("financialCurrency")
-    except Exception as exc:  # the statements are stored without it
-        logger.debug("financialCurrency unavailable: %s", exc)
-        return None
+    value = info.get("financialCurrency")
     if isinstance(value, str) and len(value.strip()) == 3 and value.strip().isalpha():
         return value.strip().upper()
     return None
@@ -133,17 +150,23 @@ class YFinanceEnricher:
         """Main entry point — runs every enrichment."""
         async with _yfinance_semaphore:
             yf_ticker = await run_sync(yf.Ticker, ticker)
+        info = await run_sync(_load_info, yf_ticker)
 
-        operations = (
-            self._fetch_highlights,
-            self._fetch_statements,
-            self._fetch_earnings,
-            self._fetch_ratings,
-            self._fetch_esg,
-            self._fetch_earnings_trend,
-            self._fetch_outstanding_shares,
-            self._fetch_gics,
-        )
+        steps = {
+            "highlights": (self._fetch_highlights, info),
+            "statements": (self._fetch_statements, yf_ticker, info),
+            "earnings": (self._fetch_earnings, yf_ticker),
+            "ratings": (self._fetch_ratings, yf_ticker),
+            "esg": (self._fetch_esg, yf_ticker),
+            "earnings_trend": (self._fetch_earnings_trend, yf_ticker),
+            "shares_history": (self._fetch_outstanding_shares, yf_ticker),
+            "gics": (self._fetch_gics, info),
+        }
+        # A step that stores nothing is reported as skipped, not as a success.
+        skipped = {}
+        if not info:
+            skipped = {"highlights": NO_INFO, "gics": NO_INFO, "statements_currency": NO_INFO}
+        operations = {name: step for name, step in steps.items() if name not in skipped}
 
         # SQLite's StaticPool shares one connection across threads and cannot
         # safely handle concurrent writes. PostgreSQL keeps the faster parallel
@@ -152,28 +175,23 @@ class YFinanceEnricher:
 
         if is_sqlite:
             results = []
-            for operation in operations:
+            for operation, *args in operations.values():
                 try:
-                    results.append(await run_sync(operation, asset_id, yf_ticker))
+                    results.append(await run_sync(operation, asset_id, *args))
                 except Exception as exc:
                     results.append(exc)
         else:
             results = await asyncio.gather(
-                *(run_sync(operation, asset_id, yf_ticker) for operation in operations),
+                *(run_sync(operation, asset_id, *args) for operation, *args in operations.values()),
                 return_exceptions=True,
             )
 
+        outcomes = dict(zip(operations, results, strict=True))
         summary = {
-            "highlights": not isinstance(results[0], Exception),
-            "statements": not isinstance(results[1], Exception),
-            "earnings": not isinstance(results[2], Exception),
-            "ratings": not isinstance(results[3], Exception),
-            "esg": not isinstance(results[4], Exception),
-            "earnings_trend": not isinstance(results[5], Exception),
-            "shares_history": not isinstance(results[6], Exception),
-            "gics": not isinstance(results[7], Exception),
-            "errors": [str(r) for r in results if isinstance(r, Exception)],
+            name: name in outcomes and not isinstance(outcomes[name], Exception) for name in steps
         }
+        summary["errors"] = [str(r) for r in results if isinstance(r, Exception)]
+        summary["skipped"] = skipped
 
         # Compute the solvency ratios when the statements and highlights succeeded
         if summary["highlights"] and summary["statements"]:
@@ -193,6 +211,13 @@ class YFinanceEnricher:
                 asset_id,
                 summary["errors"],
             )
+        elif skipped:
+            logger.info(
+                "yfinance enrichment done for %s (asset_id=%s), skipped: %s",
+                ticker,
+                asset_id,
+                skipped,
+            )
         else:
             logger.info(
                 "✅ yfinance enrichment done for %s (asset_id=%s)",
@@ -210,17 +235,12 @@ class YFinanceEnricher:
             session.close()
 
     # ------------------------------------------------------------------
-    # Highlights (t.info)
+    # Highlights (Yahoo's info)
     # ------------------------------------------------------------------
 
-    def _fetch_highlights(self, asset_id: int, t: yf.Ticker) -> None:
-        """Read the key metrics of t.info and upsert them."""
+    def _fetch_highlights(self, asset_id: int, info: dict) -> None:
+        """Read the key metrics of Yahoo's info and upsert them."""
         try:
-            info = t.info or {}
-            if not info or len(info) <= 1:
-                logger.info("No info data for asset_id=%s", asset_id)
-                return
-
             values = {
                 "asset_id": asset_id,
                 "fetched_at": datetime.now(timezone.utc),
@@ -356,7 +376,7 @@ class YFinanceEnricher:
         "Common Stock Dividend Paid": "dividends_paid",
     }
 
-    def _fetch_statements(self, asset_id: int, t: yf.Ticker) -> None:
+    def _fetch_statements(self, asset_id: int, t: yf.Ticker, info: dict) -> None:
         """Read the 3 financial statements × 2 frequencies."""
         try:
             statement_configs = [
@@ -368,7 +388,7 @@ class YFinanceEnricher:
                 ("cashflow", "quarterly", t.quarterly_cashflow, self.CASHFLOW_MAPPING),
             ]
 
-            currency = _statements_currency(t)
+            currency = _statements_currency(info)
             count = 0
             for statement_type, period_type, df, mapping in statement_configs:
                 if df is None or df.empty:
@@ -818,14 +838,10 @@ class YFinanceEnricher:
     # GICS classification
     # ------------------------------------------------------------------
 
-    def _fetch_gics(self, asset_id: int, t: yf.Ticker) -> None:
+    def _fetch_gics(self, asset_id: int, info: dict) -> None:
         """Update the GICS classification of the asset."""
         try:
             from models import Asset
-
-            info = t.info
-            if not info:
-                return
 
             session = self.db_service.get_session()
             try:

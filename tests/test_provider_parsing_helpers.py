@@ -3,6 +3,7 @@
 import pytest
 from selectolax.parser import HTMLParser
 
+from financials.models import FinancialMetrics
 from financials.providers.Barrons_provider import BarronsProvider
 from financials.providers.boursorama_provider import BoursoramaProvider
 from financials.providers.GoogleFinance_provider import GoogleFinanceProvider
@@ -254,15 +255,40 @@ class TestGoogleFinanceName:
         assert GoogleFinanceProvider._extract_name(page("<h1>Airbus SE</h1>")) == "Airbus SE"
 
 
-class TestMsnName:
-    def test_heading_has_priority(self):
-        html = page("<h1>Airbus SE</h1>", head="<title>AIR : Other - MSN Finances</title>")
+class TestMsnQuoteSummary:
+    @staticmethod
+    def read(entry: dict) -> dict:
+        metrics = FinancialMetrics(ticker="AIR")
+        MsnProvider.read_quote_summary(metrics, entry)
+        return metrics.model_dump(exclude_none=True)
 
-        assert MsnProvider()._parse_page(html, "AIR").name == "Airbus SE"
+    def test_name_of_the_quote_has_priority(self):
+        parsed = self.read(
+            {"quote": {"displayName": "Airbus SE"}, "equity": {"displayName": "Other"}}
+        )
 
-    def test_unrelated_title_gives_no_name(self):
-        html = page("", head="<title>MSN</title>")
+        assert parsed["name"] == "Airbus SE"
 
-        parsed = MsnProvider()._parse_page(html, "AIR").model_dump(exclude_none=True)
+    def test_name_of_the_equity_when_the_quote_has_none(self):
+        parsed = self.read({"quote": {"displayName": " "}, "equity": {"displayName": "Airbus"}})
 
-        assert "name" not in parsed
+        assert parsed["name"] == "Airbus"
+
+    def test_zero_ratio_is_a_missing_value(self):
+        parsed = self.read(
+            {
+                "quote": {"peRatio": 0.0, "yieldPercent": 0.0},
+                "equity": {"analysis": {"keyMetrics": {"priceToBookRatio": 0, "eps": -1.2}}},
+            }
+        )
+
+        assert "pe_ratio" not in parsed
+        assert "pb_ratio" not in parsed
+        # A share without dividend has a real zero yield.
+        assert parsed["dividend_yield"] == 0.0
+        assert parsed["eps"] == -1.2
+
+    def test_unexpected_shapes_give_no_figure(self):
+        parsed = self.read({"quote": "?", "equity": {"analysis": [], "company": None}})
+
+        assert parsed == {"ticker": "AIR"}

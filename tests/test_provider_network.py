@@ -1389,25 +1389,64 @@ class TestBourseDirect:
 # ── MSN ──────────────────────────────────────────────────────────────────────
 
 
+def msn_summary() -> httpx.Response:
+    """A real answer of the QuoteSummary of MSN for Airbus (tests/fixtures/providers/msn)."""
+    return ok(fixture("msn/quote_summary_ae7bur.json"))
+
+
 class TestMsn:
     SEARCH = "services.bingapis.com/contentservices-finance.csautosuggest/api/v1/Query"
+    SUMMARY = "assets.msn.com/service/Finance/QuoteSummary"
     PAGE = "https://www.msn.com/fr-ca/finances/details-de-l-action/air-fr-stock/fi-ae7bur?id=ae7bur"
 
-    async def test_search_then_page(self, fake_network):
+    async def test_search_then_quote_summary(self, fake_network):
         fake_network.get(self.SEARCH, ok(fixture("search/msn_ticker.json")))
-        fake_network.get("msn.com/fr-ca/finances", ok(fixture("msn_air.html")))
+        fake_network.get(self.SUMMARY, msn_summary())
 
         metrics = await MsnProvider().get_financials("AIR")
 
         assert metrics.name == "Airbus SE"
         assert metrics.provider_url == self.PAGE
-        assert fake_network.urls("msn.com") == [self.PAGE]
+        assert metrics.currency == "EUR"
+        assert metrics.price == pytest.approx(198.88)
+        assert metrics.pe_ratio == pytest.approx(25.4286)
+        assert metrics.dividend_yield == pytest.approx(1.599)
+        assert metrics.market_cap == pytest.approx(158_536_000_000)
+        assert metrics.week_52_high == pytest.approx(221.3)
+        assert metrics.week_52_low == pytest.approx(157.42)
+        assert metrics.eps == pytest.approx(7.7981)
+        assert metrics.payout_ratio == pytest.approx(38.4628)
+        assert metrics.debt_to_equity == pytest.approx(0.4693)
+        assert metrics.pb_ratio == pytest.approx(6.03)
+        assert metrics.revenue == pytest.approx(73_420_000_000)
+        assert metrics.net_income == pytest.approx(5_221_000_000)
+        assert metrics.profit_margin == pytest.approx(6.7557)
+        assert metrics.roe == pytest.approx(24.4975)
+        assert metrics.roa == pytest.approx(4.4063)
+        assert metrics.roic == pytest.approx(8.3491)
+        assert metrics.beta == pytest.approx(1.2485)
+        assert metrics.sector == "Industrials"
+        assert metrics.industry == "Aerospace & Defense"
+        # The page of msn.com is never downloaded: the figures come from the service.
+        assert fake_network.calls("www.msn.com") == 0
+        summary_url = fake_network.urls(self.SUMMARY)[0]
+        assert "ids=ae7bur" in summary_url
+        assert "apikey=" in summary_url
         assert "query=AIR" in fake_network.urls(self.SEARCH)[0]
+
+    async def test_api_key_can_be_replaced(self, fake_network, monkeypatch):
+        monkeypatch.setenv("MSN_FINANCE_API_KEY", " new-key ")
+        fake_network.get(self.SEARCH, ok(fixture("search/msn_ticker.json")))
+        fake_network.get(self.SUMMARY, msn_summary())
+
+        await MsnProvider().get_financials("AIR")
+
+        assert "apikey=new-key&" in fake_network.urls(self.SUMMARY)[0]
 
     async def test_stock_entry_already_decoded(self, fake_network):
         entry = json.loads(json.loads(fixture("search/msn_ticker.json"))["data"]["stocks"][0])
         fake_network.get(self.SEARCH, ok_json({"data": {"stocks": [entry]}}))
-        fake_network.get("msn.com/fr-ca/finances", ok(fixture("msn_air.html")))
+        fake_network.get(self.SUMMARY, msn_summary())
 
         metrics = await MsnProvider().get_financials("AIR")
 
@@ -1421,13 +1460,22 @@ class TestMsn:
         assert fake_network.calls("msn.com") == 0
 
     @pytest.mark.parametrize(
-        "page_response",
-        [status(500), status(404), httpx.ReadTimeout("timed out")],
-        ids=["http-500", "http-404", "timeout"],
+        "summary_response",
+        [
+            status(500),
+            status(401),
+            httpx.ReadTimeout("timed out"),
+            ok("not json"),
+            ok_json([]),
+            ok_json({"error": "?"}),
+            # Real answer for an identifier MSN does not know.
+            ok_json([{"instrumentId": "zzzzzz", "id": "zzzzzz", "_t": "QuoteSummary"}]),
+        ],
+        ids=["http-500", "http-401", "timeout", "not-json", "empty", "not-a-list", "no-quote"],
     )
-    async def test_page_failure_gives_none(self, fake_network, page_response):
+    async def test_summary_failure_gives_none(self, fake_network, summary_response):
         fake_network.get(self.SEARCH, ok(fixture("search/msn_ticker.json")))
-        fake_network.get("msn.com/fr-ca/finances", page_response)
+        fake_network.get(self.SUMMARY, summary_response)
 
         assert await MsnProvider().get_financials("AIR") is None
 

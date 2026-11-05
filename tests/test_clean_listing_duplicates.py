@@ -361,6 +361,25 @@ class CleanListingDuplicatesTest(unittest.TestCase):
         self.assertEqual((comparison.compared, comparison.required), (1, 5))
         self.assertEqual(self._closes(kept.id), {1: 10.0})
 
+    def test_a_short_series_outside_the_kept_dates_is_reported(self):
+        asset = self._asset("US0378331005", "AAPL")
+        kept = self._listing(asset, "NMS")
+        duplicate = self._listing(asset, "")
+        self._yahoo(kept, "isin_search")  # trusted: it does not lift the comparison
+        for day in range(1, 11):
+            self._price(kept, date(2026, 10, day), 10.0)
+        for day in range(1, 4):
+            self._price(duplicate, date(2026, 9, day), 10.0)  # no session in common
+        self.session.commit()
+
+        result = self._clean()
+
+        self.assertEqual(result["series_differ"], [duplicate.id])
+        comparison = self._comparison(result, duplicate.id)
+        self.assertEqual((comparison.compared, comparison.required), (0, 3))
+        self.assertEqual(result["price_moves"], [])
+        self.assertEqual(self._listing_ids(), [kept.id, duplicate.id])
+
     def test_each_resolution_is_compared_on_its_own(self):
         asset = self._asset("US0378331005", "AAPL")
         kept = self._listing(asset, "NMS")
@@ -433,7 +452,7 @@ class CleanListingDuplicatesTest(unittest.TestCase):
 
         result = self._clean()
 
-        # A short duplicate series: the two sessions it shares with the kept one are enough.
+        # A short duplicate series: as many sessions as the shorter series holds (two).
         self.assertEqual(self._comparison(result, duplicate.id).required, 2)
         [move] = result["price_moves"]
         self.assertEqual((move.moved, move.dropped), (1, 2))

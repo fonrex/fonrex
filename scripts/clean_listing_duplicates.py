@@ -26,7 +26,9 @@ own:
   the sessions they share (close within 1 %; a close missing on one side only is a
   difference; a session without close on both sides is not compared), and enough
   sessions must be compared: :data:`MIN_SHARED_SESSIONS`, or, for a duplicate
-  series of that many bars or fewer, all the bars the two series can share;
+  series of that many bars or fewer, as many as the shorter of the two series
+  holds, whatever their dates (a short series outside the kept one's dates is
+  reported, not moved);
 - when it holds none, nothing can be compared: the series moves only if the kept
   listing ends up with a trusted Yahoo symbol (its own, or the one handed over),
   so that the next ingestion fetches it again in full and replaces it.
@@ -83,7 +85,7 @@ logger = logging.getLogger("clean_listing_duplicates")
 CLOSE_TOLERANCE = 0.01
 
 # Sessions two series of one resolution must share, and agree on, before bars are
-# merged (a duplicate series of that many bars or fewer: all the sessions it can share).
+# merged (a duplicate series of that many bars or fewer: as many as the shorter one holds).
 MIN_SHARED_SESSIONS = 5
 
 # Fields of a shared session that the duplicate's bar fills when the kept bar lacks them.
@@ -200,8 +202,10 @@ def _required(bars: int, kept_bars: int) -> int:
 
     :data:`MIN_SHARED_SESSIONS` as soon as the duplicate holds more bars than that: a
     single matching bar must not carry thousands of bars nobody compared, however
-    short the kept series is. A shorter duplicate series must match on every session
-    the two can share. ``kept_bars`` is counted up to :data:`MIN_SHARED_SESSIONS`.
+    short the kept series is. A shorter duplicate series needs as many compared
+    sessions as the shorter of the two series holds, whatever their dates: when its
+    bars fall outside the kept series' dates, nothing is compared and it is reported
+    rather than moved. ``kept_bars`` is counted up to :data:`MIN_SHARED_SESSIONS`.
     """
     if bars > MIN_SHARED_SESSIONS:
         return MIN_SHARED_SESSIONS

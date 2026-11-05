@@ -265,10 +265,18 @@ class AssetRepository(DatabaseComponent):
 
         return True
 
-    def update_asset_profile_from_metadata(self, asset_id, metadata, listing_id=None):
+    def update_asset_profile_from_metadata(
+        self, asset_id, metadata, listing_id=None, *, symbol_verified=False
+    ):
         """
         Fill the missing asset/listing fields from provider metadata.
         Existing values are kept.
+
+        The exchange and currency go to the listing whose ticker is the symbol of
+        the metadata. With ``symbol_verified``, the metadata was fetched with the
+        symbol verified for ``listing_id`` (``historical/yahoo_symbols.py``): that
+        listing receives them, even when its ticker is not Yahoo's (``SPFF`` and
+        ``SPFF.DE``).
         """
         if not asset_id or not metadata:
             return False
@@ -333,9 +341,13 @@ class AssetRepository(DatabaseComponent):
                 self._first_present(metadata.get("official_symbol"), metadata.get("symbol"))
             )
             target_listing = listing
-            if metadata_symbol and (
-                not listing
-                or self._normalize_ticker(getattr(listing, "ticker", None)) != metadata_symbol
+            if (
+                metadata_symbol
+                and not (symbol_verified and listing)
+                and (
+                    not listing
+                    or self._normalize_ticker(getattr(listing, "ticker", None)) != metadata_symbol
+                )
             ):
                 target_listing = (
                     session.query(AssetListing)

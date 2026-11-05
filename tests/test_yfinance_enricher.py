@@ -15,16 +15,20 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from database.assets import AssetRepository
 from financials.enrichment.yfinance_enricher import (
     YFinanceEnricher,
     _load_info,
     _safe_date,
     _to_decimal,
     _to_int,
+    clean_yahoo_isin,
+    profile_metadata,
 )
 from models import (
     AnalystRatings,
     Asset,
+    AssetListing,
     Base,
     EarningsHistory,
     FinancialStatement,
@@ -261,6 +265,47 @@ class TestUtilityFunctions(unittest.TestCase):
         for value in (0, -1, float("nan"), float("inf"), 10**20, True):
             with self.subTest(value=value):
                 self.assertIsNone(_safe_date(value))
+
+
+class TestProfileMetadata(unittest.TestCase):
+    def test_profile_fields_are_read_from_info(self):
+        metadata = profile_metadata(
+            {
+                "symbol": "AIR.PA",
+                "shortName": "AIRBUS",
+                "longName": "Airbus SE",
+                "exchange": "PAR",
+                "currency": "EUR",
+                "sector": "Industrials",
+                "industry": "Aerospace & Defense",
+                "longBusinessSummary": "Airbus designs aircraft.",
+                "website": "https://www.airbus.com",
+                "country": "France",
+                "city": "Leiden",
+                "quoteType": "EQUITY",
+                "isin": " nl0000235190 ",
+            }
+        )
+
+        self.assertEqual(metadata["name"], "AIRBUS")
+        self.assertEqual(metadata["display_name"], "Airbus SE")
+        self.assertEqual(metadata["official_symbol"], "AIR.PA")
+        self.assertEqual(metadata["exchange"], "PAR")
+        self.assertEqual(metadata["sector"], "Industrials")
+        self.assertEqual(metadata["industry"], "Aerospace & Defense")
+        self.assertEqual(metadata["long_business_summary"], "Airbus designs aircraft.")
+        self.assertEqual(metadata["ir_website"], "https://www.airbus.com")
+        self.assertEqual(metadata["quote_type"], "EQUITY")
+        self.assertEqual(metadata["isin"], "NL0000235190")
+        self.assertEqual(metadata["profile"]["city"], "Leiden")
+
+    def test_empty_info_gives_no_metadata(self):
+        self.assertEqual(profile_metadata({}), {})
+
+    def test_isin_placeholders_are_no_isin(self):
+        for value in ("-", "N/A", "none", "", None, 42):
+            with self.subTest(value=value):
+                self.assertIsNone(clean_yahoo_isin(value))
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +601,7 @@ class TestEnrich(_DatabaseTestCase):
 
         result = asyncio.run(self.enricher.enrich(1, "AIR.PA"))
 
+        self.assertTrue(result["profile"])
         self.assertTrue(result["highlights"])
         self.assertTrue(result["statements"])
         self.assertTrue(result["earnings"])
@@ -614,6 +660,69 @@ class TestEnrich(_DatabaseTestCase):
         self.assertEqual(session.get(Asset, 1).gic_sector, "Industrials")
         session.close()
 
+    def _store_profiles(self):
+        """The real profile write, on the test database."""
+        repository = AssetRepository(self.engine, self.Session)
+        self.db_service.update_asset_profile_from_metadata = (
+            repository.update_asset_profile_from_metadata
+        )
+        session = self.Session()
+        # As the CSV import stores it: catalogue ticker, no exchange.
+        session.add(
+            AssetListing(id=10, asset_id=1, ticker="AIR", exchange="", currency="", is_primary=True)
+        )
+        asset = session.get(Asset, 1)
+        asset.sector = None
+        asset.display_name = "Airbus (catalogue)"
+        session.commit()
+        session.close()
+
+    @patch("financials.enrichment.yfinance_enricher.yf.Ticker")
+    def test_profile_is_stored_for_the_verified_listing(self, mock_yf_ticker_class):
+        self._store_profiles()
+        mock_ticker = _make_mock_ticker()
+        mock_ticker.info.update(
+            {
+                "symbol": "AIR.PA",
+                "longName": "Airbus SE",
+                "exchange": "PAR",
+                "currency": "EUR",
+                "sector": "Industrials",
+                "industry": "Aerospace & Defense",
+                "longBusinessSummary": "Airbus designs aircraft.",
+                "isin": "NL0000235190",
+            }
+        )
+        mock_yf_ticker_class.return_value = mock_ticker
+
+        result = asyncio.run(self.enricher.enrich(1, "AIR.PA", 10))
+
+        self.assertTrue(result["profile"])
+        session = self.Session()
+        asset = session.get(Asset, 1)
+        self.assertEqual(asset.sector, "Industrials")
+        self.assertEqual(asset.industry, "Aerospace & Defense")
+        self.assertEqual(asset.long_business_summary, "Airbus designs aircraft.")
+        self.assertEqual(asset.display_name, "Airbus (catalogue)")  # existing values are kept
+        # The symbol was verified for listing 10: its ticker need not be Yahoo's.
+        listing = session.get(AssetListing, 10)
+        self.assertEqual((listing.exchange, listing.currency), ("PAR", "EUR"))
+        session.close()
+
+    @patch("financials.enrichment.yfinance_enricher.yf.Ticker")
+    def test_profile_of_another_instrument_is_not_stored(self, mock_yf_ticker_class):
+        self._store_profiles()
+        mock_ticker = _make_mock_ticker()
+        mock_ticker.info.update({"symbol": "AIR.PA", "sector": "Utilities", "isin": "FR0000000000"})
+        mock_yf_ticker_class.return_value = mock_ticker
+
+        asyncio.run(self.enricher.enrich(1, "AIR.PA", 10))
+
+        session = self.Session()
+        self.assertIsNone(session.get(Asset, 1).sector)
+        self.assertEqual(session.get(AssetListing, 10).exchange, "")
+        session.close()
+
     @patch("financials.enrichment.yfinance_enricher.yf.Ticker")
     def test_empty_info_is_reported_as_skipped(self, mock_yf_ticker_class):
         mock_ticker = _make_mock_ticker()
@@ -622,12 +731,14 @@ class TestEnrich(_DatabaseTestCase):
 
         result = asyncio.run(self.enricher.enrich(1, "AIR.PA"))
 
+        self.assertFalse(result["profile"])
         self.assertFalse(result["highlights"])
         self.assertFalse(result["gics"])
         self.assertFalse(result["solvency"])
         self.assertEqual(
             result["skipped"],
             {
+                "profile": "Yahoo returned no info",
                 "highlights": "Yahoo returned no info",
                 "gics": "Yahoo returned no info",
                 "statements_currency": "Yahoo returned no info",

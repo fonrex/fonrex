@@ -659,13 +659,6 @@ def _quote_metadata(quote: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _clean_yahoo_isin(value: Optional[str]) -> Optional[str]:
-    normalized = normalize_ticker(value)
-    if normalized in ("-", "N/A", "NA", "NONE", "NULL"):
-        return None
-    return normalized
-
-
 def fetch_yfinance_data(ticker: str, isin: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Fetches cold metadata from yfinance synchronously.
@@ -673,7 +666,12 @@ def fetch_yfinance_data(ticker: str, isin: Optional[str] = None) -> Optional[Dic
     query1.finance.yahoo.com first because CSV tickers are not always Yahoo
     compatible.
     Returns a dictionary with mapped fields or None if error.
+
+    The fields read from ``info`` are the ones the deep enrichment stores
+    (``profile_metadata``); the search fills those ``info`` lacks.
     """
+    from financials.enrichment.yfinance_enricher import clean_yahoo_isin, profile_metadata
+
     if not ticker:
         return None
 
@@ -682,54 +680,21 @@ def fetch_yfinance_data(ticker: str, isin: Optional[str] = None) -> Optional[Dic
     yahoo_symbol = search_metadata.get("symbol") or ticker
 
     try:
-        # Use Ticker object
-        dat = yf.Ticker(yahoo_symbol)
-
-        # Access info to trigger the download
         # Note: .info can be blocking and slow
-        info = dat.info
+        info = yf.Ticker(yahoo_symbol).info
 
         if (
             not info or len(info) <= 1
         ):  # yfinance sometimes returns {"trailingPegRatio": None} for missing tickers
             return search_metadata or None
 
-        # Build Profile Object
-        profile = {
-            "country": info.get("country"),
-            "city": info.get("city"),
-            "fullTimeEmployees": info.get("fullTimeEmployees"),
-            "auditRisk": info.get("auditRisk"),
-            "boardRisk": info.get("boardRisk"),
-            "compensationRisk": info.get("compensationRisk"),
-            "shareHolderRightsRisk": info.get("shareHolderRightsRisk"),
-            "overallRisk": info.get("overallRisk"),
-        }
-
-        country = info.get("country")
-
-        # Map fields
-        return {
-            "name": info.get("shortName") or info.get("longName") or search_metadata.get("name"),
-            "display_name": info.get("longName")
-            or info.get("shortName")
-            or search_metadata.get("display_name"),
-            "official_symbol": info.get("symbol") or search_metadata.get("official_symbol"),
-            "symbol": info.get("symbol") or search_metadata.get("symbol") or yahoo_symbol,
-            "exchange": info.get("exchange") or search_metadata.get("exchange"),
-            "currency": info.get("currency"),
-            "sector": info.get("sector") or search_metadata.get("sector"),
-            "industry": info.get("industry") or search_metadata.get("industry"),
-            "description": info.get("longBusinessSummary"),
-            "long_business_summary": info.get("longBusinessSummary"),
-            "website": info.get("website"),
-            "ir_website": info.get("irWebsite") or info.get("website"),
-            "country": country,
-            "quote_type": info.get("quoteType") or search_metadata.get("quote_type"),
-            "fund_family": info.get("fundFamily"),
-            "isin": _clean_yahoo_isin(info.get("isin")) or _clean_yahoo_isin(isin),
-            "profile": profile,
-        }
+        metadata = profile_metadata(info)
+        for field_name, value in search_metadata.items():
+            if not metadata.get(field_name):
+                metadata[field_name] = value
+        metadata["symbol"] = metadata.get("symbol") or yahoo_symbol
+        metadata["isin"] = metadata.get("isin") or clean_yahoo_isin(isin)
+        return metadata
 
     except Exception:
         return search_metadata or None
@@ -1044,7 +1009,7 @@ async def enrich_after_import(
             return
 
         enricher = YFinanceEnricher(db_service_instance)
-        result = await enricher.enrich(asset_id, resolution.symbol)
+        result = await enricher.enrich(asset_id, resolution.symbol, listing_id)
         if result.get("errors"):
             logger.warning(
                 "Partial enrichment for %s as %s (asset_id=%s): %s",

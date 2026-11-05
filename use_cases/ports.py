@@ -66,6 +66,8 @@ class AssetProfileRepositoryPort(FundamentalsRepositoryPort, Protocol):
         asset_id: object,
         metadata: Mapping[str, object],
         listing_id: object = None,
+        *,
+        symbol_verified: bool = False,
     ) -> bool: ...
 
 

@@ -67,7 +67,7 @@ async def test_yahoo_is_asked_with_the_symbol_verified_for_the_primary_listing(c
     await import_assets.enrich_after_import(1, "SPFF", catalogue, symbols=symbols)
 
     symbols.resolve.assert_awaited_once_with(11)  # the primary listing, in EUR
-    enricher.enrich.assert_awaited_once_with(1, "SPFF.DE")
+    enricher.enrich.assert_awaited_once_with(1, "SPFF.DE", 11)
 
 
 @pytest.mark.asyncio
@@ -114,7 +114,7 @@ async def test_default_resolver_is_the_one_of_the_price_ingestion(catalogue, enr
 
     await import_assets.enrich_after_import(1, "SPFF", catalogue)
 
-    enricher.enrich.assert_awaited_once_with(1, "SPFF.DE")
+    enricher.enrich.assert_awaited_once_with(1, "SPFF.DE", 11)
 
 
 @pytest.mark.asyncio
@@ -124,4 +124,4 @@ async def test_a_failure_never_stops_the_batch(catalogue, enricher):
 
     await import_assets.enrich_batch(catalogue, [(1, "SPFF")], batch_size=1)  # does not raise
 
-    enricher.enrich.assert_awaited_once_with(1, "SPFF.DE")
+    enricher.enrich.assert_awaited_once_with(1, "SPFF.DE", 11)

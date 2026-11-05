@@ -742,6 +742,251 @@ class TestDowJonesQuotePages:
         assert metrics.provider_url.endswith("/air?countrycode=fr")
 
 
+DYLAN_TSLA_RESPONSE = {
+    "InstrumentResponses": [
+        {
+            "RequestId": "STOCK/US/XNAS/TSLA",
+            "Matches": [
+                {
+                    "Instrument": {
+                        "CommonName": "Tesla Inc.",
+                        "Ticker": "TSLA",
+                        "Isin": "US88160R1014",
+                        "Exchange": {
+                            "CommonName": "U.S.: Nasdaq",
+                            "CountryCode": "US",
+                            "IsoCode": "XNAS",
+                        },
+                    },
+                    "CompositeTrading": {
+                        "Last": {"Price": {"Iso": "USD", "Value": 399.81}},
+                    },
+                    "TradingStatistics": {
+                        "PriceStatistics": [
+                            {
+                                "Range": {"Duration": {"ValueString": "P364D"}},
+                                "Minimum": {"Value": 297.38},
+                                "Maximum": {"Value": 498.83},
+                            }
+                        ],
+                        "VolumeStatistics": [
+                            {
+                                "Range": {"Duration": {"ValueString": "P3M"}},
+                                "Average": 36680891.58,
+                            }
+                        ],
+                    },
+                    "Financials": {
+                        "PriceToEarningsRatio": 439.79,
+                        "LastEarningsPerShare": {"Iso": "USD", "Value": 0.91},
+                        "Yield": None,
+                        "AnnualizedDividend": None,
+                        "LastDividendPerShare": None,
+                        "MarketCapitalization": {"Iso": "USD", "Value": 1580352188975.2},
+                        "SharesOutstanding": 3952758000.0,
+                        "PublicFloat": 2824207492.4,
+                        "Beta": 2.06,
+                        "ShortInterest": 69350469.0,
+                        "PercentOfFloatShorted": 2.46,
+                    },
+                }
+            ],
+        }
+    ]
+}
+
+
+class TestMarketwatch:
+    SEARCH = "api.wsj.net/api/autocomplete/search"
+    DYLAN = "api.wsj.net/api/dylan/quotes/v2/comp/quoteByDialect"
+    TSLA_PAGE = "https://www.marketwatch.com/investing/stock/tsla"
+
+    async def test_dylan_fallback_when_page_is_blocked(self, fake_network):
+        symbols = {
+            "symbols": [
+                {
+                    "ticker": "TSLA",
+                    "country": "US",
+                    "type": "Stock",
+                    "score": 1,
+                    "company": "Tesla Inc.",
+                    "isin": "US88160R1014",
+                    "exchangeIsoCode": "XNAS",
+                    "exchange": "U.S.: Nasdaq",
+                    "chartingSymbol": "STOCK/US/XNAS/TSLA",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(symbols))
+        fake_network.get(self.TSLA_PAGE, BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, ok_json(DYLAN_TSLA_RESPONSE))
+
+        metrics = await MarketwatchProvider().get_financials("TSLA")
+
+        assert metrics.name == "Tesla Inc."
+        assert metrics.price == pytest.approx(399.81)
+        assert metrics.currency == "USD"
+        assert metrics.pe_ratio == pytest.approx(439.79)
+        assert metrics.eps == pytest.approx(0.91)
+        assert metrics.beta == pytest.approx(2.06)
+        assert metrics.market_cap == pytest.approx(1580352188975.2)
+        assert metrics.shares_outstanding == pytest.approx(3952758000.0)
+        assert metrics.float_shares == pytest.approx(2824207492.4)
+        assert metrics.shares_short == pytest.approx(69350469.0)
+        assert metrics.short_percent_float == pytest.approx(2.46)
+        assert metrics.week_52_low == pytest.approx(297.38)
+        assert metrics.week_52_high == pytest.approx(498.83)
+        assert metrics.average_volume == pytest.approx(36680891.58)
+
+    async def test_dynamic_token_refresh_on_expired_default_token(self, fake_network, monkeypatch):
+        monkeypatch.setattr(MarketwatchProvider, "TOKEN", None)
+        monkeypatch.delenv("MARKETWATCH_TOKEN", raising=False)
+
+        fresh_token = "11223344556677889900aabbccddeeff"
+        page_with_token = f'<div dylan-entitlement-token="{fresh_token}"><h1>Tesla Inc.</h1></div>'
+        fake_network.get(self.SEARCH, status(400), ok_json(DOW_JONES_SYMBOLS))
+        fake_network.get(self.TSLA_PAGE, ok(page_with_token))
+        fake_network.get(
+            "https://www.marketwatch.com/investing/stock/aapl",
+            ok(fixture("marketwatch_aapl.html")),
+        )
+
+        provider = MarketwatchProvider()
+        metrics = await provider.get_financials("AAPL")
+
+        assert metrics.pe_ratio == pytest.approx(38.25)
+        assert provider._dynamic_token == fresh_token
+        assert f"entitlementToken={fresh_token}" in fake_network.urls(self.SEARCH)[1]
+
+    async def test_dynamic_token_refresh_on_dylan_401(self, fake_network, monkeypatch):
+        monkeypatch.setattr(MarketwatchProvider, "TOKEN", None)
+        monkeypatch.delenv("MARKETWATCH_TOKEN", raising=False)
+
+        fresh_token = "aabbccddeeff00112233445566778899"
+        page_with_token = f'<div dylan-entitlement-token="{fresh_token}"><h1>Tesla Inc.</h1></div>'
+        symbols = {
+            "symbols": [
+                {
+                    "ticker": "AAPL",
+                    "country": "US",
+                    "type": "Stock",
+                    "score": 1,
+                    "company": "Apple Inc.",
+                    "chartingSymbol": "STOCK/US/XNAS/AAPL",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(symbols))
+        fake_network.get("https://www.marketwatch.com/investing/stock/aapl", BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, status(401), ok_json(DYLAN_TSLA_RESPONSE))
+        fake_network.get(self.TSLA_PAGE, ok(page_with_token))
+
+        provider = MarketwatchProvider()
+        metrics = await provider.get_financials("AAPL")
+
+        assert metrics.pe_ratio == pytest.approx(439.79)
+        assert provider._dynamic_token == fresh_token
+        assert f"EntitlementToken={fresh_token}" in fake_network.urls(self.DYLAN)[1]
+
+    async def test_yahoo_suffix_and_european_isin_avoid_otc(self, fake_network):
+        airbus_symbols = {
+            "symbols": [
+                {
+                    "ticker": "EADSF",
+                    "country": "US",
+                    "exchangeIsoCode": "OOTC",
+                    "isin": "NL0000235190",
+                    "type": "Stock",
+                    "score": 1.0,
+                    "company": "Airbus SE",
+                },
+                {
+                    "ticker": "FR:AIR",
+                    "country": "FR",
+                    "exchangeIsoCode": "XPAR",
+                    "isin": "NL0000235190",
+                    "type": "Stock",
+                    "score": 0.8,
+                    "company": "Airbus SE",
+                },
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(airbus_symbols))
+        fake_network.get("/air?countrycode=fr", BOT_CHALLENGE)
+
+        by_isin = await MarketwatchProvider().get_financials("NL0000235190")
+        by_suffix = await MarketwatchProvider().get_financials("AIR.PA")
+
+        assert by_isin.exchange == "XPAR"
+        assert by_isin.provider_url.endswith("/air?countrycode=fr")
+        assert by_suffix.exchange == "XPAR"
+        assert "q=FR%3AAIR" in fake_network.urls(self.SEARCH)[1]
+
+    async def test_url_input_and_configured_token(self, fake_network, monkeypatch):
+        monkeypatch.setattr(MarketwatchProvider, "TOKEN", "custom_env_token_123")
+        fake_network.get(self.SEARCH, ok_json(DOW_JONES_SYMBOLS))
+        fake_network.get("investing/stock/aapl", BOT_CHALLENGE)
+
+        metrics = await MarketwatchProvider().get_financials(
+            "https://www.marketwatch.com/investing/stock/aapl?countrycode=us"
+        )
+
+        assert metrics.ticker == "AAPL"
+        assert "entitlementToken=custom_env_token_123" in fake_network.urls(self.SEARCH)[0]
+
+    async def test_german_url_and_colon_prefixed_ticker_and_isin_country_match(
+        self, fake_network, monkeypatch
+    ):
+        monkeypatch.setattr(MarketwatchProvider, "TOKEN", None)
+        monkeypatch.delenv("MARKETWATCH_TOKEN", raising=False)
+
+        sap_symbols = {
+            "symbols": [
+                {
+                    "ticker": "XE:SAP",
+                    "country": "XE",
+                    "exchangeIsoCode": "XETR",
+                    "isin": "DE0007164600",
+                    "type": "Stock",
+                    "score": 1.0,
+                    "company": "SAP SE",
+                    "chartingSymbol": "STOCK/XE/XETR/SAP",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(sap_symbols))
+        fake_network.get("/sap?countrycode=xe", BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, status(503))
+
+        p = MarketwatchProvider(max_retries=1)
+        p._dynamic_token = "cached_dynamic_token_000000000000"
+        m1 = await p.get_financials(
+            "https://www.marketwatch.com/investing/stock/sap?countrycode=de"
+        )
+        m2 = await p.get_financials("XE:SAP")
+        m3 = await p.get_financials("DE0007164600")
+        assert await p.get_financials("   ") is None
+        assert MarketwatchProvider._normalize_query("NASDAQ:AAPL") == ("AAPL", None)
+
+        assert m1.exchange == "XETR"
+        assert m2.exchange == "XETR"
+        assert m3.exchange == "XETR"
+        assert (
+            "entitlementToken=cached_dynamic_token_000000000000"
+            in fake_network.urls(self.SEARCH)[0]
+        )
+
+    async def test_token_refresh_failure_and_dylan_error(self, fake_network, monkeypatch):
+        monkeypatch.setattr(MarketwatchProvider, "TOKEN", None)
+        monkeypatch.delenv("MARKETWATCH_TOKEN", raising=False)
+
+        fake_network.get(self.SEARCH, status(400))
+        fake_network.get(self.TSLA_PAGE, httpx.ConnectError("down"))
+
+        p = MarketwatchProvider(max_retries=1)
+        assert await p.get_financials("TSLA") is None
+
+
 # WSJ ranks listings by score, without the US preference of the two sites above.
 WSJ_SYMBOLS = {
     "symbols": [

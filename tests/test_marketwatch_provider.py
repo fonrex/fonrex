@@ -25,6 +25,14 @@ SAMPLE_MARKETWATCH_HTML = """
   <span class="pubdate" data-est="2026-05-16T11:00:00Z">2 hours ago</span>
   <span class="byline">Jane Smith</span>
 </div>
+<div class="article__content">
+  <h3 class="article__headline">
+    <span class="article__label evs">EVs</span>
+    <a class="link" href="https://www.barrons.com/articles/tesla-robo-taxi">
+      Tesla Faces a Robo-Taxi Revolution in China.
+    </a>
+  </h3>
+</div>
 """
 
 
@@ -51,7 +59,7 @@ def test_marketwatch_parse_html():
     p = MarketWatchNewsProvider()
     items = p._parse(SAMPLE_MARKETWATCH_HTML, limit=10)
 
-    assert len(items) == 2
+    assert len(items) == 3
     assert items[0].title == "Apple upgraded to buy"
     assert (
         items[0].url == "https://www.marketwatch.com/investing/stock/aapl/story/apple-upgrade-123"
@@ -67,13 +75,16 @@ def test_marketwatch_parse_html():
     assert items[1].author == "Jane Smith"
     assert items[1].published_at == datetime(2026, 5, 16, 11, 0, tzinfo=timezone.utc)
 
+    assert items[2].title == "Tesla Faces a Robo-Taxi Revolution in China."
+    assert items[2].url == "https://www.barrons.com/articles/tesla-robo-taxi"
+
 
 @pytest.mark.asyncio
 async def test_marketwatch_fetch_nominal():
     p = MarketWatchNewsProvider()
     with patch.object(p, "_get", new_callable=AsyncMock, return_value=SAMPLE_MARKETWATCH_HTML):
         items = await p.fetch(ticker="AAPL")
-        assert len(items) == 2
+        assert len(items) == 3
 
 
 @pytest.mark.asyncio

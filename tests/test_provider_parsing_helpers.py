@@ -204,11 +204,17 @@ class TestMarketwatchKeyData:
             '<span class="primary">N/A</span></li>'
             "</ul>"
             "<div><span>P/E Ratio</span><span>18.5</span></div>"
+            "<div>Market Cap: $1.58T</div>"
+            "<div>Ex-Dividend Date: Nov 5, 2026</div>"
+            "<div>" + ("x" * 60) + "</div>"
         )
         provider = MarketwatchProvider()
         metrics = provider._parse_page(html, "TST")
         assert metrics.pe_ratio == pytest.approx(18.5)
+        assert metrics.market_cap == pytest.approx(1.58e12)
+        assert getattr(metrics, "dividend_rate", None) is None
         assert getattr(metrics, "week_52_low", None) is None
+        assert provider._find_value_by_label(html, ["Dividend"]) is None
 
         assert provider.extract_entitlement_token("") is None
         assert provider.extract_entitlement_token("<html>no token</html>") is None
@@ -224,6 +230,9 @@ class TestMarketwatchKeyData:
                         "Matches": [
                             {
                                 "Trading": {"Last": {"Price": {"Iso": "EUR", "Value": 12.34}}},
+                                "Financials": {
+                                    "LastDividendPerShare": {"Iso": "EUR", "Value": 0.25},
+                                },
                                 "TradingStatistics": {
                                     "PriceStatistics": [
                                         {"Range": {"Duration": {"ValueString": "P50D"}}},
@@ -240,6 +249,25 @@ class TestMarketwatchKeyData:
         )
         assert m.price == pytest.approx(12.34)
         assert m.currency == "EUR"
+        assert getattr(m, "dividend_rate", None) is None
+
+        provider.read_dylan_quote(
+            m,
+            {
+                "InstrumentResponses": [
+                    {
+                        "Matches": [
+                            {
+                                "Financials": {
+                                    "AnnualizedDividend": {"Iso": "EUR", "Value": 1.00},
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+        assert m.dividend_rate == pytest.approx(1.00)
 
 
 class TestBoursoramaHelpers:

@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 from selectolax.parser import HTMLParser
 
 from financials.models import FinancialMetrics
-from financials.numbers import find_number, parse_number
+from financials.numbers import parse_number
 from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
@@ -68,11 +68,15 @@ ISIN_PREFIX_TO_MW_COUNTRY = {
     "AT": "AT",
     "CH": "CH",
     "CA": "CA",
+    "IE": "IE",
+    "LU": "LU",
 }
 
 EUROPEAN_MW_COUNTRIES = frozenset(
-    {"FR", "NL", "XE", "UK", "BE", "PT", "IT", "ES", "SE", "FI", "DK", "NO", "AT", "CH"}
+    {"FR", "NL", "XE", "UK", "BE", "PT", "IT", "ES", "SE", "FI", "DK", "NO", "AT", "CH", "IE", "LU"}
 )
+
+KNOWN_MW_COUNTRIES = frozenset(ISIN_PREFIX_TO_MW_COUNTRY.values())
 
 
 class MarketwatchProvider(BaseProvider):
@@ -83,22 +87,21 @@ class MarketwatchProvider(BaseProvider):
     SEARCH_API = "https://api.wsj.net/api/autocomplete/search"
     DYLAN_QUOTE_API = "https://api.wsj.net/api/dylan/quotes/v2/comp/quoteByDialect"
     TOKEN = os.getenv(MARKETWATCH_TOKEN_ENV_VAR)
-    _dynamic_token: Optional[str] = None
     BASE_URL = "https://www.marketwatch.com/investing/stock/{ticker}"
 
     def __init__(self, max_retries: int = 3, timeout: int = 15):
         self.max_retries = max_retries
         self.timeout = timeout
+        self._dynamic_token: Optional[str] = None
 
-    @classmethod
-    def extract_entitlement_token(cls, html: str) -> Optional[str]:
-        """Extract dylan-entitlement-token from MarketWatch HTML and cache it."""
+    def extract_entitlement_token(self, html: str) -> Optional[str]:
+        """Extract dylan-entitlement-token from MarketWatch HTML and cache it on the instance."""
         if not html:
             return None
         match = _ENTITLEMENT_TOKEN_RE.search(html)
         if match:
             token = match.group(1).lower()
-            cls._dynamic_token = token
+            self._dynamic_token = token
             return token
         return None
 
@@ -114,7 +117,11 @@ class MarketwatchProvider(BaseProvider):
     async def _refresh_entitlement_token(
         self, client: ProviderSession, url: Optional[str] = None
     ) -> Optional[str]:
-        """Fetch a MarketWatch page to dynamically refresh the public entitlement token."""
+        """Best-effort refresh of the public entitlement token from a MarketWatch quote page.
+
+        Note: without a residential proxy, MarketWatch HTML pages may return a 401 anti-bot
+        challenge; in that case MARKETWATCH_TOKEN can be configured explicitly.
+        """
         target = url or self.BASE_URL.format(ticker="tsla")
         try:
             resp = await client.get(target, headers=self._page_headers)
@@ -152,6 +159,8 @@ class MarketwatchProvider(BaseProvider):
                     for field, value in page_metrics.model_dump(exclude_none=True).items():
                         setattr(metrics, field, value)
 
+                # Only call the Dylan quote API when the HTML page was blocked or yielded no
+                # quote data, avoiding an extra network round-trip on normal page loads.
                 charting_symbol = search_result.get("charting_symbol")
                 if (
                     charting_symbol
@@ -181,7 +190,7 @@ class MarketwatchProvider(BaseProvider):
             qs = parse_qs(urlparse(raw).query)
             cc = (qs.get("countrycode") or [None])[0]
             if cc and cc.upper() != "US":
-                country = "XE" if cc.upper() == "DE" else cc.upper()
+                country = ISIN_PREFIX_TO_MW_COUNTRY.get(cc.upper(), cc.upper())
                 return f"{country}:{sym}", country
             return sym, "US"
 
@@ -189,7 +198,10 @@ class MarketwatchProvider(BaseProvider):
         if ":" in upper:
             prefix, _, sym = upper.partition(":")
             if prefix and sym:
-                return f"{prefix}:{sym}", prefix
+                country = ISIN_PREFIX_TO_MW_COUNTRY.get(prefix, prefix)
+                if country in KNOWN_MW_COUNTRIES:
+                    return f"{country}:{sym}", country
+                return sym, None
 
         for suffix, country in SUFFIX_TO_MW_COUNTRY.items():
             if upper.endswith(suffix):
@@ -356,6 +368,15 @@ class MarketwatchProvider(BaseProvider):
         }
         try:
             resp = await client.get(self.DYLAN_QUOTE_API, params=params, headers=headers)
+            if (
+                resp.status_code in (400, 401, 403)
+                and not (self.TOKEN or os.getenv(MARKETWATCH_TOKEN_ENV_VAR) or "").strip()
+            ):
+                refreshed = await self._refresh_entitlement_token(client)
+                if refreshed and refreshed != token:
+                    params["ckey"] = refreshed[:10]
+                    params["EntitlementToken"] = refreshed
+                    resp = await client.get(self.DYLAN_QUOTE_API, params=params, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 return data if isinstance(data, dict) else None
@@ -405,11 +426,12 @@ class MarketwatchProvider(BaseProvider):
         _put(metrics, "pe_ratio", _number(financials.get("PriceToEarningsRatio")))
         _put(metrics, "eps", _nested_number(financials, "LastEarningsPerShare", "Value"))
         _put(metrics, "dividend_yield", _number(financials.get("Yield")))
+        # Only use AnnualizedDividend: LastDividendPerShare is a single payment, not annual.
         _put(
             metrics,
             "dividend_rate",
-            _number(financials.get("AnnualizedDividend"))
-            or _nested_number(financials, "LastDividendPerShare", "Value"),
+            _nested_number(financials, "AnnualizedDividend", "Value")
+            or _number(financials.get("AnnualizedDividend")),
         )
         _put(metrics, "market_cap", _nested_number(financials, "MarketCapitalization", "Value"))
         _put(metrics, "shares_outstanding", _number(financials.get("SharesOutstanding")))
@@ -443,10 +465,11 @@ class MarketwatchProvider(BaseProvider):
         if price_node:
             metrics.price = parse_number(price_node.text(strip=True), decimal=".")
 
+        # Note: the "Dividend" row on MarketWatch quote pages shows a single payment
+        # (e.g. quarterly), not the annualized dividend rate, so it is intentionally omitted.
         metrics.pe_ratio = self._find_value_by_label(parser, ["P/E Ratio", "P/E"])
         metrics.dividend_yield = self._find_value_by_label(parser, ["Yield", "Dividend Yield"])
         metrics.eps = self._find_value_by_label(parser, ["EPS"])
-        metrics.dividend_rate = self._find_value_by_label(parser, ["Dividend"])
         metrics.market_cap = self._find_value_by_label(parser, ["Market Cap"])
         metrics.beta = self._find_value_by_label(parser, ["Beta"])
         metrics.shares_outstanding = self._find_value_by_label(parser, ["Shares Outstanding"])
@@ -483,7 +506,7 @@ class MarketwatchProvider(BaseProvider):
                 return None, None
         return None, None
 
-    def _find_value_by_label(self, parser: HTMLParser, labels: list) -> Optional[float]:
+    def _find_value_by_label(self, parser: HTMLParser, labels: list[str]) -> Optional[float]:
         # Key data list of the quote page:
         # <li class="kv__item"><small class="label">P/E Ratio</small><span class="primary">38.25</span>
         wanted = {label.lower() for label in labels}
@@ -491,23 +514,24 @@ class MarketwatchProvider(BaseProvider):
             label_node = item.css_first(".label")
             value_node = item.css_first(".primary")
             if label_node and value_node and label_node.text(strip=True).lower() in wanted:
-                raw = value_node.text(strip=True)
-                parsed = parse_number(raw, decimal=".")
-                return parsed if parsed is not None else find_number(raw)
+                return parse_number(value_node.text(strip=True), decimal=".")
 
         for node in parser.css("div, span, td, li"):
             txt = node.text(strip=True)
-            for label in labels:
-                if label.lower() in txt.lower() and len(txt) < 50:
-                    if ":" in txt:
-                        value = find_number(txt, last=True)
-                        if value is not None:
-                            return value
-                    sibling = node.next
-                    if sibling:
-                        value = find_number(sibling.text(strip=True))
-                        if value is not None:
-                            return value
+            if len(txt) >= 50:
+                continue
+            if ":" in txt:
+                head, _, tail = txt.partition(":")
+                if head.strip().lower() in wanted:
+                    value = parse_number(tail, decimal=".")
+                    if value is not None:
+                        return value
+            elif txt.lower() in wanted:
+                sibling = node.next
+                if sibling:
+                    value = parse_number(sibling.text(strip=True), decimal=".")
+                    if value is not None:
+                        return value
         return None
 
 

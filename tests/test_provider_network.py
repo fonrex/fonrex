@@ -583,14 +583,10 @@ class TestMarketwatch:
 
     async def test_dynamic_token_refresh_on_expired_default_token(self, fake_network, monkeypatch):
         monkeypatch.setattr(MarketwatchProvider, "TOKEN", None)
-        monkeypatch.setattr(MarketwatchProvider, "_dynamic_token", None)
         monkeypatch.delenv("MARKETWATCH_TOKEN", raising=False)
 
         fresh_token = "11223344556677889900aabbccddeeff"
-        page_with_token = (
-            f'<div dylan-entitlement-token="{fresh_token}">'
-            "<h1>Tesla Inc.</h1></div>"
-        )
+        page_with_token = f'<div dylan-entitlement-token="{fresh_token}"><h1>Tesla Inc.</h1></div>'
         fake_network.get(self.SEARCH, status(400), ok_json(DOW_JONES_SYMBOLS))
         fake_network.get(self.TSLA_PAGE, ok(page_with_token))
         fake_network.get(
@@ -598,11 +594,42 @@ class TestMarketwatch:
             ok(fixture("marketwatch_aapl.html")),
         )
 
-        metrics = await MarketwatchProvider().get_financials("AAPL")
+        provider = MarketwatchProvider()
+        metrics = await provider.get_financials("AAPL")
 
         assert metrics.pe_ratio == pytest.approx(38.25)
-        assert MarketwatchProvider._dynamic_token == fresh_token
+        assert provider._dynamic_token == fresh_token
         assert f"entitlementToken={fresh_token}" in fake_network.urls(self.SEARCH)[1]
+
+    async def test_dynamic_token_refresh_on_dylan_401(self, fake_network, monkeypatch):
+        monkeypatch.setattr(MarketwatchProvider, "TOKEN", None)
+        monkeypatch.delenv("MARKETWATCH_TOKEN", raising=False)
+
+        fresh_token = "aabbccddeeff00112233445566778899"
+        page_with_token = f'<div dylan-entitlement-token="{fresh_token}"><h1>Tesla Inc.</h1></div>'
+        symbols = {
+            "symbols": [
+                {
+                    "ticker": "AAPL",
+                    "country": "US",
+                    "type": "Stock",
+                    "score": 1,
+                    "company": "Apple Inc.",
+                    "chartingSymbol": "STOCK/US/XNAS/AAPL",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(symbols))
+        fake_network.get("https://www.marketwatch.com/investing/stock/aapl", BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, status(401), ok_json(DYLAN_TSLA_RESPONSE))
+        fake_network.get(self.TSLA_PAGE, ok(page_with_token))
+
+        provider = MarketwatchProvider()
+        metrics = await provider.get_financials("AAPL")
+
+        assert metrics.pe_ratio == pytest.approx(439.79)
+        assert provider._dynamic_token == fresh_token
+        assert f"EntitlementToken={fresh_token}" in fake_network.urls(self.DYLAN)[1]
 
     async def test_yahoo_suffix_and_european_isin_avoid_otc(self, fake_network):
         airbus_symbols = {
@@ -654,7 +681,6 @@ class TestMarketwatch:
         self, fake_network, monkeypatch
     ):
         monkeypatch.setattr(MarketwatchProvider, "TOKEN", None)
-        monkeypatch.setattr(MarketwatchProvider, "_dynamic_token", "cached_dynamic_token_000000000000")
         monkeypatch.delenv("MARKETWATCH_TOKEN", raising=False)
 
         sap_symbols = {
@@ -676,19 +702,25 @@ class TestMarketwatch:
         fake_network.get(self.DYLAN, status(503))
 
         p = MarketwatchProvider(max_retries=1)
-        m1 = await p.get_financials("https://www.marketwatch.com/investing/stock/sap?countrycode=de")
+        p._dynamic_token = "cached_dynamic_token_000000000000"
+        m1 = await p.get_financials(
+            "https://www.marketwatch.com/investing/stock/sap?countrycode=de"
+        )
         m2 = await p.get_financials("XE:SAP")
         m3 = await p.get_financials("DE0007164600")
         assert await p.get_financials("   ") is None
+        assert MarketwatchProvider._normalize_query("NASDAQ:AAPL") == ("AAPL", None)
 
         assert m1.exchange == "XETR"
         assert m2.exchange == "XETR"
         assert m3.exchange == "XETR"
-        assert "entitlementToken=cached_dynamic_token_000000000000" in fake_network.urls(self.SEARCH)[0]
+        assert (
+            "entitlementToken=cached_dynamic_token_000000000000"
+            in fake_network.urls(self.SEARCH)[0]
+        )
 
     async def test_token_refresh_failure_and_dylan_error(self, fake_network, monkeypatch):
         monkeypatch.setattr(MarketwatchProvider, "TOKEN", None)
-        monkeypatch.setattr(MarketwatchProvider, "_dynamic_token", None)
         monkeypatch.delenv("MARKETWATCH_TOKEN", raising=False)
 
         fake_network.get(self.SEARCH, status(400))

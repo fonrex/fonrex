@@ -7,6 +7,7 @@ pages, reduced to what the scraper reads (see tests/fixtures/providers/README.md
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -87,13 +88,20 @@ class TestRealPages:
 
 
 class TestWebScraping:
-    def test_english_profile_url_is_requested(self):
-        fetch = FakeFetch(page("acc_en"))
+    def test_french_profile_url_is_requested_by_default(self):
+        fetch = FakeFetch(page("acc_fr"))
 
         JustETFScraper(fetch).extract_etf_data(ACC_ISIN)
 
         assert fetch.urls == [f"{ETF_PROFILE_URL}?isin={ACC_ISIN}"]
-        assert "/en/" in fetch.urls[0]
+        assert "/fr/" in fetch.urls[0]
+
+    def test_english_profile_url_is_requested_when_asked(self):
+        fetch = FakeFetch(page("acc_en"))
+
+        JustETFScraper(fetch, locale="en").extract_etf_data(ACC_ISIN)
+
+        assert fetch.urls == [f"https://www.justetf.com/en/etf-profile.html?isin={ACC_ISIN}"]
 
     def test_isin_is_escaped_in_the_url(self):
         fetch = FakeFetch("", status_code=404)
@@ -375,3 +383,235 @@ class TestFieldParsing:
         JustETFScraper()._extract_logo(BeautifulSoup(html, "html.parser"), data, is_local=False)
 
         assert data["logo"] == "https://cdn.example.test/logo.svg"
+
+
+def without_documents(name: str) -> str:
+    """The page as the international English view serves it: no documents panel."""
+    soup = BeautifulSoup(page(name), "html.parser")
+    for panel in soup.select(".documentslist"):
+        panel.decompose()
+    return str(soup)
+
+
+class RoutedFetch:
+    """Answers each URL with the page of its language, and records the URLs."""
+
+    def __init__(self, pages: dict[str, tuple[int, str]]):
+        self.pages = pages
+        self.urls: list[str] = []
+
+    def __call__(self, url: str):
+        self.urls.append(url)
+        locale = urlparse(url).path.strip("/").split("/", 1)[0]
+        status_code, text = self.pages.get(locale, (404, ""))
+        return SimpleNamespace(status_code=status_code, text=text)
+
+
+def en_url(isin: str = ACC_ISIN) -> str:
+    return f"https://www.justetf.com/en/etf-profile.html?isin={isin}"
+
+
+def fr_url(isin: str = ACC_ISIN) -> str:
+    return f"https://www.justetf.com/fr/etf-profile.html?isin={isin}"
+
+
+class TestFactSheetPdf:
+    def test_french_page_gives_the_french_fact_sheet(self):
+        fetch = FakeFetch(page("acc_fr"))
+
+        data = JustETFScraper(fetch).extract_etf_data(ACC_ISIN)
+
+        assert data["justETF_pdf_url"] == EXPECTED["acc_fr"]["expected"]["justETF_pdf_url"]
+        assert data["justETF_pdf_url"].endswith("MR_FR_fr_IE00B4L5Y983_YES_2026-08-31.pdf")
+        assert fetch.urls == [fr_url()]
+
+    def test_english_page_without_documents_reads_the_fact_sheet_in_french(self):
+        fetch = RoutedFetch({"en": (200, without_documents("acc_en")), "fr": (200, page("acc_fr"))})
+
+        data = JustETFScraper(fetch, locale="en").extract_etf_data(ACC_ISIN)
+
+        assert fetch.urls == [en_url(), fr_url()]
+        assert data["justETF_pdf_url"] == EXPECTED["acc_fr"]["expected"]["justETF_pdf_url"]
+        # The other figures stay those of the requested page.
+        assert data["fundSize_etf"] == EXPECTED["acc_en"]["expected"]["fundSize_etf"]
+        assert data["justETF_url"] == en_url()
+
+    def test_failed_fallback_keeps_the_english_figures(self):
+        fetch = RoutedFetch({"en": (200, without_documents("acc_en")), "fr": (503, "")})
+
+        data = JustETFScraper(fetch, locale="en").extract_etf_data(ACC_ISIN)
+
+        assert data["justETF_pdf_url"] == ""
+        assert data["holdingCount_etf"] == 1252
+        assert fetch.urls == [en_url(), fr_url()]
+
+    def test_fallback_page_without_documents_gives_no_pdf(self):
+        fetch = RoutedFetch(
+            {"en": (200, without_documents("acc_en")), "fr": (200, without_documents("acc_fr"))}
+        )
+
+        data = JustETFScraper(fetch, locale="en").extract_etf_data(ACC_ISIN)
+
+        assert data["justETF_pdf_url"] == ""
+        assert len(fetch.urls) == 2
+
+    def test_french_page_without_documents_is_not_read_twice(self):
+        fetch = RoutedFetch({"fr": (200, without_documents("acc_fr"))})
+
+        data = JustETFScraper(fetch).extract_etf_data(ACC_ISIN)
+
+        assert data["justETF_pdf_url"] == ""
+        assert fetch.urls == [fr_url()]
+
+    def test_locale_of_the_call_wins_over_the_scraper_one(self):
+        fetch = FakeFetch(page("acc_en"))
+
+        JustETFScraper(fetch, locale="fr").extract_etf_data(ACC_ISIN, locale="en")
+
+        assert fetch.urls == [en_url()]
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Fiche d’information (FR)",
+            "Fiche d'information (FR)",
+            "FICHE D‘INFORMATION",
+            "Fiche dʼinformation",
+            "Factsheet (EN)",
+            "Fact sheet",
+            "Fact-sheet (DE)",
+        ],
+    )
+    def test_fact_sheet_titles(self, title):
+        html = (
+            '<a data-testid="etf-documents-panel_item-link" '
+            f'href="https://x.test/doc.pdf" title="{title}">doc</a>'
+        )
+        data = {}
+
+        JustETFScraper()._extract_fact_sheet_pdf(etree.HTML(html), data)
+
+        assert data["justETF_pdf_url"] == "https://x.test/doc.pdf"
+
+    def test_label_is_read_from_the_link_text_when_there_is_no_title(self):
+        html = (
+            '<a data-testid="etf-documents-panel_item-link" href="/docs/fs.pdf">'
+            " Fiche d’information (FR) </a>"
+        )
+        data = {}
+
+        JustETFScraper()._extract_fact_sheet_pdf(etree.HTML(html), data)
+
+        assert data["justETF_pdf_url"] == "https://www.justetf.com/docs/fs.pdf"
+
+    def test_fact_sheet_is_preferred_to_other_documents(self):
+        html = (
+            '<a data-testid="etf-documents-panel_item-link" href="https://x.test/kid.pdf" '
+            "title=\"Document d'informations clés (FR)\">kid</a>"
+            '<a data-testid="etf-documents-panel_item-link" href="https://x.test/other.pdf" '
+            'title="Fiche produit">other</a>'
+            '<a data-testid="etf-documents-panel_item-link" href="https://x.test/fs.pdf" '
+            'title="Fiche d’information (FR)">fs</a>'
+        )
+        data = {}
+
+        JustETFScraper()._extract_fact_sheet_pdf(etree.HTML(html), data)
+
+        assert data["justETF_pdf_url"] == "https://x.test/fs.pdf"
+
+    def test_no_fact_sheet_link(self):
+        html = (
+            '<a data-testid="etf-documents-panel_item-link" href="https://x.test/kid.pdf" '
+            'title="KID">kid</a><a data-testid="etf-documents-panel_item-link" href=" " '
+            'title="Factsheet">empty</a><a href="https://x.test/fs.pdf" title="Factsheet">x</a>'
+        )
+        data = {}
+
+        JustETFScraper()._extract_fact_sheet_pdf(etree.HTML(html), data)
+
+        assert data["justETF_pdf_url"] == ""
+
+    def test_unexpected_error_leaves_an_empty_pdf_url(self):
+        class BrokenDom:
+            def xpath(self, _query):
+                raise ValueError("broken")
+
+        data = {}
+
+        JustETFScraper()._extract_fact_sheet_pdf(BrokenDom(), data)
+
+        assert data["justETF_pdf_url"] == ""
+
+
+class TestProfileUrl:
+    def test_full_url_is_read_as_given(self):
+        url = f"https://www.justetf.com/fr/etf-profile.html?isin={ACC_ISIN}"
+        fetch = FakeFetch(page("acc_fr"))
+
+        data = JustETFScraper(fetch, locale="en").extract_etf_data(url)
+
+        assert fetch.urls == [url]
+        assert data["isin"] == ACC_ISIN
+        assert data["justETF_url"] == url
+        assert data["justETF_pdf_url"] == EXPECTED["acc_fr"]["expected"]["justETF_pdf_url"]
+
+    def test_english_url_without_documents_falls_back_to_french(self):
+        fetch = RoutedFetch({"en": (200, without_documents("acc_en")), "fr": (200, page("acc_fr"))})
+
+        data = JustETFScraper(fetch).extract_etf_data(en_url())
+
+        assert fetch.urls == [en_url(), fr_url()]
+        assert data["justETF_url"] == en_url()
+        assert data["justETF_pdf_url"] == EXPECTED["acc_fr"]["expected"]["justETF_pdf_url"]
+
+    def test_url_is_used_to_find_local_files(self, tmp_path):
+        (tmp_path / f"{ACC_ISIN}.html").write_text(page("acc_fr"), encoding="utf-8")
+        fetch = FakeFetch(status_code=500)
+
+        data = JustETFScraper(fetch).extract_etf_data(fr_url(), str(tmp_path))
+
+        assert data == EXPECTED["acc_fr"]["expected"]
+        assert fetch.urls == []
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (fr_url(), (ACC_ISIN, fr_url(), "fr")),
+            (f"  {en_url()}  ", (ACC_ISIN, en_url(), "en")),
+            (
+                f"http://justetf.com/etf-profile.html?isin={ACC_ISIN}",
+                (ACC_ISIN, f"http://justetf.com/etf-profile.html?isin={ACC_ISIN}", None),
+            ),
+            (ACC_ISIN, None),
+            ("", None),
+            ("https://www.justetf.com/fr/etf-profile.html", None),
+            (f"https://evil.test/fr/etf-profile.html?isin={ACC_ISIN}", None),
+            (f"https://justetf.com.evil.test/fr/?isin={ACC_ISIN}", None),
+            (f"ftp://www.justetf.com/fr/?isin={ACC_ISIN}", None),
+        ],
+    )
+    def test_parse_profile_url(self, value, expected):
+        assert JustETF_provider.parse_profile_url(value) == expected
+
+    @pytest.mark.parametrize(
+        ("locale", "expected"),
+        [("fr", "fr"), ("EN", "en"), (" de ", "de"), (None, "fr"), ("", "fr"), ("fr-FR", "fr"), ("../x", "fr")],
+    )
+    def test_normalize_locale(self, locale, expected):
+        assert JustETF_provider.normalize_locale(locale) == expected
+
+    def test_invalid_locale_of_the_scraper_falls_back_to_french(self):
+        fetch = FakeFetch(page("acc_fr"))
+
+        JustETFScraper(fetch, locale="english").extract_etf_data(ACC_ISIN)
+
+        assert fetch.urls == [fr_url()]
+
+    def test_public_functions_pass_the_locale(self, monkeypatch, tmp_path):
+        fetch = FakeFetch(page("acc_en"))
+        monkeypatch.setattr(JustETF_provider, "getRequest", fetch)
+
+        justETFWebScraping(ACC_ISIN, locale="en")
+        justETFScraping(ACC_ISIN, str(tmp_path), locale="en")
+
+        assert fetch.urls == [en_url(), en_url()]

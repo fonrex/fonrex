@@ -10,8 +10,8 @@ from the FastAPI application, which uses :mod:`financials.providers.justetf`.
 import logging
 import os
 import re
-from typing import Any, Callable, Dict, Optional
-from urllib.parse import parse_qs, quote, urlparse
+from typing import Any, Callable, Dict, Optional, Tuple
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -31,7 +31,14 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://www.justetf.com"
 # The language is explicit: without it the site redirects according to the visitor's
 # country, and labels and number formats then change from one run to the next.
-ETF_PROFILE_URL = f"{BASE_URL}/en/etf-profile.html"
+ETF_PROFILE_URL_TEMPLATE = f"{BASE_URL}/{{locale}}/etf-profile.html"
+# French by default: the international English view leaves the documents panel
+# (fact sheet PDF) out of the server-rendered page, the French view includes it.
+DEFAULT_LOCALE = "fr"
+# Language of the page read again when the requested one has no fact sheet link.
+PDF_FALLBACK_LOCALE = "fr"
+ETF_PROFILE_URL = ETF_PROFILE_URL_TEMPLATE.format(locale=DEFAULT_LOCALE)
+_LOCALE_PATTERN = re.compile(r"^[a-z]{2}$")
 REQUEST_TIMEOUT = 15.0
 REQUEST_HEADERS = {
     "User-Agent": (
@@ -59,6 +66,57 @@ _FUND_SIZE_PATTERN = re.compile(
 )
 _MILLION_UNITS = {"m", "mio", "mio."}
 
+# Labels of the fact sheet in the documents panel, most specific first
+# ("Factsheet (EN)", "Fiche d’information (FR)", "Fact sheet").
+FACT_SHEET_LABELS = ("factsheet", "fact sheet", "fact-sheet", "fiche d'information", "fiche")
+# Typographic apostrophes and look-alikes, read as a straight apostrophe.
+_APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "´": "'", "`": "'"})
+
+
+def normalize_locale(locale: Optional[str]) -> str:
+    """Return a two-letter site language, or the default one when it is not valid."""
+    value = (locale or "").strip().lower()
+    if _LOCALE_PATTERN.match(value):
+        return value
+    if locale:
+        logger.warning(f"Invalid JustETF locale {locale!r}, using {DEFAULT_LOCALE!r}")
+    return DEFAULT_LOCALE
+
+
+def profile_url(isin: str, locale: Optional[str] = None) -> str:
+    """URL of the profile page of an ISIN in the given site language."""
+    base = ETF_PROFILE_URL_TEMPLATE.format(locale=normalize_locale(locale))
+    return f"{base}?isin={quote(isin.strip(), safe='')}"
+
+
+def parse_profile_url(value: str) -> Optional[Tuple[str, str, Optional[str]]]:
+    """Read a JustETF profile URL given instead of an ISIN.
+
+    Returns:
+        ``(isin, url, locale)`` when ``value`` is a JustETF URL holding an ISIN, the
+        locale being ``None`` when the path does not start with a language; ``None``
+        when ``value`` is not such a URL.
+    """
+    text = (value or "").strip()
+    parsed = urlparse(text)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https") or not (
+        host == "justetf.com" or host.endswith(".justetf.com")
+    ):
+        return None
+    isin = parse_qs(parsed.query).get("isin", [""])[0].strip()
+    if not isin:
+        return None
+    first_segment = parsed.path.strip("/").split("/", 1)[0].lower()
+    locale = first_segment if _LOCALE_PATTERN.match(first_segment) else None
+    return isin, text, locale
+
+
+def _normalize_label(text: str) -> str:
+    """Lower-case a label, with straight apostrophes and single spaces."""
+    text = text.translate(_APOSTROPHES).casefold()
+    return re.sub(rf"[{_SPACES}]+", " ", text).strip()
+
 # Initialize tools
 tools = ToolsBox()
 
@@ -76,28 +134,42 @@ def getRequest(url: str) -> httpx.Response:
 class JustETFScraper:
     """Professional ETF data scraper for JustETF.com"""
 
-    def __init__(self, fetch: Optional[Callable[[str], Any]] = None):
+    def __init__(
+        self, fetch: Optional[Callable[[str], Any]] = None, locale: str = DEFAULT_LOCALE
+    ):
         """
         Args:
             fetch: Optional replacement for the HTTP call. It receives a URL and returns
                 an object exposing ``status_code`` and ``text``.
+            locale: Language of the profile pages read ("fr", "en", "de"…).
         """
         self.tools = tools
         self.base_url = BASE_URL
         self._fetch = fetch
+        self.locale = normalize_locale(locale)
 
-    def extract_etf_data(self, isin: str, root_path: Optional[str] = None) -> Dict[str, Any]:
+    def extract_etf_data(
+        self, isin: str, root_path: Optional[str] = None, locale: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Extract comprehensive ETF data from JustETF
 
         Args:
-            isin: ISIN of the ETF to extract data for
+            isin: ISIN of the ETF, or the full URL of its JustETF profile page (read
+                as given, in its own language)
             root_path: Optional path to local JustETF files
+            locale: Language of the profile page, instead of the scraper's one
 
         Returns:
             Dictionary with JustETF data
         """
-        etf_data = {"isin": isin}
+        target = parse_profile_url(isin)
+        if target:
+            isin, url, page_locale = target
+        else:
+            page_locale = normalize_locale(locale) if locale else self.locale
+            url = None
+        etf_data: Dict[str, Any] = {"isin": isin}
 
         try:
             # Try local files first if path provided
@@ -106,7 +178,7 @@ class JustETFScraper:
                 return etf_data
 
             # Fallback to web scraping
-            return self._extract_from_web(isin, etf_data)
+            return self._extract_from_web(isin, etf_data, url=url, locale=page_locale)
 
         except Exception as e:
             logger.error(f"Error extracting ETF data: {str(e)}")
@@ -162,13 +234,21 @@ class JustETFScraper:
         logger.info(f"No matching local file found for ISIN: {isin}")
         return False
 
-    def _extract_from_web(self, isin: str, etf_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_from_web(
+        self,
+        isin: str,
+        etf_data: Dict[str, Any],
+        url: Optional[str] = None,
+        locale: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Extract ETF data from JustETF website
 
         Args:
             isin: ETF ISIN
             etf_data: Dictionary to populate with data
+            url: Profile URL to read as given (instead of the one built from the ISIN)
+            locale: Language of the page built from the ISIN, and of a given URL
 
         Returns:
             Updated dictionary with web-scraped data
@@ -177,18 +257,39 @@ class JustETFScraper:
             logger.warning("No ISIN provided for web scraping")
             return etf_data
 
-        url = f"{ETF_PROFILE_URL}?isin={quote(isin.strip(), safe='')}"
+        url = url or profile_url(isin, locale or self.locale)
+        page_data = self._fetch_profile(url, isin)
+        if page_data is None:
+            logger.warning(f"JustETF did not return the profile page of ISIN: {isin}")
+            return etf_data
+
+        etf_data.update(page_data)
+        etf_data["justETF_url"] = url
+        logger.info(f"Successfully scraped data for ISIN: {isin}")
+
+        # Some language views leave the documents panel out of the page: the fact
+        # sheet is then read on the French one; the other figures are kept.
+        if not etf_data.get("justETF_pdf_url") and locale != PDF_FALLBACK_LOCALE:
+            fallback = self._fetch_profile(profile_url(isin, PDF_FALLBACK_LOCALE), isin)
+            if fallback and fallback.get("justETF_pdf_url"):
+                etf_data["justETF_pdf_url"] = fallback["justETF_pdf_url"]
+                logger.info(f"Fact sheet of ISIN {isin} read on the {PDF_FALLBACK_LOCALE} page")
+
+        return etf_data
+
+    def _fetch_profile(self, url: str, isin: str) -> Optional[Dict[str, Any]]:
+        """Read the profile page at ``url``; ``None`` when it is not the page of ``isin``."""
         logger.info(f"Scraping JustETF URL: {url}")
 
         try:
             response = (self._fetch or getRequest)(url)
         except httpx.HTTPError as e:
             logger.error(f"Error scraping JustETF website: {str(e)}")
-            return etf_data
+            return None
 
         if response.status_code != 200:
             logger.error(f"Failed to fetch JustETF page. Status code: {response.status_code}")
-            return etf_data
+            return None
 
         soup = BeautifulSoup(response.text, "html.parser")
         page_data: Dict[str, Any] = {"isin": isin}
@@ -197,13 +298,8 @@ class JustETFScraper:
         if self._validate_isin_match(soup, isin) and self._process_etf_page(
             soup, isin, page_data, is_local=False
         ):
-            etf_data.update(page_data)
-            etf_data["justETF_url"] = url
-            logger.info(f"Successfully scraped data for ISIN: {isin}")
-        else:
-            logger.warning(f"JustETF did not return the profile page of ISIN: {isin}")
-
-        return etf_data
+            return page_data
+        return None
 
     def _process_etf_page(
         self, soup: BeautifulSoup, isin: str, etf_data: Dict[str, Any], is_local: bool = False
@@ -311,12 +407,28 @@ class JustETFScraper:
             logger.warning(f"Failed to extract logo: {str(e)}")
 
     def _extract_fact_sheet_pdf(self, dom: etree._Element, etf_data: Dict[str, Any]) -> None:
-        """Extract fact sheet PDF URL"""
+        """Extract fact sheet PDF URL
+
+        The link is recognised by its title or its text, whatever the case and the
+        apostrophe used ("Fiche d’information", "Fiche d'information", "Factsheet").
+        """
         try:
-            pdf_elements = dom.xpath(
-                '//a[@data-testid="etf-documents-panel_item-link" and (contains(translate(@title, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "factsheet") or contains(translate(@title, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "fact-sheet") or contains(translate(@title, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "fiche"))]/@href'
+            links = []
+            for link in dom.xpath('//a[@data-testid="etf-documents-panel_item-link"][@href]'):
+                href = (link.get("href") or "").strip()
+                if href:
+                    label = _normalize_label(f"{link.get('title') or ''} {''.join(link.itertext())}")
+                    links.append((label, href))
+
+            etf_data["justETF_pdf_url"] = next(
+                (
+                    urljoin(f"{self.base_url}/", href)
+                    for wanted in FACT_SHEET_LABELS
+                    for label, href in links
+                    if wanted in label
+                ),
+                "",
             )
-            etf_data["justETF_pdf_url"] = pdf_elements[0] if pdf_elements else ""
             if etf_data["justETF_pdf_url"]:
                 logger.debug(f"Extracted PDF URL: {etf_data['justETF_pdf_url']}")
         except Exception as e:
@@ -445,30 +557,34 @@ def _parse_fund_amount(amount_str: str) -> tuple[str, float | int | None]:
 
 
 # Public API functions for backward compatibility
-def justETFScraping(isin: str, rootPathScrapJustETFFiles: Optional[str] = None) -> Dict[str, Any]:
+def justETFScraping(
+    isin: str, rootPathScrapJustETFFiles: Optional[str] = None, locale: str = DEFAULT_LOCALE
+) -> Dict[str, Any]:
     """
     Function for ETF scraping.
 
     Args:
-        isin: ETF ISIN
+        isin: ETF ISIN, or the full URL of its JustETF profile page
         rootPathScrapJustETFFiles: Optional path to local JustETF files
+        locale: Language of the profile page ("fr" by default)
 
     Returns:
         Dictionary with JustETF data
     """
-    scraper = JustETFScraper()
+    scraper = JustETFScraper(locale=locale)
     return scraper.extract_etf_data(isin, rootPathScrapJustETFFiles)
 
 
-def justETFWebScraping(isin: str) -> Dict[str, Any]:
+def justETFWebScraping(isin: str, locale: str = DEFAULT_LOCALE) -> Dict[str, Any]:
     """
     Function for web scraping.
 
     Args:
-        isin: ETF ISIN
+        isin: ETF ISIN, or the full URL of its JustETF profile page
+        locale: Language of the profile page ("fr" by default)
 
     Returns:
         Dictionary with web-scraped JustETF data
     """
-    scraper = JustETFScraper()
+    scraper = JustETFScraper(locale=locale)
     return scraper.extract_etf_data(isin)

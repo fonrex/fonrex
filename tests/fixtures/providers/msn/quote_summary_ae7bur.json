@@ -1,0 +1,63 @@
+[
+  {
+    "instrumentId": "ae7bur",
+    "quote": {
+      "price": 198.88,
+      "pricePreviousClose": 200.1,
+      "accumulatedVolume": 1674873.0,
+      "averageVolume": 1098830.0,
+      "peRatio": 25.4286,
+      "price52wHigh": 221.3,
+      "price52wLow": 157.42,
+      "yieldPercent": 1.599,
+      "marketCap": 158536000000.0,
+      "marketCapCurrency": "EUR",
+      "exchangeCode": "XPAR",
+      "exchangeName": "Euronext Paris",
+      "displayName": "Airbus SE",
+      "shortName": "Airbus NL",
+      "securityType": "stock",
+      "instrumentId": "ae7bur",
+      "symbol": "AIR",
+      "country": "FR",
+      "currency": "EUR",
+      "timeLastUpdated": "2026-11-05T17:15:03.0829398Z",
+      "_t": "UnifiedQuote"
+    },
+    "equity": {
+      "analysis": {
+        "keyMetrics": {
+          "bookValuePerShare": 33.8875,
+          "currentRatio": 1.1542,
+          "debtToEquityRatio": 0.4693,
+          "eps": 7.7981,
+          "forwardPriceToEPS": 24.8853,
+          "forwardDividendYield": 1.3593,
+          "payoutRatio": 38.4628,
+          "priceToBookRatio": 6.03,
+          "profitability": "",
+          "returnOnAssets": 4.4063,
+          "returnOnCapital": 8.3491,
+          "returnOnEquity": 24.4975,
+          "stockGrowth": 0.0,
+          "latestRevenue": 73420000000.0,
+          "latestIncome": 5221000000.0,
+          "latestNetProfitMargin": 6.7557,
+          "latestRevenuePerShare": 92.8121
+        }
+      },
+      "beta": 1.2485,
+      "company": {
+        "name": "Airbus SE",
+        "sector": "Industrials",
+        "industry": "Aerospace & Defense"
+      },
+      "displayName": "Airbus SE",
+      "symbol": "AIR",
+      "currency": "EUR",
+      "_t": "Equity"
+    },
+    "id": "ae7bur",
+    "_t": "QuoteSummary"
+  }
+]

@@ -34,7 +34,11 @@ PROVIDER_PERCENT_FIELDS: dict[str, frozenset[str]] = {
     "Gurufocus": frozenset({"roic", "operating_margin", "profit_margin"}),
     "Fortuneo": frozenset(),
     "BourseDirect": frozenset(),
-    "Msn": frozenset(),
+    # Its QuoteSummary service gives the yield and the key metrics as percentages
+    # (1.599 for 1.60 %); the debt to equity is a ratio (0.4693).
+    "Msn": frozenset(
+        {"dividend_yield", "payout_ratio", "profit_margin", "roe", "roa", "roic"}
+    ),
     "InvestirLesEchos": frozenset(),
     "YahooFinance": frozenset(),
 }

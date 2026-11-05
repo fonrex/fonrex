@@ -19,5 +19,8 @@ Only short extracts are stored (labels and figures), never a full page.
 `morningstar/` holds real answers of the JSON services of Morningstar (screener, overview,
 company profile, trading information), the long business descriptions cut to their first sentence.
 
+`msn/` holds real answers of the QuoteSummary service of MSN Finance, reduced to the quote, the
+key metrics and the sector of the company (annual statements, estimates and related stocks removed).
+
 To refresh a fixture after a site changes its markup, capture the page again, reduce it the same
 way and update the `.json` file with the values displayed on the page that day.

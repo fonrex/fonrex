@@ -17,6 +17,7 @@ from financials.providers.GoogleFinance_provider import GoogleFinanceProvider
 from financials.providers.Investing_provider import InvestingProvider
 from financials.providers.Marketwatch_provider import MarketwatchProvider
 from financials.providers.MorningStar_provider import MorningStarProvider
+from financials.providers.Msn_provider import MsnProvider
 from financials.providers.wallStreetJournal_provider import WallStreetJournalProvider
 from financials.providers.ZoneBourse_provider import ZoneBourseProvider
 from monitoring import canary_monitor
@@ -56,6 +57,11 @@ INVESTING_HTML = """
 </dl></body></html>
 """
 
+MSN_QUOTE_SUMMARY = {
+    "instrumentId": "ae7bur",
+    "quote": {"displayName": "Airbus SE", "peRatio": 24.1, "yieldPercent": 3.45},
+}
+
 
 def _parse(provider_name: str):
     """Run a provider's real HTML parser on a page showing a 3.45 % yield."""
@@ -75,6 +81,11 @@ def _parse(provider_name: str):
         return WallStreetJournalProvider()._parse_page(HTMLParser(US_LABEL_HTML), "AAPL")
     if provider_name == "Investing":
         return InvestingProvider()._parse_page(HTMLParser(INVESTING_HTML), "AAPL")
+    if provider_name == "Msn":
+        # Its figures come from a JSON service (QuoteSummary), not from a page.
+        metrics = FinancialMetrics(ticker="AIR")
+        MsnProvider.read_quote_summary(metrics, MSN_QUOTE_SUMMARY)
+        return metrics
     raise AssertionError(f"No HTML fixture for provider {provider_name}")
 
 
@@ -289,6 +300,29 @@ class TestPercentProvidersPassValidation:
         # 1.9611 % is checked as 0.019611, inside (0, 1), and kept as given
         assert kept["short_percent_float"] == pytest.approx(1.9611)
         assert kept["beta"] == pytest.approx(1.942994)
+
+    async def test_msn_percentages_are_checked_as_ratios(self):
+        """The QuoteSummary of MSN gives percentages: a 1.60 % yield is 1.599."""
+        import json
+        from pathlib import Path
+
+        path = Path(__file__).parent / "fixtures/providers/msn/quote_summary_ae7bur.json"
+        metrics = FinancialMetrics(ticker="AIR")
+        MsnProvider.read_quote_summary(metrics, json.loads(path.read_text())[0])
+
+        results = await ValidationLayer().validate_results(
+            ticker="AIR.PA", results={"Msn": metrics.model_dump()}
+        )
+
+        kept = results["Msn"]
+        # Each one is outside its ratio range unless divided by 100 first, and kept as given.
+        assert kept["dividend_yield"] == pytest.approx(1.599)
+        assert kept["payout_ratio"] == pytest.approx(38.4628)
+        assert kept["profit_margin"] == pytest.approx(6.7557)
+        assert kept["roe"] == pytest.approx(24.4975)
+        assert kept["roa"] == pytest.approx(4.4063)
+        assert kept["debt_to_equity"] == pytest.approx(0.4693)
+        assert kept["pe_ratio"] == pytest.approx(25.4286)
 
     async def test_impossible_scores_are_rejected(self):
         results = await ValidationLayer().validate_results(

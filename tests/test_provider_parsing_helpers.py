@@ -195,6 +195,115 @@ class TestMarketwatchKeyData:
 
         assert self._find(item, ["Dividend"]) is None
 
+    def test_barrons_next_data_and_dylan_and_fallback_parsing(self):
+        import json
+
+        from financials.models import FinancialMetrics
+
+        next_data = {
+            "props": {
+                "pageProps": {
+                    "titleCard": {
+                        "companyName": "Credit Agricole S.A.",
+                        "exchange": "France: Euronext Paris",
+                    },
+                    "keyDataCard": {
+                        "dataPoints": [
+                            {"key": "P/E Ratio", "value": {"primaryValue": "7.62"}},
+                            {"key": "EPS", "value": {"primaryValue": "2.30"}},
+                            {"key": "Yield", "value": {"primaryValue": "0.32%"}},
+                            {"key": "Dividend", "value": {"primaryValue": "1.10"}},
+                            {"key": "Market Cap", "value": {"primaryValue": "52,770,000,000"}},
+                            {
+                                "key": "Shares Outstanding",
+                                "value": {"primaryValue": "3,010,000,000"},
+                            },
+                            {"key": "Public Float", "value": {"primaryValue": "1,070,000,000"}},
+                            {"key": "Beta", "value": {"primaryValue": "0.87"}},
+                            {"key": "Short Interest", "value": {"primaryValue": "9,670,000"}},
+                            {"key": "% of Float Shorted", "value": {"primaryValue": "0.90%"}},
+                            {"key": "Average Volume", "value": {"primaryValue": "5,190,000"}},
+                            {"key": "52 Week Range", "value": {"primaryValue": "15.28 - 19.30"}},
+                        ]
+                    },
+                    "yearRangeCard": {
+                        "low": {"value": 15.28},
+                        "high": {"value": 19.30},
+                        "dayCurrent": {"value": 17.55},
+                    },
+                    "volumeCard": {
+                        "averageVolumeForPeriod": {"value": 5190000},
+                    },
+                }
+            }
+        }
+        html = page(
+            f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>'
+            "<div><p>52 Wk Range</p><p>N/A</p></div>"
+            "<div><span>Beta</span><span>0.87</span></div>"
+        )
+        provider = BarronsProvider()
+        metrics = provider._parse_page(html, "ACA")
+        assert metrics.name == "Credit Agricole S.A."
+        assert metrics.exchange_name == "France: Euronext Paris"
+        assert metrics.price == pytest.approx(17.55)
+        assert metrics.pe_ratio == pytest.approx(7.62)
+        assert metrics.eps == pytest.approx(2.30)
+        assert metrics.dividend_yield == pytest.approx(0.32)
+        assert metrics.dividend_rate == pytest.approx(1.10)
+        assert metrics.market_cap == pytest.approx(52_770_000_000.0)
+        assert metrics.shares_outstanding == pytest.approx(3_010_000_000.0)
+        assert metrics.float_shares == pytest.approx(1_070_000_000.0)
+        assert metrics.beta == pytest.approx(0.87)
+        assert metrics.shares_short == pytest.approx(9_670_000.0)
+        assert metrics.short_percent_float == pytest.approx(0.90)
+        assert metrics.average_volume == pytest.approx(5_190_000.0)
+        assert metrics.week_52_low == pytest.approx(15.28)
+        assert metrics.week_52_high == pytest.approx(19.30)
+
+        bad_json_html = page('<script id="__NEXT_DATA__">not json</script>')
+        assert provider._parse_page(bad_json_html, "ACA").pe_ratio is None
+
+        assert provider.extract_entitlement_token("") is None
+        assert provider.extract_entitlement_token("<html>no token</html>") is None
+        assert (
+            provider.extract_entitlement_token(
+                'entitlementToken:"c1b7ca756343461b86565b61bbd2ac6f"'
+            )
+            == "c1b7ca756343461b86565b61bbd2ac6f"
+        )
+
+        m = FinancialMetrics(ticker="ACA")
+        provider.read_dylan_quote(m, {})
+        provider.read_dylan_quote(m, {"InstrumentResponses": [{}]})
+        provider.read_dylan_match(m, {})
+        provider.read_dylan_quote(
+            m,
+            {
+                "InstrumentResponses": [
+                    {
+                        "Matches": [
+                            {
+                                "Trading": {"Last": {"Price": {"Iso": "EUR", "Value": 17.545}}},
+                                "Financials": {"AnnualizedDividend": 1.1},
+                                "TradingStatistics": {
+                                    "PriceStatistics": [
+                                        {"Range": {"Duration": {"ValueString": "P50D"}}},
+                                    ],
+                                    "VolumeStatistics": [
+                                        {"Range": {"Duration": {"ValueString": "P50D"}}},
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+        assert m.price == pytest.approx(17.545)
+        assert m.currency == "EUR"
+        assert m.dividend_rate == pytest.approx(1.1)
+
 
 class TestBoursoramaHelpers:
     @pytest.mark.parametrize(

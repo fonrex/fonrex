@@ -216,6 +216,16 @@ class FinancialProviderRunnerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raw_providers["wallStreetJournal"], "ISIN: FR0000045072")
         self.assertEqual(results["wallStreetJournal"]["isin"], "FR0000045072")
 
+    async def test_barrons_uses_isin_before_generic_ticker(self):
+        runner = FinancialProviderRunner({"Barrons": {"type": "async", "class": EchoProvider}})
+
+        results, raw_providers = await runner.run(
+            ticker="XCA", isin="FR0000045072", provider_params=[], asset_mappings={}
+        )
+
+        self.assertEqual(raw_providers["Barrons"], "ISIN: FR0000045072")
+        self.assertEqual(results["Barrons"]["isin"], "FR0000045072")
+
     async def test_marketwatch_uses_isin_before_generic_ticker(self):
         runner = FinancialProviderRunner({"Marketwatch": {"type": "async", "class": EchoProvider}})
 

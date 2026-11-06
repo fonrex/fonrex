@@ -693,9 +693,9 @@ class TestDowJonesQuotePages:
             "ticker": "AAPL",
             "isin": "US0378331005",
             "provider_url": page_url,
-            **({} if provider_class is BarronsProvider else {"exchange": "XNAS"}),
-            **({} if provider_class is BarronsProvider else {"exchange_name": "Nasdaq"}),
-            **({} if provider_class is BarronsProvider else {"instrument_type": "stock"}),
+            "exchange": "XNAS",
+            "exchange_name": "Nasdaq",
+            "instrument_type": "stock",
         }
 
     async def test_page_is_fetched_again_after_a_failure(
@@ -740,6 +740,234 @@ class TestDowJonesQuotePages:
         metrics = await provider_class().get_financials("AIR")
 
         assert metrics.provider_url.endswith("/air?countrycode=fr")
+
+
+DYLAN_BARRONS_ACA_RESPONSE = {
+    "InstrumentResponses": [
+        {
+            "RequestId": "STOCK/FR/XPAR/ACA",
+            "Matches": [
+                {
+                    "Instrument": {
+                        "CommonName": "Credit Agricole S.A.",
+                        "Ticker": "ACA",
+                        "Isin": "FR0000045072",
+                        "Exchange": {
+                            "CommonName": "France: Euronext Paris",
+                            "CountryCode": "FR",
+                            "IsoCode": "XPAR",
+                        },
+                    },
+                    "CompositeTrading": {
+                        "Last": {"Price": {"Iso": "EUR", "Value": 17.545}},
+                    },
+                    "TradingStatistics": {
+                        "PriceStatistics": [
+                            {
+                                "Range": {"Duration": {"ValueString": "P364D"}},
+                                "Minimum": {"Value": 15.275},
+                                "Maximum": {"Value": 19.295},
+                            }
+                        ],
+                        "VolumeStatistics": [
+                            {
+                                "Range": {"Duration": {"ValueString": "P3M"}},
+                                "Average": 5192363.26,
+                            }
+                        ],
+                    },
+                    "Financials": {
+                        "PriceToEarningsRatio": 7.6249,
+                        "LastEarningsPerShare": {"Iso": "EUR", "Value": 2.301},
+                        "Yield": 0.317,
+                        "AnnualizedDividend": None,
+                        "LastDividendPerShare": {"Iso": "EUR", "Value": 1.1},
+                        "MarketCapitalization": {"Iso": "EUR", "Value": 52766402330.0},
+                        "SharesOutstanding": 3007489446.0,
+                        "PublicFloat": 1072227496.0,
+                        "Beta": 0.87,
+                        "ShortInterest": 9671492.0,
+                        "PercentOfFloatShorted": 0.902,
+                    },
+                }
+            ],
+        }
+    ]
+}
+
+
+class TestBarronsDylanAndTokens:
+    SEARCH = "api.barrons.com/api/autocomplete/search"
+    DYLAN = "api.barrons.com/api/dylan/quotes/v2/comp/quoteByDialect"
+    ACA_PAGE = "https://www.barrons.com/market-data/stocks/aca?countrycode=fr"
+
+    async def test_dylan_fallback_when_page_is_blocked(self, fake_network):
+        symbols = {
+            "symbols": [
+                {
+                    "ticker": "FR:ACA",
+                    "country": "FR",
+                    "type": "stock",
+                    "score": 1.0,
+                    "company": "Credit Agricole S.A.",
+                    "isin": "FR0000045072",
+                    "exchangeIsoCode": "XPAR",
+                    "exchange": "France: Euronext Paris",
+                    "chartingSymbol": "STOCK/FR/XPAR/ACA",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(symbols))
+        fake_network.get(self.ACA_PAGE, BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, ok_json(DYLAN_BARRONS_ACA_RESPONSE))
+
+        metrics = await BarronsProvider().get_financials("ACA.PA")
+
+        assert metrics.name == "Credit Agricole S.A."
+        assert metrics.ticker == "ACA"
+        assert metrics.isin == "FR0000045072"
+        assert metrics.exchange == "XPAR"
+        assert metrics.exchange_name == "France: Euronext Paris"
+        assert metrics.instrument_type == "stock"
+        assert metrics.price == pytest.approx(17.545)
+        assert metrics.currency == "EUR"
+        assert metrics.pe_ratio == pytest.approx(7.6249)
+        assert metrics.eps == pytest.approx(2.301)
+        assert metrics.dividend_yield == pytest.approx(0.317)
+        assert metrics.dividend_rate == pytest.approx(1.1)
+        assert metrics.beta == pytest.approx(0.87)
+        assert metrics.market_cap == pytest.approx(52766402330.0)
+        assert metrics.shares_outstanding == pytest.approx(3007489446.0)
+        assert metrics.float_shares == pytest.approx(1072227496.0)
+        assert metrics.shares_short == pytest.approx(9671492.0)
+        assert metrics.short_percent_float == pytest.approx(0.902)
+        assert metrics.week_52_low == pytest.approx(15.275)
+        assert metrics.week_52_high == pytest.approx(19.295)
+        assert metrics.average_volume == pytest.approx(5192363.26)
+
+    async def test_dynamic_token_refresh_on_expired_default_token(self, fake_network, monkeypatch):
+        monkeypatch.setattr(BarronsProvider, "TOKEN", None)
+        monkeypatch.setattr(BarronsProvider, "_dynamic_token", None)
+        monkeypatch.delenv("BARRONS_TOKEN", raising=False)
+
+        new_token = "c1b7ca756343461b86565b61bbd2ac6f"
+        js_bundle = f'const cfg={{dylanEntitlementToken:"{new_token}"}};'
+        symbols = {
+            "symbols": [
+                {
+                    "ticker": "ACA",
+                    "country": "FR",
+                    "type": "stock",
+                    "score": 1.0,
+                    "company": "Credit Agricole S.A.",
+                    "isin": "FR0000045072",
+                    "exchangeIsoCode": "XPAR",
+                    "exchange": "France: Euronext Paris",
+                    "chartingSymbol": "STOCK/FR/XPAR/ACA",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, status(400), ok_json(symbols))
+        fake_network.get(BarronsProvider.TOKEN_SCRIPT_URL, ok(js_bundle))
+        fake_network.get(self.ACA_PAGE, ok(fixture("barrons_aca.html")))
+
+        metrics = await BarronsProvider().get_financials("FR:ACA")
+
+        assert metrics.name == "Credit Agricole S.A."
+        assert metrics.pe_ratio == pytest.approx(7.19)
+        assert BarronsProvider._dynamic_token == new_token
+        assert fake_network.calls(self.SEARCH) == 2
+        assert fake_network.requests[2].headers["dylan2010.entitlementtoken"] == new_token
+
+    async def test_european_isin_and_url_input_prefer_primary_exchange_over_otc(self, fake_network):
+        aca_symbols = {
+            "symbols": [
+                {
+                    "ticker": "CRARF",
+                    "country": "US",
+                    "exchangeIsoCode": "OOTC",
+                    "exchange": "U.S.: OTC",
+                    "isin": "FR0000045072",
+                    "type": "stock",
+                    "score": 1.0,
+                    "company": "Credit Agricole S.A.",
+                    "chartingSymbol": "STOCK/US/OOTC/CRARF",
+                },
+                {
+                    "ticker": "FR:ACA",
+                    "country": "FR",
+                    "exchangeIsoCode": "XPAR",
+                    "exchange": "France: Euronext Paris",
+                    "isin": "FR0000045072",
+                    "type": "stock",
+                    "score": 0.9,
+                    "company": "Credit Agricole S.A.",
+                    "chartingSymbol": "STOCK/FR/XPAR/ACA",
+                },
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(aca_symbols))
+        fake_network.get(self.ACA_PAGE, ok(fixture("barrons_aca.html")))
+
+        p = BarronsProvider()
+        by_isin = await p.get_financials("FR0000045072")
+        by_url = await p.get_financials(
+            "https://www.barrons.com/market-data/stocks/aca?countrycode=fr"
+        )
+        async with p._session() as client:
+            search_sym = await p._search_symbol(client, "ACA.PA")
+
+        assert by_isin.ticker == "ACA"
+        assert by_isin.exchange == "XPAR"
+        assert by_url.provider_url == self.ACA_PAGE
+        assert search_sym == ("ACA", "FR")
+
+    async def test_german_url_and_custom_env_token_and_error_paths(self, fake_network, monkeypatch):
+        monkeypatch.setattr(BarronsProvider, "TOKEN", None)
+        monkeypatch.setattr(BarronsProvider, "_dynamic_token", None)
+        monkeypatch.setenv("BARRONS_TOKEN", "custom_barrons_token_123")
+
+        sap_symbols = {
+            "symbols": [
+                {
+                    "ticker": "XE:SAP",
+                    "country": "XE",
+                    "exchangeIsoCode": "XETR",
+                    "isin": "DE0007164600",
+                    "type": "stock",
+                    "score": 1.0,
+                    "company": "SAP SE",
+                    "chartingSymbol": "STOCK/XE/XETR/SAP",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(sap_symbols))
+        fake_network.get("/sap?countrycode=xe", BOT_CHALLENGE)
+        fake_network.get(self.DYLAN, status(503))
+
+        p = BarronsProvider(max_retries=1)
+        m1 = await p.get_financials("https://www.barrons.com/market-data/stocks/sap?countrycode=de")
+        assert await p.get_financials("   ") is None
+
+        assert m1.exchange == "XETR"
+        assert (
+            fake_network.requests[0].headers["dylan2010.entitlementtoken"]
+            == "custom_barrons_token_123"
+        )
+
+    async def test_token_refresh_failure_from_page_fallback(self, fake_network, monkeypatch):
+        monkeypatch.setattr(BarronsProvider, "TOKEN", None)
+        monkeypatch.setattr(BarronsProvider, "_dynamic_token", None)
+        monkeypatch.delenv("BARRONS_TOKEN", raising=False)
+
+        fake_network.get(self.SEARCH, status(400))
+        fake_network.get(BarronsProvider.TOKEN_SCRIPT_URL, httpx.ConnectError("down"))
+        fake_network.get(BarronsProvider.BASE_URL, ok("<html>no token</html>"))
+
+        p = BarronsProvider(max_retries=1)
+        assert await p.get_financials("ACA") is None
+        async with p._session() as client:
+            assert await p._search_symbol(client, "ACA") == ("ACA", "US")
 
 
 # WSJ ranks listings by score, without the US preference of the two sites above.

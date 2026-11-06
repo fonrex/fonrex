@@ -24,7 +24,7 @@ PROVIDER_PERCENT_FIELDS: dict[str, frozenset[str]] = {
     "ZoneBourse": frozenset({"dividend_yield", "operating_margin", "profit_margin"}),
     "GoogleFinance": frozenset({"dividend_yield", "operating_margin", "profit_margin"}),
     "Boursorama": frozenset({"dividend_yield"}),
-    "Barrons": frozenset({"dividend_yield"}),
+    "Barrons": frozenset({"dividend_yield", "short_percent_float"}),
     "wallStreetJournal": frozenset({"dividend_yield"}),
     "Marketwatch": frozenset({"dividend_yield"}),
     # Its JSON services give the yields as ratios (0.055754 for 5.58 %), but the short

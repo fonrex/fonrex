@@ -118,6 +118,7 @@ class TestRealPages:
             "Marketwatch",
             "Msn",
             "ZoneBourse",
+            "wallStreetJournal",
         }
 
     @pytest.mark.parametrize(

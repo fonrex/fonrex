@@ -612,6 +612,7 @@ class TestGoogleFinance:
 
         assert metrics.provider_url == "https://www.google.com/finance/quote/ACA:EPA"
         assert metrics.ticker == "EPA:ACA"
+        assert metrics.isin is None
 
     async def test_exchange_symbol_ticker_is_swapped(self, fake_network):
         fake_network.get(self.QUOTE + "ACA:EPA", ok(fixture("googlefinance_air.html")))
@@ -628,6 +629,7 @@ class TestGoogleFinance:
 
         assert metrics.provider_url == "https://www.google.com/finance/quote/ACA:EPA"
         assert metrics.ticker == "EPA:ACA"
+        assert metrics.isin == "FR0000045072"
         search = fake_network.requests[0]
         assert search.method == "POST"
         form = dict(httpx.QueryParams(search.content.decode()))
@@ -758,6 +760,13 @@ class TestGoogleFinanceIsinListing:
             ("0700:HKG", "0700:HKG"),
             ("HKG:0700", "0700:HKG"),
             ("ACU:NYSEAMERICAN", "ACU:NYSEAMERICAN"),
+            ("NESN:SWX", "NESN:SWX"),
+            ("SWX:NESN", "NESN:SWX"),
+            ("005930:KRX", "005930:KRX"),
+            ("KRX:005930", "005930:KRX"),
+            ("ICE:NYSE", "ICE:NYSE"),
+            ("NYSE:ICE", "ICE:NYSE"),
+            ("CRARF:OTC", "CRARF:OTC"),
             ("AIR.PA", "AIR:EPA"),
             ("AIR.XX", "AIR:XX"),
             ("IBM", "IBM:NASDAQ"),

@@ -8,6 +8,7 @@ from typing import Optional
 import httpx
 from selectolax.parser import HTMLParser, Node
 
+from financials.exchange import GOOGLE_EXCHANGES as ALL_GOOGLE_EXCHANGES
 from financials.models import FinancialMetrics
 from financials.numbers import parse_number
 from financials.providers.base import BaseProvider, ProviderSession
@@ -177,6 +178,9 @@ class GoogleFinanceProvider(BaseProvider):
                 metrics = self._parse_page(html, ticker)
                 if metrics:
                     metrics.provider_url = url
+                    if is_isin:
+                        # The listing was found from this ISIN.
+                        metrics.isin = ticker.strip().upper()
 
                     # Fix Ticker format: User wants "HKG:0700" (Exchange:Symbol)
                     # The URL contains "SYMBOL:EXCHANGE" (e.g. 0700:HKG)
@@ -235,14 +239,17 @@ class GoogleFinanceProvider(BaseProvider):
         # Legacy logic calls for Exchange:Symbol
         return f"NASDAQ:{symbol}"
 
-    def _known_exchange(self, code: str) -> bool:
-        """Tell whether ``code`` is a Google Finance exchange code (EPA, NASDAQ…)."""
+    def _exchange_rank(self, code: str) -> int:
+        """How surely ``code`` is a Google Finance exchange code.
+
+        2: a stock exchange of this provider (EPA, NASDAQ…); 1: another code of the
+        complete list of ``financials/exchange.py`` (SWX, KRX, but also ICE, CURRENCY…);
+        0: not an exchange code, so a symbol.
+        """
         code = code.strip().upper()
-        return (
-            code in self.GOOGLE_EXCHANGES
-            or code in self.YAHOO_TO_GOOGLE_CODE.values()
-            or code in {"NYSEAMERICAN", "BMV"}
-        )
+        if code in self.GOOGLE_EXCHANGES or code in self.YAHOO_TO_GOOGLE_CODE.values():
+            return 2
+        return 1 if code in ALL_GOOGLE_EXCHANGES else 0
 
     def _normalize_ticker(self, ticker: str) -> str:
         """
@@ -251,12 +258,16 @@ class GoogleFinanceProvider(BaseProvider):
         - 'ACA:EPA' (already SYMBOL:EXCHANGE) is kept as is;
         - 'EPA:ACA' (EXCHANGE:SYMBOL) is swapped to 'ACA:EPA';
         - 'ACA.PA' and plain tickers go through get_google_ticker, then are swapped.
+
+        The side that looks more like an exchange is the exchange: 'ICE:NYSE' is kept
+        (ICE is also a code of the list, but NYSE is a stock exchange). When both sides
+        look alike, the input is read EXCHANGE:SYMBOL, the format of get_google_ticker
+        and of the catalogue.
         """
         if ":" in ticker:
             left, right = (part.strip() for part in ticker.split(":", 1))
-            if self._known_exchange(right) and not self._known_exchange(left):
+            if self._exchange_rank(right) > self._exchange_rank(left):
                 return f"{left}:{right}"
-            # EXCHANGE:SYMBOL, the format of get_google_ticker and of the catalogue.
             return f"{right}:{left}"
 
         # Get Exchange:Symbol (e.g. EPA:AIR), then swap to Symbol:Exchange (AIR:EPA)

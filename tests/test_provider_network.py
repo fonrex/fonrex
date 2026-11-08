@@ -510,6 +510,7 @@ class TestZoneBourse:
 
 class TestGoogleFinance:
     QUOTE = "google.com/finance/quote/"
+    SEARCH = "google.com/finance/_/FinHubUi/data/batchexecute"
 
     async def test_yahoo_ticker_is_converted_for_the_url(self, fake_network):
         fake_network.get(self.QUOTE + "AIR:EPA", ok(fixture("googlefinance_air.html")))
@@ -603,6 +604,167 @@ class TestGoogleFinance:
 
         assert await GoogleFinanceProvider(max_retries=3).get_financials("AIR.PA") is None
         assert len(fake_network.requests) == 3
+
+    async def test_symbol_exchange_ticker_is_kept(self, fake_network):
+        fake_network.get(self.QUOTE + "ACA:EPA", ok(fixture("googlefinance_air.html")))
+
+        metrics = await GoogleFinanceProvider().get_financials("ACA:EPA")
+
+        assert metrics.provider_url == "https://www.google.com/finance/quote/ACA:EPA"
+        assert metrics.ticker == "EPA:ACA"
+
+    async def test_exchange_symbol_ticker_is_swapped(self, fake_network):
+        fake_network.get(self.QUOTE + "ACA:EPA", ok(fixture("googlefinance_air.html")))
+
+        metrics = await GoogleFinanceProvider().get_financials("EPA:ACA")
+
+        assert metrics.provider_url == "https://www.google.com/finance/quote/ACA:EPA"
+
+    async def test_isin_is_resolved_by_the_search(self, fake_network):
+        fake_network.post(self.SEARCH, ok(fixture("search/googlefinance_isin.txt")))
+        fake_network.get(self.QUOTE + "ACA:EPA", ok(fixture("googlefinance_air.html")))
+
+        metrics = await GoogleFinanceProvider().get_financials("FR0000045072")
+
+        assert metrics.provider_url == "https://www.google.com/finance/quote/ACA:EPA"
+        assert metrics.ticker == "EPA:ACA"
+        search = fake_network.requests[0]
+        assert search.method == "POST"
+        form = dict(httpx.QueryParams(search.content.decode()))
+        assert json.loads(form["f.req"]) == [
+            [["XB3kn", json.dumps(["FR0000045072", None, 1]), None, "generic"]]
+        ]
+
+    async def test_isin_without_listing_gives_none_without_page(self, fake_network):
+        fake_network.post(self.SEARCH, ok(rpc_answer([])))
+
+        assert await GoogleFinanceProvider().get_financials("XX0000000000") is None
+        assert fake_network.urls(self.QUOTE) == []
+
+    async def test_isin_search_refused_gives_none(self, fake_network):
+        fake_network.post(self.SEARCH, status(400))
+
+        assert await GoogleFinanceProvider().get_financials("FR0000045072") is None
+        assert fake_network.urls(self.QUOTE) == []
+
+    async def test_isin_search_network_error_gives_none(self, fake_network):
+        fake_network.post(self.SEARCH, httpx.ConnectError("unreachable"))
+
+        assert await GoogleFinanceProvider(max_retries=1).get_financials("FR0000045072") is None
+
+    async def test_isin_page_missing_does_not_try_us_exchanges(self, fake_network):
+        fake_network.post(self.SEARCH, ok(fixture("search/googlefinance_isin.txt")))
+        fake_network.get(self.QUOTE, ok(GOOGLE_GENERIC_PAGE))
+
+        assert await GoogleFinanceProvider().get_financials("FR0000045072") is None
+        assert fake_network.urls(self.QUOTE) == ["https://www.google.com/finance/quote/ACA:EPA"]
+
+
+def rpc_answer(listings, chunked=False) -> str:
+    """Answer of the Google Finance search service for (symbol, exchange, country) listings."""
+    results = [
+        [
+            "/g/x",
+            None,
+            None,
+            ["/g/x", [symbol, exchange], "Name", 0, "EUR", [], None, 1.0, "#000", country],
+        ]
+        for symbol, exchange, country in listings
+    ]
+    entry = json.dumps([["wrb.fr", "XB3kn", json.dumps([results]), None, None, None, "generic"]])
+    if chunked:
+        return f')]}}\'\n\n{len(entry)}\n{entry}\n57\n[["di",178]]\n'
+    return f")]}}'\n\n{entry}"
+
+
+class TestGoogleFinanceIsinListing:
+    """Choice of the listing among the answers of the search service."""
+
+    pick = staticmethod(GoogleFinanceProvider._pick_listing)
+    parse = staticmethod(GoogleFinanceProvider._parse_search_listings)
+
+    def test_real_answer_lists_every_place(self):
+        listings = self.parse(fixture("search/googlefinance_isin.txt"))
+
+        assert [(item["symbol"], item["exchange"], item["country"]) for item in listings] == [
+            ("ACA", "EPA", "FR"),
+            ("ACA", "VIE", "AT"),
+            ("XCA", "FRA", "DE"),
+            ("CRARF", "OTCMKTS", "US"),
+            ("ACAFN", "BMV", "MX"),
+        ]
+
+    def test_chunked_answer_is_read(self):
+        text = rpc_answer([("AIR", "EPA", "FR")], chunked=True)
+
+        assert self.parse(text) == [{"symbol": "AIR", "exchange": "EPA", "country": "FR"}]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            ")]}'\n\nnot json",
+            ')]}\'\n\n[["wrb.fr","XB3kn","not json"]]',
+            ')]}\'\n\n[["wrb.fr","XB3kn","[]"]]',
+            ')]}\'\n\n[["wrb.fr","XB3kn","[[[\\"/g/x\\"],[1,2,3,[\\"/g/x\\",[null,\\"EPA\\"]]]]]"]]',
+        ],
+    )
+    def test_unreadable_answers_give_no_listing(self, text):
+        assert self.parse(text) == []
+
+    def test_listing_of_the_isin_country_wins(self):
+        listings = self.parse(rpc_answer([("ACA", "VIE", "AT"), ("ACA", "EPA", "FR")]))
+
+        assert self.pick(listings, "FR0000045072") == "ACA:EPA"
+
+    def test_first_regulated_listing_without_one_in_the_country(self):
+        # Airbus: Dutch ISIN, main listing in Paris.
+        listings = self.parse(
+            rpc_answer([("EADSY", "OTCMKTS", "US"), ("AIR", "EPA", "FR"), ("AIR", "FRA", "DE")])
+        )
+
+        assert self.pick(listings, AIRBUS_ISIN) == "AIR:EPA"
+
+    def test_otc_listing_is_skipped_even_in_the_isin_country(self):
+        listings = self.parse(rpc_answer([("CRARF", "OTCMKTS", "US"), ("ACA", "EPA", "FR")]))
+
+        assert self.pick(listings, "US0000000001") == "ACA:EPA"
+
+    def test_otc_listing_is_kept_when_alone(self):
+        listings = self.parse(rpc_answer([("CRARF", "OTCMKTS", "US")]))
+
+        assert self.pick(listings, "FR0000045072") == "CRARF:OTCMKTS"
+
+    def test_no_listing(self):
+        assert self.pick([], "FR0000045072") is None
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("FR0000045072", True),
+            ("nl0000235190", True),
+            ("AIR.PA", False),
+            ("FR000004507X", False),
+        ],
+    )
+    def test_isin_detection(self, value, expected):
+        assert GoogleFinanceProvider._is_isin(value) is expected
+
+    @pytest.mark.parametrize(
+        ("ticker", "expected"),
+        [
+            ("ACA:EPA", "ACA:EPA"),
+            ("EPA:ACA", "ACA:EPA"),
+            ("0700:HKG", "0700:HKG"),
+            ("HKG:0700", "0700:HKG"),
+            ("ACU:NYSEAMERICAN", "ACU:NYSEAMERICAN"),
+            ("AIR.PA", "AIR:EPA"),
+            ("AIR.XX", "AIR:XX"),
+            ("IBM", "IBM:NASDAQ"),
+        ],
+    )
+    def test_ticker_normalization(self, ticker, expected):
+        assert GoogleFinanceProvider()._normalize_ticker(ticker) == expected
 
 
 # ── Barron's, MarketWatch, WSJ: Dow Jones autocomplete then quote page ───────

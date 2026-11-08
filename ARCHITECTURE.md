@@ -896,7 +896,7 @@ The `FinancialProviderRunner` chooses the search term per provider in this order
 1. For GoogleFinance and Gurufocus, the ticker built from the exchange of the profile (`EPA:AIR`, `AIR.PA`) when that exchange is known: it replaces a mapping. The same rule exists for Yahoo and only applies to a request that reaches it without a verified symbol.
 2. Active `provider_url` mapping.
 3. Active `provider_ticker` mapping.
-4. The ISIN, for ZoneBourse, Investing, wallStreetJournal, Marketwatch, Fortuneo, BourseDirect, Boursorama, Gurufocus, InvestirLesEchos and MorningStar, when none of the above applied.
+4. The ISIN, for ZoneBourse, Investing, wallStreetJournal, Marketwatch, Fortuneo, BourseDirect, GoogleFinance, Boursorama, Gurufocus, InvestirLesEchos and MorningStar, when none of the above applied.
    A provider whose `get_financials` takes an `isin` argument (Investing, ZoneBourse) then receives the ticker as well — its default ticker, otherwise the requested one — with the ISIN (`get_financials("AIR.PA", isin="NL0000235190")`): it searches the ISIN and chooses the listing of the place named by the ticker suffix, instead of losing that suffix.
 5. Specific provider default, for example the resolved ticker for MSN during an ISIN search.
 6. Requested ticker.

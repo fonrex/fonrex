@@ -148,6 +148,7 @@ class FinancialProviderRunner:
                 "marketwatch",
                 "fortuneo",
                 "boursedirect",
+                "googlefinance",
                 "boursorama",
                 "gurufocus",
                 "investirlesechos",

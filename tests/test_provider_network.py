@@ -539,6 +539,23 @@ DYLAN_BARRONS_ACA_RESPONSE = {
 }
 
 
+ACA_SYMBOLS = {
+    "symbols": [
+        {
+            "ticker": "FR:ACA",
+            "country": "FR",
+            "type": "stock",
+            "score": 1.0,
+            "company": "Credit Agricole S.A.",
+            "isin": "FR0000045072",
+            "exchangeIsoCode": "XPAR",
+            "exchange": "France: Euronext Paris",
+            "chartingSymbol": "STOCK/FR/XPAR/ACA",
+        }
+    ]
+}
+
+
 class TestBarronsDylanAndTokens:
     SEARCH = "api.barrons.com/api/autocomplete/search"
     DYLAN = "api.barrons.com/api/dylan/quotes/v2/comp/quoteByDialect"
@@ -705,12 +722,77 @@ class TestBarronsDylanAndTokens:
 
         fake_network.get(self.SEARCH, status(400))
         fake_network.get(BarronsProvider.TOKEN_SCRIPT_URL, httpx.ConnectError("down"))
-        fake_network.get(BarronsProvider.BASE_URL, ok("<html>no token</html>"))
+        fake_network.get("/market-data/stocks/aca", ok("<html>no token</html>"))
 
         p = BarronsProvider(max_retries=1)
         assert await p.get_financials("ACA") is None
         async with p._session() as client:
             assert await p._search_symbol(client, "ACA") == ("ACA", "US")
+        assert fake_network.urls("/market-data/stocks/aca")[0] == (
+            "https://www.barrons.com/market-data/stocks/aca"
+        )
+
+    async def test_expired_env_token_is_replaced_by_a_fresh_one(self, fake_network, monkeypatch):
+        monkeypatch.setattr(BarronsProvider, "TOKEN", None)
+        monkeypatch.setattr(BarronsProvider, "_dynamic_token", None)
+        monkeypatch.setenv("BARRONS_TOKEN", "0" * 32)
+
+        new_token = "c1b7ca756343461b86565b61bbd2ac6f"
+        js_bundle = f'const cfg={{dylanEntitlementToken:"{new_token}"}};'
+        fake_network.get(self.SEARCH, status(400), ok_json(ACA_SYMBOLS))
+        fake_network.get(BarronsProvider.TOKEN_SCRIPT_URL, ok(js_bundle))
+        fake_network.get(self.ACA_PAGE, ok(fixture("barrons_aca.html")))
+
+        metrics = await BarronsProvider().get_financials("FR:ACA")
+
+        assert metrics.pe_ratio == pytest.approx(7.19)
+        searches = [r for r in fake_network.requests if self.SEARCH in str(r.url)]
+        assert [r.headers["dylan2010.entitlementtoken"] for r in searches] == ["0" * 32, new_token]
+
+    async def test_token_is_read_from_the_page_when_the_script_is_unavailable(
+        self, fake_network, monkeypatch
+    ):
+        monkeypatch.setattr(BarronsProvider, "TOKEN", None)
+        monkeypatch.setattr(BarronsProvider, "_dynamic_token", None)
+        monkeypatch.delenv("BARRONS_TOKEN", raising=False)
+
+        page_token = "a" * 32
+        page_with_token = (
+            f'<html><script>window.cfg={{"entitlementToken":"{page_token}"}}</script></html>'
+        )
+        fake_network.get(self.SEARCH, status(400), ok_json(ACA_SYMBOLS))
+        fake_network.get(BarronsProvider.TOKEN_SCRIPT_URL, status(404))
+        fake_network.get(self.ACA_PAGE, ok(page_with_token), ok(fixture("barrons_aca.html")))
+
+        metrics = await BarronsProvider().get_financials("ACA.PA")
+
+        assert metrics.pe_ratio == pytest.approx(7.19)
+        assert fake_network.calls(self.SEARCH) == 2
+        searches = [r for r in fake_network.requests if self.SEARCH in str(r.url)]
+        assert searches[1].headers["dylan2010.entitlementtoken"] == page_token
+
+    async def test_rejected_dylan_quote_is_retried_with_a_fresh_token(
+        self, fake_network, monkeypatch
+    ):
+        monkeypatch.setattr(BarronsProvider, "TOKEN", None)
+        monkeypatch.setattr(BarronsProvider, "_dynamic_token", None)
+        monkeypatch.delenv("BARRONS_TOKEN", raising=False)
+
+        new_token = "c1b7ca756343461b86565b61bbd2ac6f"
+        js_bundle = f'const cfg={{dylanEntitlementToken:"{new_token}"}};'
+        fake_network.get(self.SEARCH, ok_json(ACA_SYMBOLS))
+        fake_network.get(self.ACA_PAGE, BOT_CHALLENGE)
+        fake_network.get(BarronsProvider.TOKEN_SCRIPT_URL, ok(js_bundle))
+        fake_network.get(self.DYLAN, status(401), ok_json(DYLAN_BARRONS_ACA_RESPONSE))
+
+        metrics = await BarronsProvider().get_financials("ACA.PA")
+
+        assert metrics.price == pytest.approx(17.545)
+        assert metrics.pe_ratio == pytest.approx(7.6249)
+        quotes = [r for r in fake_network.requests if self.DYLAN in str(r.url)]
+        assert len(quotes) == 2
+        assert quotes[1].headers["dylan2010.entitlementtoken"] == new_token
+        assert quotes[1].url.params["EntitlementToken"] == new_token
 
 
 # WSJ ranks listings by score, without the US preference of the two sites above.

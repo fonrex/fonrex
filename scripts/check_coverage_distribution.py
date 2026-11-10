@@ -49,7 +49,7 @@ MODULE_THRESHOLDS = {
     # Data providers: parsers checked against real pages, search and download
     # checked against a simulated network.
     "financials/providers/base.py": 99.0,
-    "financials/providers/Barrons_provider.py": 96.0,
+    "financials/providers/Barrons_provider.py": 96.5,
     "financials/providers/BourseDirect_provider.py": 94.0,
     "financials/providers/boursorama_provider.py": 83.0,
     "financials/providers/cftc.py": 99.0,

@@ -3,7 +3,7 @@ import logging
 import os
 import random
 import re
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import parse_qs, urlparse
 
 from selectolax.parser import HTMLParser
@@ -29,6 +29,10 @@ _ENTITLEMENT_TOKEN_RE = re.compile(
 _BARRONS_URL_RE = re.compile(
     r"barrons\.com/market-data/(?:stocks|funds|etfs)/([^/?#]+)", re.IGNORECASE
 )
+# How api.barrons.com answers an unknown or expired entitlement token. The search
+# endpoint answers 401 to a bot challenge too, which a new token does not cure.
+_SEARCH_TOKEN_REJECTED = frozenset({400})
+_DYLAN_TOKEN_REJECTED = frozenset({400, 401})
 
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -96,6 +100,8 @@ class BarronsProvider(BaseProvider):
     def __init__(self, max_retries: int = 3, timeout: int = 15):
         self.max_retries = max_retries
         self.timeout = timeout
+        # Tokens api.barrons.com refused: never sent again by this instance.
+        self._rejected_tokens: set[str] = set()
 
     @classmethod
     def extract_entitlement_token(cls, text: str) -> Optional[str]:
@@ -109,14 +115,28 @@ class BarronsProvider(BaseProvider):
             return token
         return None
 
+    def _configured_token(self) -> str:
+        return (self.TOKEN or os.getenv(BARRONS_TOKEN_ENV_VAR) or "").strip()
+
     def _entitlement_token(self) -> str:
-        """Return the entitlement token: env override -> dynamically extracted -> default."""
-        configured = (self.TOKEN or os.getenv(BARRONS_TOKEN_ENV_VAR) or "").strip()
-        if configured:
-            return configured
-        if self._dynamic_token:
-            return self._dynamic_token
-        return DEFAULT_BARRONS_TOKEN
+        """Return the entitlement token: env override -> dynamically extracted -> default.
+
+        A token api.barrons.com has refused is skipped, so a refreshed token takes
+        over from an expired ``BARRONS_TOKEN``.
+        """
+        candidates = (self._configured_token(), self._dynamic_token, DEFAULT_BARRONS_TOKEN)
+        for token in candidates:
+            if token and token not in self._rejected_tokens:
+                return token
+        return self._configured_token() or self._dynamic_token or DEFAULT_BARRONS_TOKEN
+
+    def _reject_token(self, token: str) -> None:
+        self._rejected_tokens.add(token)
+        if token == self._configured_token():
+            logger.warning(
+                "Barrons rejected the %s entitlement token; update or remove it",
+                BARRONS_TOKEN_ENV_VAR,
+            )
 
     async def _refresh_entitlement_token(
         self, client: ProviderSession, url: Optional[str] = None
@@ -130,6 +150,59 @@ class BarronsProvider(BaseProvider):
         except Exception as e:
             logger.debug("Barrons token refresh error: %s", e)
         return None
+
+    async def _fresh_token(
+        self, client: ProviderSession, page_url: Optional[str] = None
+    ) -> Optional[str]:
+        """Find a token not yet refused: the script bundle first, then the market-data page."""
+        for source in (self.TOKEN_SCRIPT_URL, page_url):
+            if not source:
+                continue
+            token = await self._refresh_entitlement_token(client, source)
+            if token and token not in self._rejected_tokens:
+                return token
+        return None
+
+    async def _get_with_token(
+        self,
+        client: ProviderSession,
+        url: str,
+        request_for: Callable[[str], tuple[dict, dict]],
+        rejected_statuses: frozenset[int],
+        page_url: Optional[str] = None,
+    ) -> Any:
+        """GET an api.barrons.com endpoint; on a refused token, refresh it and ask once more.
+
+        ``request_for(token)`` builds the (params, headers) of the request. The token
+        is refreshed whatever its origin (default, extracted or ``BARRONS_TOKEN``).
+        """
+        token = self._entitlement_token()
+        params, headers = request_for(token)
+        response = await client.get(url, params=params, headers=headers)
+        if response.status_code not in rejected_statuses:
+            return response
+
+        self._reject_token(token)
+        refreshed = await self._fresh_token(client, page_url)
+        if not refreshed:
+            return response
+        params, headers = request_for(refreshed)
+        return await client.get(url, params=params, headers=headers)
+
+    @staticmethod
+    def _page_url_for_query(ticker: str) -> Optional[str]:
+        """Market-data page of a query, when one can be derived from it (not from an ISIN)."""
+        raw = (ticker or "").strip()
+        if _BARRONS_URL_RE.search(raw):
+            return raw
+        search_query, country = BarronsProvider._normalize_query(raw)
+        symbol = search_query.split(":")[-1].strip()
+        if not symbol or _looks_like_isin(search_query):
+            return None
+        url = BarronsProvider.BASE_URL.format(ticker=symbol.lower())
+        if country and country != "US":
+            url += f"?countrycode={country.lower()}"
+        return url
 
     @staticmethod
     def _page_headers() -> dict[str, str]:
@@ -166,7 +239,9 @@ class BarronsProvider(BaseProvider):
                     and metrics.eps is None
                     and getattr(metrics, "price", None) is None
                 ):
-                    dylan = await self._fetch_dylan_quote(client, charting_symbol)
+                    dylan = await self._fetch_dylan_quote(
+                        client, charting_symbol, search_result.get("provider_url")
+                    )
                     if dylan:
                         self.read_dylan_quote(metrics, dylan)
 
@@ -212,32 +287,23 @@ class BarronsProvider(BaseProvider):
         if not search_query:
             return None
 
-        token = self._entitlement_token()
-        params = {
-            "q": search_query,
-            "it": "stock,etf,fund",
-            "c": 10,
-            "entitlementToken": token,
-        }
-        headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept": "application/json",
-            "Referer": "https://www.barrons.com/",
-            "Origin": "https://www.barrons.com",
-            "dylan2010.entitlementtoken": token,
-        }
-        try:
-            response = await client.get(self.SEARCH_API, params=params, headers=headers)
-            if (
-                response.status_code == 400
-                and not (self.TOKEN or os.getenv(BARRONS_TOKEN_ENV_VAR) or "").strip()
-            ):
-                refreshed = await self._refresh_entitlement_token(client)
-                if refreshed and refreshed != token:
-                    params["entitlementToken"] = refreshed
-                    headers["dylan2010.entitlementtoken"] = refreshed
-                    response = await client.get(self.SEARCH_API, params=params, headers=headers)
+        def request_for(token: str) -> tuple[dict, dict]:
+            params = {
+                "q": search_query,
+                "it": "stock,etf,fund",
+                "c": 10,
+                "entitlementToken": token,
+            }
+            return params, _api_headers(token)
 
+        try:
+            response = await self._get_with_token(
+                client,
+                self.SEARCH_API,
+                request_for,
+                _SEARCH_TOKEN_REJECTED,
+                self._page_url_for_query(ticker),
+            )
             if response.status_code == 200:
                 data = response.json()
                 symbol = self._select_symbol(data, ticker)
@@ -266,7 +332,7 @@ class BarronsProvider(BaseProvider):
         normalized_query, explicit_country = cls._normalize_query(query)
         query_upper = (normalized_query or query or "").strip().upper()
         bare_query = query_upper.split(":")[-1]
-        query_isin = len(query_upper) == 12 and query_upper.isalnum() and query_upper[:2].isalpha()
+        query_isin = _looks_like_isin(query_upper)
 
         isin_country = ISIN_PREFIX_TO_BARRONS_COUNTRY.get(query_upper[:2]) if query_isin else None
         available_countries = {(s.get("country") or "").upper() for s in symbols}
@@ -347,29 +413,26 @@ class BarronsProvider(BaseProvider):
         return None
 
     async def _fetch_dylan_quote(
-        self, client: ProviderSession, charting_symbol: str
+        self, client: ProviderSession, charting_symbol: str, page_url: Optional[str] = None
     ) -> Optional[dict]:
-        token = self._entitlement_token()
-        params = {
-            "id": charting_symbol,
-            "dialect": "charting",
-            "needed": (
-                "CompositeTrading|BluegrassChannels|CurrencySpecific|Meta|"
-                "TradingStatistics|Financials|Trading|IndustryClassification|CompanyInfo"
-            ),
-            "MaxInstrumentMatches": "1",
-            "ckey": token[:10],
-            "EntitlementToken": token,
-        }
-        headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept": "application/json",
-            "Referer": "https://www.barrons.com/",
-            "Origin": "https://www.barrons.com",
-            "dylan2010.entitlementtoken": token,
-        }
+        def request_for(token: str) -> tuple[dict, dict]:
+            params = {
+                "id": charting_symbol,
+                "dialect": "charting",
+                "needed": (
+                    "CompositeTrading|BluegrassChannels|CurrencySpecific|Meta|"
+                    "TradingStatistics|Financials|Trading|IndustryClassification|CompanyInfo"
+                ),
+                "MaxInstrumentMatches": "1",
+                "ckey": token[:10],
+                "EntitlementToken": token,
+            }
+            return params, _api_headers(token)
+
         try:
-            resp = await client.get(self.DYLAN_QUOTE_API, params=params, headers=headers)
+            resp = await self._get_with_token(
+                client, self.DYLAN_QUOTE_API, request_for, _DYLAN_TOKEN_REJECTED, page_url
+            )
             if resp.status_code == 200:
                 data = resp.json()
                 return data if isinstance(data, dict) else None
@@ -624,6 +687,21 @@ class BarronsProvider(BaseProvider):
                         if value is not None:
                             return value
         return None
+
+
+def _looks_like_isin(value: str) -> bool:
+    value = (value or "").strip().upper()
+    return len(value) == 12 and value.isalnum() and value[:2].isalpha()
+
+
+def _api_headers(token: str) -> dict[str, str]:
+    return {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "application/json",
+        "Referer": "https://www.barrons.com/",
+        "Origin": "https://www.barrons.com",
+        "dylan2010.entitlementtoken": token,
+    }
 
 
 def _put(metrics: FinancialMetrics, field: str, value: Any) -> None:

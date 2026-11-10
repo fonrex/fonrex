@@ -2,7 +2,7 @@ import logging
 import os
 import random
 import re
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import parse_qs, urlparse
 
 from selectolax.parser import HTMLParser
@@ -22,6 +22,9 @@ _ENTITLEMENT_TOKEN_RE = re.compile(
     r'(?:dylan-entitlement-token|entitlementToken)["\']?\s*[:=]\s*["\']([0-9a-fA-F]{32})["\']',
     re.IGNORECASE,
 )
+# Statuses api.wsj.net answers when it refuses the entitlement token.
+_SEARCH_TOKEN_REJECTED = frozenset({400})
+_DYLAN_TOKEN_REJECTED = frozenset({400, 401, 403})
 _MW_URL_RE = re.compile(r"marketwatch\.com/investing/(?:stock|fund)/([^/?#]+)", re.IGNORECASE)
 
 USER_AGENTS = [
@@ -93,6 +96,8 @@ class MarketwatchProvider(BaseProvider):
         self.max_retries = max_retries
         self.timeout = timeout
         self._dynamic_token: Optional[str] = None
+        # Tokens api.wsj.net refused: never sent again by this instance.
+        self._rejected_tokens: set[str] = set()
 
     def extract_entitlement_token(self, html: str) -> Optional[str]:
         """Extract dylan-entitlement-token from MarketWatch HTML and cache it on the instance."""
@@ -110,13 +115,49 @@ class MarketwatchProvider(BaseProvider):
         return (self.TOKEN or os.getenv(MARKETWATCH_TOKEN_ENV_VAR) or "").strip()
 
     def _entitlement_token(self) -> str:
-        """Return the entitlement token: env override -> dynamically extracted -> default."""
-        configured = self._configured_token()
-        if configured:
-            return configured
-        if self._dynamic_token:
-            return self._dynamic_token
-        return DEFAULT_MARKETWATCH_TOKEN
+        """Return the entitlement token: env override -> dynamically extracted -> default.
+
+        A token api.wsj.net has refused is skipped, so a refreshed token takes over
+        from an expired ``MARKETWATCH_TOKEN``.
+        """
+        candidates = (self._configured_token(), self._dynamic_token, DEFAULT_MARKETWATCH_TOKEN)
+        for token in candidates:
+            if token and token not in self._rejected_tokens:
+                return token
+        return self._configured_token() or self._dynamic_token or DEFAULT_MARKETWATCH_TOKEN
+
+    def _reject_token(self, token: str) -> None:
+        self._rejected_tokens.add(token)
+        if token == self._configured_token():
+            logger.warning(
+                "Marketwatch rejected the %s entitlement token; update or remove it",
+                MARKETWATCH_TOKEN_ENV_VAR,
+            )
+
+    async def _get_with_token(
+        self,
+        client: ProviderSession,
+        url: str,
+        request_for: Callable[[str], tuple[dict, dict]],
+        rejected_statuses: frozenset[int],
+    ) -> Any:
+        """GET an api.wsj.net endpoint; on a refused token, refresh it and ask once more.
+
+        ``request_for(token)`` builds the (params, headers) of the request. The token is
+        refreshed whatever its origin (default, extracted or ``MARKETWATCH_TOKEN``).
+        """
+        token = self._entitlement_token()
+        params, headers = request_for(token)
+        response = await client.get(url, params=params, headers=headers)
+        if response.status_code not in rejected_statuses:
+            return response
+
+        self._reject_token(token)
+        refreshed = await self._refresh_entitlement_token(client)
+        if not refreshed or refreshed in self._rejected_tokens:
+            return response
+        params, headers = request_for(refreshed)
+        return await client.get(url, params=params, headers=headers)
 
     async def _refresh_entitlement_token(
         self, client: ProviderSession, url: Optional[str] = None
@@ -220,25 +261,23 @@ class MarketwatchProvider(BaseProvider):
         if not search_query:
             return None
 
-        token = self._entitlement_token()
-        params = {
-            "q": search_query,
-            "t": "marketwatch-topic,marketwatch-search-link,symbol",
-            "xe": "xmstar",
-            "featureClass": "P",
-            "style": "full",
-            "maxRows": "10",
-            "name_startsWith": search_query,
-            "entitlementToken": token,
-        }
-        try:
-            response = await client.get(self.SEARCH_API, params=params)
-            if response.status_code == 400 and not self._configured_token():
-                refreshed = await self._refresh_entitlement_token(client)
-                if refreshed and refreshed != token:
-                    params["entitlementToken"] = refreshed
-                    response = await client.get(self.SEARCH_API, params=params)
+        def request_for(token: str) -> tuple[dict, dict]:
+            params = {
+                "q": search_query,
+                "t": "marketwatch-topic,marketwatch-search-link,symbol",
+                "xe": "xmstar",
+                "featureClass": "P",
+                "style": "full",
+                "maxRows": "10",
+                "name_startsWith": search_query,
+                "entitlementToken": token,
+            }
+            return params, {}
 
+        try:
+            response = await self._get_with_token(
+                client, self.SEARCH_API, request_for, _SEARCH_TOKEN_REJECTED
+            )
             if response.status_code == 200:
                 data = response.json()
                 symbol = self._select_symbol(data, ticker)
@@ -355,34 +394,40 @@ class MarketwatchProvider(BaseProvider):
     async def _fetch_dylan_quote(
         self, client: ProviderSession, charting_symbol: str
     ) -> Optional[dict]:
-        token = self._entitlement_token()
-        params = {
-            "id": charting_symbol,
-            "dialect": "charting",
-            "needed": (
-                "CompositeTrading|BluegrassChannels|CurrencySpecific|Meta|"
-                "TradingStatistics|Financials|Trading"
-            ),
-            "MaxInstrumentMatches": "1",
-            "ckey": token[:10],
-            "EntitlementToken": token,
-        }
-        headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept": "application/json",
-            "Referer": "https://www.marketwatch.com/",
-        }
+        def request_for(token: str) -> tuple[dict, dict]:
+            params = {
+                "id": charting_symbol,
+                "dialect": "charting",
+                "needed": (
+                    "CompositeTrading|BluegrassChannels|CurrencySpecific|Meta|"
+                    "TradingStatistics|Financials|Trading"
+                ),
+                "MaxInstrumentMatches": "1",
+                "ckey": token[:10],
+                "EntitlementToken": token,
+            }
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept": "application/json",
+                "Referer": "https://www.marketwatch.com/",
+            }
+            return params, headers
+
         try:
-            resp = await client.get(self.DYLAN_QUOTE_API, params=params, headers=headers)
-            if resp.status_code in (400, 401, 403) and not self._configured_token():
-                refreshed = await self._refresh_entitlement_token(client)
-                if refreshed and refreshed != token:
-                    params["ckey"] = refreshed[:10]
-                    params["EntitlementToken"] = refreshed
-                    resp = await client.get(self.DYLAN_QUOTE_API, params=params, headers=headers)
+            resp = await self._get_with_token(
+                client, self.DYLAN_QUOTE_API, request_for, _DYLAN_TOKEN_REJECTED
+            )
             if resp.status_code == 200:
                 data = resp.json()
-                return data if isinstance(data, dict) else None
+                if not isinstance(data, dict):
+                    return None
+                if not _dylan_answers_for(data, charting_symbol):
+                    logger.warning(
+                        "Marketwatch Dylan quote answered for another instrument than %s",
+                        charting_symbol,
+                    )
+                    return None
+                return data
             logger.warning(
                 "Marketwatch Dylan quote status %s for %s", resp.status_code, charting_symbol
             )
@@ -539,6 +584,24 @@ class MarketwatchProvider(BaseProvider):
                     if value is not None:
                         return value
         return None
+
+
+def _dylan_answers_for(data: dict, charting_symbol: str) -> bool:
+    """True when a quoteByDialect payload describes the requested instrument.
+
+    Its ``RequestId`` echoes the requested charting symbol; without one, the ticker of
+    the instrument must be the last part of that symbol (``STOCK/US/XNAS/TSLA``).
+    """
+    responses = data.get("InstrumentResponses") or []
+    response = responses[0] if responses and isinstance(responses[0], dict) else {}
+    wanted = charting_symbol.strip().upper()
+    request_id = _text(response.get("RequestId"))
+    if request_id:
+        return request_id.upper() == wanted
+    matches = response.get("Matches") or []
+    match = matches[0] if matches and isinstance(matches[0], dict) else {}
+    ticker = _nested_text(match, "Instrument", "Ticker")
+    return bool(ticker) and ticker.upper() == wanted.rsplit("/", 1)[-1]
 
 
 def _put(metrics: FinancialMetrics, field: str, value: Any) -> None:

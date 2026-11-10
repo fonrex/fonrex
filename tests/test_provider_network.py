@@ -1278,6 +1278,23 @@ DYLAN_TSLA_RESPONSE = {
 }
 
 
+MW_TSLA_SYMBOLS = {
+    "symbols": [
+        {
+            "ticker": "TSLA",
+            "country": "US",
+            "type": "Stock",
+            "score": 1,
+            "company": "Tesla Inc.",
+            "isin": "US88160R1014",
+            "exchangeIsoCode": "XNAS",
+            "exchange": "U.S.: Nasdaq",
+            "chartingSymbol": "STOCK/US/XNAS/TSLA",
+        }
+    ]
+}
+
+
 class TestMarketwatch:
     SEARCH = "api.wsj.net/api/autocomplete/search"
     DYLAN = "api.wsj.net/api/dylan/quotes/v2/comp/quoteByDialect"
@@ -1346,6 +1363,19 @@ class TestMarketwatch:
 
         fresh_token = "aabbccddeeff00112233445566778899"
         page_with_token = f'<div dylan-entitlement-token="{fresh_token}"><h1>Tesla Inc.</h1></div>'
+        fake_network.get(self.SEARCH, ok_json(MW_TSLA_SYMBOLS))
+        # The quote page is blocked; the token refresh then reads the same page.
+        fake_network.get(self.TSLA_PAGE, BOT_CHALLENGE, ok(page_with_token))
+        fake_network.get(self.DYLAN, status(401), ok_json(DYLAN_TSLA_RESPONSE))
+
+        provider = MarketwatchProvider()
+        metrics = await provider.get_financials("TSLA")
+
+        assert metrics.pe_ratio == pytest.approx(439.79)
+        assert provider._dynamic_token == fresh_token
+        assert f"EntitlementToken={fresh_token}" in fake_network.urls(self.DYLAN)[1]
+
+    async def test_dylan_answer_for_another_instrument_is_ignored(self, fake_network, caplog):
         symbols = {
             "symbols": [
                 {
@@ -1360,15 +1390,35 @@ class TestMarketwatch:
         }
         fake_network.get(self.SEARCH, ok_json(symbols))
         fake_network.get("https://www.marketwatch.com/investing/stock/aapl", BOT_CHALLENGE)
-        fake_network.get(self.DYLAN, status(401), ok_json(DYLAN_TSLA_RESPONSE))
+        fake_network.get(self.DYLAN, ok_json(DYLAN_TSLA_RESPONSE))
+
+        metrics = await MarketwatchProvider().get_financials("AAPL")
+
+        assert metrics.name == "Apple Inc."
+        assert metrics.pe_ratio is None
+        assert getattr(metrics, "price", None) is None
+        assert "another instrument than STOCK/US/XNAS/AAPL" in caplog.text
+
+    async def test_expired_configured_token_is_refreshed(self, fake_network, monkeypatch, caplog):
+        expired = "0123456789abcdef0123456789abcdef"
+        fresh_token = "fedcba9876543210fedcba9876543210"
+        monkeypatch.setattr(MarketwatchProvider, "TOKEN", expired)
+        page_with_token = f'<div dylan-entitlement-token="{fresh_token}"><h1>Tesla Inc.</h1></div>'
+        fake_network.get(self.SEARCH, status(400), ok_json(MW_TSLA_SYMBOLS))
         fake_network.get(self.TSLA_PAGE, ok(page_with_token))
+        fake_network.get(self.DYLAN, ok_json(DYLAN_TSLA_RESPONSE))
 
         provider = MarketwatchProvider()
-        metrics = await provider.get_financials("AAPL")
+        metrics = await provider.get_financials("TSLA")
 
+        search_urls = fake_network.urls(self.SEARCH)
         assert metrics.pe_ratio == pytest.approx(439.79)
-        assert provider._dynamic_token == fresh_token
-        assert f"EntitlementToken={fresh_token}" in fake_network.urls(self.DYLAN)[1]
+        # The refused configured token is not sent again: Dylan gets the fresh one.
+        assert f"EntitlementToken={fresh_token}" in fake_network.urls(self.DYLAN)[0]
+        assert f"entitlementToken={expired}" in search_urls[0]
+        assert f"entitlementToken={fresh_token}" in search_urls[1]
+        assert provider._entitlement_token() == fresh_token
+        assert "rejected the MARKETWATCH_TOKEN entitlement token" in caplog.text
 
     async def test_yahoo_suffix_and_european_isin_avoid_otc(self, fake_network):
         airbus_symbols = {

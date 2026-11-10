@@ -397,6 +397,24 @@ class TestMarketwatchKeyData:
 
         assert metrics.dividend_rate == 0.0
 
+    @pytest.mark.parametrize(
+        ("response", "expected"),
+        [
+            ({"RequestId": "stock/us/xnas/tsla"}, True),
+            ({"RequestId": "STOCK/US/XNAS/AAPL"}, False),
+            ({"Matches": [{"Instrument": {"Ticker": "TSLA"}}]}, True),
+            ({"Matches": [{"Instrument": {"Ticker": "AAPL"}}]}, False),
+            ({"Matches": []}, False),
+            (None, False),
+        ],
+        ids=["request-id", "other-request-id", "ticker", "other-ticker", "no-match", "empty"],
+    )
+    def test_dylan_answer_must_be_for_the_requested_instrument(self, response, expected):
+        from financials.providers.Marketwatch_provider import _dylan_answers_for
+
+        data = {"InstrumentResponses": [response] if response is not None else []}
+        assert _dylan_answers_for(data, "STOCK/US/XNAS/TSLA") is expected
+
     def test_isin_query_never_falls_back_to_another_instrument(self):
         other = {
             "ticker": "FR:XYZ",

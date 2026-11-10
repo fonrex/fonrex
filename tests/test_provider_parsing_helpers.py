@@ -379,6 +379,43 @@ class TestMarketwatchKeyData:
         )
         assert m.dividend_rate == pytest.approx(1.00)
 
+    @pytest.mark.parametrize(
+        "annualized", [{"Iso": "USD", "Value": 0}, 0], ids=["nested", "scalar"]
+    )
+    def test_dylan_keeps_an_explicit_zero_dividend(self, annualized):
+        from financials.models import FinancialMetrics
+
+        metrics = FinancialMetrics(ticker="TST")
+        MarketwatchProvider.read_dylan_quote(
+            metrics,
+            {
+                "InstrumentResponses": [
+                    {"Matches": [{"Financials": {"AnnualizedDividend": annualized}}]}
+                ]
+            },
+        )
+
+        assert metrics.dividend_rate == 0.0
+
+    def test_isin_query_never_falls_back_to_another_instrument(self):
+        other = {
+            "ticker": "FR:XYZ",
+            "country": "FR",
+            "exchangeIsoCode": "XPAR",
+            "isin": "FR0000000001",
+            "type": "Stock",
+            "score": 1.0,
+        }
+        no_isin = {"ticker": "FR:ABC", "country": "FR", "type": "Stock", "score": 0.9}
+        exact = {**other, "ticker": "FR:MC", "isin": "FR0000121014", "score": 0.1}
+
+        assert MarketwatchProvider._select_symbol(
+            {"symbols": [other, no_isin]}, "FR0000121014"
+        ) is None
+        assert MarketwatchProvider._select_symbol(
+            {"symbols": [other, no_isin, exact]}, "fr0000121014"
+        ) == exact
+
 
 class TestBoursoramaHelpers:
     @pytest.mark.parametrize(

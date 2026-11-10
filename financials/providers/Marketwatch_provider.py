@@ -105,9 +105,13 @@ class MarketwatchProvider(BaseProvider):
             return token
         return None
 
+    def _configured_token(self) -> str:
+        """Token set by MARKETWATCH_TOKEN, or an empty string when none is configured."""
+        return (self.TOKEN or os.getenv(MARKETWATCH_TOKEN_ENV_VAR) or "").strip()
+
     def _entitlement_token(self) -> str:
         """Return the entitlement token: env override -> dynamically extracted -> default."""
-        configured = (self.TOKEN or os.getenv(MARKETWATCH_TOKEN_ENV_VAR) or "").strip()
+        configured = self._configured_token()
         if configured:
             return configured
         if self._dynamic_token:
@@ -229,10 +233,7 @@ class MarketwatchProvider(BaseProvider):
         }
         try:
             response = await client.get(self.SEARCH_API, params=params)
-            if (
-                response.status_code == 400
-                and not (self.TOKEN or os.getenv(MARKETWATCH_TOKEN_ENV_VAR) or "").strip()
-            ):
+            if response.status_code == 400 and not self._configured_token():
                 refreshed = await self._refresh_entitlement_token(client)
                 if refreshed and refreshed != token:
                     params["entitlementToken"] = refreshed
@@ -268,6 +269,13 @@ class MarketwatchProvider(BaseProvider):
         bare_query = query_upper.split(":")[-1]
         query_isin = len(query_upper) == 12 and query_upper.isalnum() and query_upper[:2].isalpha()
 
+        if query_isin:
+            # Source symbols are verified, never guessed (AGENTS.md rule 13): an ISIN query
+            # only accepts listings of that ISIN, never a higher-scored unrelated one.
+            symbols = [s for s in symbols if (s.get("isin") or "").upper() == query_upper]
+            if not symbols:
+                return None
+
         isin_country = ISIN_PREFIX_TO_MW_COUNTRY.get(query_upper[:2]) if query_isin else None
         available_countries = {(s.get("country") or "").upper() for s in symbols}
 
@@ -284,13 +292,11 @@ class MarketwatchProvider(BaseProvider):
         def rank(symbol):
             ticker = (symbol.get("ticker") or "").upper()
             url_ticker = ticker.split(":")[-1]
-            isin = (symbol.get("isin") or "").upper()
             country = (symbol.get("country") or "").upper()
             exchange = (symbol.get("exchangeIsoCode") or "").upper()
             symbol_type = (symbol.get("type") or "").lower()
             score = symbol.get("score") or 0
             return (
-                query_isin and isin != query_upper,
                 not query_isin and url_ticker != bare_query and ticker != query_upper,
                 exchange == "OOTC",
                 country_penalty(country),
@@ -368,10 +374,7 @@ class MarketwatchProvider(BaseProvider):
         }
         try:
             resp = await client.get(self.DYLAN_QUOTE_API, params=params, headers=headers)
-            if (
-                resp.status_code in (400, 401, 403)
-                and not (self.TOKEN or os.getenv(MARKETWATCH_TOKEN_ENV_VAR) or "").strip()
-            ):
+            if resp.status_code in (400, 401, 403) and not self._configured_token():
                 refreshed = await self._refresh_entitlement_token(client)
                 if refreshed and refreshed != token:
                     params["ckey"] = refreshed[:10]
@@ -409,17 +412,17 @@ class MarketwatchProvider(BaseProvider):
         _put(metrics, "exchange", _text(exchange.get("IsoCode")))
         _put(metrics, "exchange_name", _text(exchange.get("CommonName")))
 
-        price = (
-            _nested_number(composite, "Last", "Price", "Value")
-            or _nested_number(trading, "Last", "Price", "Value")
-            or _nested_number(financials, "Previous", "Price", "Value")
+        price = _first_present(
+            _nested_number(composite, "Last", "Price", "Value"),
+            _nested_number(trading, "Last", "Price", "Value"),
+            _nested_number(financials, "Previous", "Price", "Value"),
         )
         _put(metrics, "price", price)
 
-        currency = (
-            _nested_text(composite, "Last", "Price", "Iso")
-            or _nested_text(trading, "Last", "Price", "Iso")
-            or _nested_text(financials, "MarketCapitalization", "Iso")
+        currency = _first_present(
+            _nested_text(composite, "Last", "Price", "Iso"),
+            _nested_text(trading, "Last", "Price", "Iso"),
+            _nested_text(financials, "MarketCapitalization", "Iso"),
         )
         _put(metrics, "currency", currency)
 
@@ -427,11 +430,14 @@ class MarketwatchProvider(BaseProvider):
         _put(metrics, "eps", _nested_number(financials, "LastEarningsPerShare", "Value"))
         _put(metrics, "dividend_yield", _number(financials.get("Yield")))
         # Only use AnnualizedDividend: LastDividendPerShare is a single payment, not annual.
+        # A zero is an answer (no dividend), not missing data: keep it.
         _put(
             metrics,
             "dividend_rate",
-            _nested_number(financials, "AnnualizedDividend", "Value")
-            or _number(financials.get("AnnualizedDividend")),
+            _first_present(
+                _nested_number(financials, "AnnualizedDividend", "Value"),
+                _number(financials.get("AnnualizedDividend")),
+            ),
         )
         _put(metrics, "market_cap", _nested_number(financials, "MarketCapitalization", "Value"))
         _put(metrics, "shares_outstanding", _number(financials.get("SharesOutstanding")))
@@ -538,6 +544,11 @@ class MarketwatchProvider(BaseProvider):
 def _put(metrics: FinancialMetrics, field: str, value: Any) -> None:
     if value is not None and getattr(metrics, field, None) is None:
         setattr(metrics, field, value)
+
+
+def _first_present(*values: Any) -> Any:
+    """First value that is not None: unlike ``or``, a zero is kept."""
+    return next((value for value in values if value is not None), None)
 
 
 def _text(value: Any) -> Optional[str]:

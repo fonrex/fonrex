@@ -156,7 +156,13 @@ class MsnProvider(BaseProvider):
         key_metrics = _object(_object(equity.get("analysis")).get("keyMetrics"))
         company = _object(equity.get("company"))
 
-        _put(metrics, "name", _text(quote.get("displayName")) or _text(equity.get("displayName")))
+        _put(
+            metrics,
+            "name",
+            _text(quote.get("displayName"))
+            or _text(equity.get("displayName"))
+            or _text(company.get("name")),
+        )
         _put(metrics, "currency", _text(quote.get("currency")))
         for field, key in QUOTE_FIELDS:
             _put(metrics, field, _number(field, quote.get(key)))

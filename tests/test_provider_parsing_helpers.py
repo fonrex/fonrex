@@ -274,6 +274,11 @@ class TestMsnQuoteSummary:
 
         assert parsed["name"] == "Airbus"
 
+    def test_name_of_the_company_when_no_listing_name(self):
+        parsed = self.read({"quote": {}, "equity": {"company": {"name": "Airbus SE"}}})
+
+        assert parsed["name"] == "Airbus SE"
+
     def test_zero_ratio_is_a_missing_value(self):
         parsed = self.read(
             {

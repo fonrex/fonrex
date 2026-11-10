@@ -261,14 +261,17 @@ class GoogleFinanceProvider(BaseProvider):
 
         The side that looks more like an exchange is the exchange: 'ICE:NYSE' is kept
         (ICE is also a code of the list, but NYSE is a stock exchange). When both sides
-        look alike, the input is read EXCHANGE:SYMBOL, the format of get_google_ticker
-        and of the catalogue.
+        are exchange codes of the same rank, the input is read EXCHANGE:SYMBOL, the format
+        of get_google_ticker and of the catalogue. When neither side is a known exchange
+        ('AIR:XX'), nothing proves the order, so the SYMBOL:EXCHANGE input is kept, like
+        'AIR.XX' gives 'AIR:XX'.
         """
         if ":" in ticker:
             left, right = (part.strip() for part in ticker.split(":", 1))
-            if self._exchange_rank(right) > self._exchange_rank(left):
-                return f"{left}:{right}"
-            return f"{right}:{left}"
+            left_rank, right_rank = self._exchange_rank(left), self._exchange_rank(right)
+            if left_rank > right_rank or left_rank == right_rank > 0:
+                return f"{right}:{left}"
+            return f"{left}:{right}"
 
         # Get Exchange:Symbol (e.g. EPA:AIR), then swap to Symbol:Exchange (AIR:EPA)
         exchange, symbol = self.get_google_ticker(ticker).split(":", 1)

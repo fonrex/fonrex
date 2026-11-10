@@ -769,6 +769,7 @@ class TestGoogleFinanceIsinListing:
             ("CRARF:OTC", "CRARF:OTC"),
             ("AIR.PA", "AIR:EPA"),
             ("AIR.XX", "AIR:XX"),
+            ("AIR:XX", "AIR:XX"),
             ("IBM", "IBM:NASDAQ"),
         ],
     )

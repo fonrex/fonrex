@@ -6,6 +6,8 @@ Unit tests for FinancialsFormatter.
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from financials.formatter import FinancialsFormatter
 
 
@@ -260,6 +262,31 @@ def test_wall_street_journal_insiders_are_found_under_the_name_of_the_provider()
         "transactionPrice": 20.05,
         "description": "Disposition at $20.05 per share",
     }
+
+
+@pytest.mark.parametrize(
+    ("description", "price"),
+    [
+        # The number of shares comes first: it is not the price.
+        ("Sale of 1,018 shares at $20.05 per share", 20.05),
+        # No "at": no price is guessed from the other figures.
+        ("Disposition of 1,018 shares", None),
+        (None, None),
+    ],
+    ids=["shares-before-price", "no-price", "no-description"],
+)
+def test_wall_street_journal_insider_price_is_the_figure_after_at(description, price):
+    results = {
+        "wallStreetJournal": {
+            "insider_transactions": {
+                "Transactions": [{"ownerName": "Benoit Tassou", "description": description}]
+            }
+        }
+    }
+
+    transaction = FinancialsFormatter.to_eodhd(results)["InsiderTransactions"]["0"]
+
+    assert transaction["transactionPrice"] == price
 
 
 def test_insider_transactions_of_the_sec_provider_are_rendered():

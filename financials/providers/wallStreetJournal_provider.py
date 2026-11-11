@@ -28,7 +28,9 @@ _WSJ_QUOTE_URL_RE = re.compile(
     r"wsj\.com/market-data/(?:quotes/(?:([A-Za-z]{2})/([A-Za-z0-9]+)/)?|stock/)([^/?#]+)",
     re.IGNORECASE,
 )
-_WINDOW_STATE_RE = re.compile(r"window\.__STATE__\s*=\s*(\{.*?\});?\s*(?:</script>|$)", re.DOTALL)
+# Quote fields whose absence after the HTML page triggers the Dylan JSON fallback.
+DYLAN_FALLBACK_FIELDS = ("price", "pe_ratio", "eps")
+_WINDOW_STATE_RE =re.compile(r"window\.__STATE__\s*=\s*(\{.*?\});?\s*(?:</script>|$)", re.DOTALL)
 
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -185,13 +187,12 @@ class WallStreetJournalProvider(BaseProvider):
                     for field, value in page_metrics.model_dump(exclude_none=True).items():
                         setattr(metrics, field, value)
 
-                # Fall back to the Dylan JSON API when the HTML page was blocked or incomplete
+                # Fall back to the Dylan JSON API when the HTML page was blocked or
+                # incomplete: a page answered with 200 can still lack some quote fields.
+                # `read_dylan_quote` only fills the fields that are still missing.
                 charting_symbol = search_result.get("charting_symbol")
-                if (
-                    charting_symbol
-                    and metrics.pe_ratio is None
-                    and metrics.eps is None
-                    and getattr(metrics, "price", None) is None
+                if charting_symbol and any(
+                    getattr(metrics, field, None) is None for field in DYLAN_FALLBACK_FIELDS
                 ):
                     dylan = await self._fetch_dylan_quote(client, charting_symbol)
                     if dylan:
@@ -204,7 +205,10 @@ class WallStreetJournalProvider(BaseProvider):
                 )
                 if html_people:
                     insider_data = self._parse_insider_transactions(html_people)
-                    metrics.insider_transactions = insider_data
+                    # A blocked or empty people page must not erase the transactions
+                    # already read on the quote page.
+                    if insider_data["Summary"] or insider_data["Transactions"]:
+                        metrics.insider_transactions = insider_data
 
                 return metrics
             except Exception as e:

@@ -1656,6 +1656,8 @@ class TestWallStreetJournal:
         fake_network.get(self.SEARCH, ok_json(WSJ_SYMBOLS))
         fake_network.get(self.PAGE + "/company-people", ok(WSJ_PEOPLE_PAGE))
         fake_network.get(self.PAGE, ok(WSJ_QUOTE_PAGE))
+        # The page has no price: Dylan is asked for the missing fields.
+        fake_network.get(self.DYLAN, status(401))
 
         metrics = await WallStreetJournalProvider().get_financials("AAPL")
 
@@ -1751,6 +1753,57 @@ class TestWallStreetJournal:
         assert metrics.website == "http://www.credit-agricole.com"
         assert metrics.insider_transactions["Transactions"][0]["ownerName"] == "Jane Doe"
 
+    async def test_dylan_fills_the_fields_missing_from_a_partial_page(self, fake_network):
+        aca_symbols = {
+            "symbols": [
+                {
+                    "ticker": "FR:ACA",
+                    "country": "FR",
+                    "type": "Stock",
+                    "isin": "FR0000045072",
+                    "exchangeIsoCode": "XPAR",
+                    "chartingSymbol": "STOCK/FR/XPAR/ACA",
+                }
+            ]
+        }
+        # The page answers 200 with the P/E and the EPS, but without the price.
+        partial_page = "<html><body><ul><li>P/E Ratio: 7.20</li><li>EPS: 2.10</li></ul></body></html>"
+        fake_network.get(self.SEARCH, ok_json(aca_symbols))
+        fake_network.get(self.ACA_PAGE + "/company-people", ok("<html><body></body></html>"))
+        fake_network.get(self.ACA_PAGE, ok(partial_page))
+        fake_network.get(self.DYLAN, ok_json(DYLAN_ACA_RESPONSE))
+
+        metrics = await WallStreetJournalProvider().get_financials("FR0000045072")
+
+        assert fake_network.calls(self.DYLAN) == 1
+        assert metrics.price == pytest.approx(14.92)
+        # The figures read on the page are kept, Dylan only fills the gaps.
+        assert metrics.pe_ratio == pytest.approx(7.20)
+        assert metrics.eps == pytest.approx(2.10)
+
+    async def test_complete_page_does_not_call_dylan(self, fake_network):
+        aca_symbols = {
+            "symbols": [
+                {
+                    "ticker": "FR:ACA",
+                    "country": "FR",
+                    "type": "Stock",
+                    "exchangeIsoCode": "XPAR",
+                    "chartingSymbol": "STOCK/FR/XPAR/ACA",
+                }
+            ]
+        }
+        fake_network.get(self.SEARCH, ok_json(aca_symbols))
+        # A blocked people page must not erase the insiders read on the quote page.
+        fake_network.get(self.ACA_PAGE + "/company-people", ok("<html><body></body></html>"))
+        fake_network.get(self.ACA_PAGE, ok(fixture("wallstreetjournal_aca.html")))
+
+        metrics = await WallStreetJournalProvider().get_financials("ACA.PA")
+
+        assert fake_network.calls(self.DYLAN) == 0
+        assert metrics.price == pytest.approx(14.98)
+        assert metrics.insider_transactions["Transactions"][0]["ownerName"] == "Benoit Tassou"
+
     async def test_dynamic_token_refresh_on_expired_default_token(self, fake_network, monkeypatch):
         monkeypatch.setattr(WallStreetJournalProvider, "TOKEN", None)
         monkeypatch.setattr(WallStreetJournalProvider, "_dynamic_token", None)
@@ -1762,6 +1815,7 @@ class TestWallStreetJournal:
         fake_network.get(self.TOKEN_SCRIPT, ok(script_body))
         fake_network.get(self.PAGE + "/company-people", ok(WSJ_PEOPLE_PAGE))
         fake_network.get(self.PAGE, ok(WSJ_QUOTE_PAGE))
+        fake_network.get(self.DYLAN, status(401))
 
         metrics = await WallStreetJournalProvider().get_financials("AAPL")
 

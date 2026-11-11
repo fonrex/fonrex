@@ -9,6 +9,53 @@ class BarronsProviderTest(unittest.TestCase):
     def setUp(self):
         self.provider = BarronsProvider()
 
+    def test_select_symbol_prefers_us_exact_stock_match(self):
+        data = {
+            "symbols": [
+                {
+                    "score": 0.62,
+                    "ticker": "MX:TSLA",
+                    "country": "MX",
+                    "type": "Stock",
+                    "isin": "US88160R1014",
+                    "company": "Tesla Inc.",
+                },
+                {
+                    "score": 1,
+                    "ticker": "TSLA",
+                    "country": "US",
+                    "type": "Stock",
+                    "isin": "US88160R1014",
+                    "company": "Tesla Inc.",
+                },
+            ]
+        }
+
+        symbol = BarronsProvider._select_symbol(data, "TSLA")
+        result = BarronsProvider._search_result_from_symbol(symbol, "TSLA")
+
+        self.assertEqual(result["ticker"], "TSLA")
+        self.assertEqual(result["url_ticker"], "TSLA")
+        self.assertEqual(result["isin"], "US88160R1014")
+        self.assertEqual(result["provider_url"], "https://www.barrons.com/market-data/stocks/tsla")
+
+    def test_metrics_can_be_returned_from_search_result_without_page_parse(self):
+        metrics = BarronsProvider._metrics_from_search_result(
+            {
+                "ticker": "TSLA",
+                "url_ticker": "TSLA",
+                "isin": "US88160R1014",
+                "name": "Tesla Inc.",
+                "provider_url": "https://www.barrons.com/market-data/stocks/tsla",
+            },
+            "TSLA",
+        )
+
+        self.assertEqual(metrics.name, "Tesla Inc.")
+        self.assertEqual(metrics.ticker, "TSLA")
+        self.assertEqual(metrics.isin, "US88160R1014")
+        self.assertEqual(metrics.provider_url, "https://www.barrons.com/market-data/stocks/tsla")
+
     def test_parse_rating_sentiment_heuristics(self):
         html = """
         <div>
@@ -38,6 +85,42 @@ class BarronsProviderTest(unittest.TestCase):
 
         self.assertEqual(rating, "Buy")
         self.assertEqual(sentiment, "Bearish")
+
+    def test_parse_average_score_scale_and_next_data_rating(self):
+        html = """
+        <html>
+        <head>
+          <style>.emotion-1hddjdp-StyledMarker +span{font-weight:bold;}</style>
+        </head>
+        <body>
+          <div class="analyst-ratings" data-id="AnalystRatings_Wrapper">
+            <p>Average Score:</p>
+            <div data-id="AnalystRatings_ScaleContainer">
+              <div data-id="AnalystRatings_ScaleBlock">
+                <svg class="emotion-1l73fvh-StyledMarker"></svg>
+                <span data-id="AnalystRatings_ScaleText">Sell</span>
+              </div>
+              <div data-id="AnalystRatings_ScaleBlock">
+                <svg class="emotion-1hddjdp-StyledMarker"></svg>
+                <span data-id="AnalystRatings_ScaleText">Hold</span>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+        """
+        metrics = self.provider._parse_page(HTMLParser(html), "ACA")
+        self.assertEqual(metrics.rating, "Hold")
+
+        next_only_html = """
+        <html><body>
+          <script id="__NEXT_DATA__" type="application/json">
+            {"props":{"pageProps":{"analystRatingsBarCard":{"rating":3,"totalRatings":18}}}}
+          </script>
+        </body></html>
+        """
+        metrics_next = self.provider._parse_page(HTMLParser(next_only_html), "ACA")
+        self.assertEqual(metrics_next.rating, "Over")
 
     def test_select_symbol_prefers_matching_french_isin_over_us_otc(self):
         data = {

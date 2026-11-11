@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import random
 import re
 from typing import Any, Callable, Optional
@@ -32,6 +33,8 @@ _BARRONS_URL_RE = re.compile(
 # endpoint answers 401 to a bot challenge too, which a new token does not cure.
 _SEARCH_TOKEN_REJECTED = frozenset({400})
 _DYLAN_TOKEN_REJECTED = frozenset({400, 401})
+_ANALYST_RATING_SCALE = ("Sell", "Under", "Hold", "Over", "Buy")
+_EMOTION_CLASS_RE = re.compile(r"\b(emotion-[A-Za-z0-9_-]+)\b")
 
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -219,9 +222,9 @@ class BarronsProvider(BaseProvider):
     async def get_financials(self, ticker: str) -> Optional[FinancialMetrics]:
         async with self._session() as client:
             try:
-                # Basic normalization
-                url_ticker = ticker.split(":")[-1].lower()
-                url = self.BASE_URL.format(ticker=url_ticker)
+                search_result = await self._search_result(client, ticker)
+                if not search_result:
+                    return None
 
                 metrics = self._metrics_from_search_result(search_result, ticker)
 
@@ -571,8 +574,76 @@ class BarronsProvider(BaseProvider):
         if high_52 is not None:
             metrics.week_52_high = high_52
 
+        rating, sentiment = self._parse_rating_sentiment(parser)
+        _put(metrics, "rating", rating)
+        _put(metrics, "sentiment", sentiment)
+
         self._parse_next_data(parser, metrics)
         return metrics
+
+    def _parse_rating_sentiment(
+        self, parser: HTMLParser
+    ) -> tuple[Optional[str], Optional[str]]:
+        rating: Optional[str] = None
+        sentiment: Optional[str] = None
+
+        # 1. Real Barron's "Average Score:" scale under Analyst Ratings
+        style_text = " ".join(s.text() for s in parser.css("style"))
+        for block in parser.css("[data-id='AnalystRatings_ScaleBlock']"):
+            span = block.css_first("[data-id='AnalystRatings_ScaleText']") or block.css_first(
+                "span"
+            )
+            svg = block.css_first("svg")
+            classes = " ".join(
+                filter(
+                    None,
+                    [
+                        block.attributes.get("class"),
+                        svg.attributes.get("class") if svg else None,
+                        span.attributes.get("class") if span else None,
+                    ],
+                )
+            )
+            is_active = (
+                block.attributes.get("data-active") == "true"
+                or (svg is not None and svg.attributes.get("data-active") == "true")
+                or "active" in classes.lower().split()
+                or any(
+                    f".{cls} +span{{font-weight:bold" in style_text
+                    or f".{cls}+span{{font-weight:bold" in style_text
+                    for cls in _EMOTION_CLASS_RE.findall(classes)
+                )
+            )
+            if span and is_active:
+                rating = _text(span.text(strip=True))
+                break
+
+        # 2. Heuristic search for Rating and Sentiment labels
+        for node in parser.css("div, span, li"):
+            if rating and sentiment:
+                break
+            text = node.text(strip=True).lower()
+            if not text or len(text) >= 30:
+                continue
+
+            if "rating" in text and not rating:
+                rating = _adjacent_label_value(node)
+
+            if "sentiment" in text and not sentiment:
+                sentiment = _adjacent_label_value(node)
+
+        # 3. Fallback on explicit rating/sentiment classes
+        if not rating:
+            rating_node = parser.css_first(".rating-value, [class*='RatingValue'], .analyst-rating")
+            if rating_node:
+                rating = _text(rating_node.text(strip=True))
+
+        if not sentiment:
+            sentiment_node = parser.css_first(".sentiment-value, [class*='SentimentValue']")
+            if sentiment_node:
+                sentiment = _text(sentiment_node.text(strip=True))
+
+        return rating, sentiment
 
     @classmethod
     def _parse_next_data(cls, parser: HTMLParser, metrics: FinancialMetrics) -> None:
@@ -633,6 +704,15 @@ class BarronsProvider(BaseProvider):
             _nested_number(vol_card, "averageVolumeForPeriod", "value"),
         )
 
+        analyst_card = props.get("analystRatingsBarCard") or {}
+        raw_rating = analyst_card.get("rating")
+        if (
+            isinstance(raw_rating, int)
+            and not isinstance(raw_rating, bool)
+            and 0 <= raw_rating < len(_ANALYST_RATING_SCALE)
+        ):
+            _put(metrics, "rating", _ANALYST_RATING_SCALE[raw_rating])
+
     def _find_range_by_label(
         self, parser: HTMLParser, labels: list[str]
     ) -> tuple[Optional[float], Optional[float]]:
@@ -686,6 +766,13 @@ class BarronsProvider(BaseProvider):
                         if value is not None:
                             return value
         return None
+
+
+def _adjacent_label_value(node: Any) -> Optional[str]:
+    val_node = node.css_first(".value, .data")
+    if val_node and val_node != node:
+        return _text(val_node.text(strip=True))
+    return None
 
 
 def _looks_like_isin(value: str) -> bool:

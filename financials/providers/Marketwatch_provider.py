@@ -7,8 +7,8 @@ from urllib.parse import parse_qs, urlparse
 
 from selectolax.parser import HTMLParser
 
-from financials.models import FinancialMetrics
-from financials.numbers import parse_number
+from financials.models import Competitor, FinancialMetrics
+from financials.numbers import find_number, parse_number
 from financials.providers.base import BaseProvider, ProviderSession
 
 logger = logging.getLogger(__name__)
@@ -537,7 +537,78 @@ class MarketwatchProvider(BaseProvider):
         if high_52 is not None:
             metrics.week_52_high = high_52
 
+        rating, analyst_count = self._parse_analyst_ratings(parser)
+        _put(metrics, "rating", rating)
+        _put(metrics, "analyst_count", analyst_count)
+
+        competitors = self._parse_competitors(parser)
+        if competitors:
+            metrics.competitors = competitors
+
         return metrics
+
+    @staticmethod
+    def _parse_analyst_ratings(
+        parser: HTMLParser,
+    ) -> tuple[Optional[str], Optional[int]]:
+        analyst_node = parser.css_first(".element--analyst") or parser
+        rating: Optional[str] = None
+        analyst_count: Optional[int] = None
+
+        active_opt = analyst_node.css_first("ul.analyst__rating li.analyst__option.active")
+        if active_opt:
+            rating = _text(active_opt.text(strip=True))
+
+        count_node = analyst_node.css_first(".analyst__count .count")
+        if count_node:
+            parsed = parse_number(count_node.text(strip=True), decimal=".")
+            if parsed is not None:
+                analyst_count = int(parsed)
+        elif (count_wrap := analyst_node.css_first(".analyst__count")) is not None:
+            parsed = find_number(count_wrap.text(strip=True), last=True)
+            if parsed is not None:
+                analyst_count = int(parsed)
+
+        return rating, analyst_count
+
+    @staticmethod
+    def _parse_competitors(parser: HTMLParser) -> Optional[list[Competitor]]:
+        comp_section = parser.css_first(
+            ".element--table.Competitors, table[aria-label='Competitors data table']"
+        )
+        if not comp_section:
+            return None
+
+        competitors: list[Competitor] = []
+        for row in comp_section.css("tbody tr"):
+            cells = row.css("td")
+            if len(cells) < 3:
+                continue
+
+            name_cell = cells[0]
+            link = name_cell.css_first("a")
+            name = _text(link.text(strip=True) if link else name_cell.text(strip=True))
+            if not name:
+                continue
+
+            href = (link.attributes.get("href") or "") if link else ""
+            url_match = _MW_URL_RE.search(href)
+            comp_ticker = url_match.group(1).upper() if url_match else name
+
+            chg_node = cells[1].css_first("bg-quote") or cells[1]
+            change_percent = _text(chg_node.text(strip=True))
+            market_cap = _text(cells[2].text(strip=True))
+
+            competitors.append(
+                Competitor(
+                    name=name,
+                    ticker=comp_ticker,
+                    change_percent=change_percent,
+                    market_cap=market_cap,
+                )
+            )
+
+        return competitors or None
 
     def _find_range_by_label(
         self, parser: HTMLParser, labels: list[str]

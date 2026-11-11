@@ -4,14 +4,78 @@
   "source_url": "https://www.marketwatch.com/investing/stock/tsla",
   "captured_on": "2026-11-02",
   "expected": {
+    "analyst_count": 49,
     "average_volume": 36680000.0,
     "beta": 2.06,
+    "competitors": [
+      {
+        "name": "Toyota Motor Corp.",
+        "ticker": "7203",
+        "change_percent": "0.62%",
+        "market_cap": "¥40.43T"
+      },
+      {
+        "name": "Volkswagen AG Non-Vtg Pfd.",
+        "ticker": "VOW3",
+        "change_percent": "0.12%",
+        "market_cap": "€34.16B"
+      },
+      {
+        "name": "Volkswagen AG",
+        "ticker": "VOW",
+        "change_percent": "-0.07%",
+        "market_cap": "€34.16B"
+      },
+      {
+        "name": "Mercedes-Benz Group AG",
+        "ticker": "MBG",
+        "change_percent": "-0.36%",
+        "market_cap": "€39.83B"
+      },
+      {
+        "name": "General Motors Co.",
+        "ticker": "GM",
+        "change_percent": "-1.07%",
+        "market_cap": "$74.81B"
+      },
+      {
+        "name": "Ford Motor Co.",
+        "ticker": "F",
+        "change_percent": "-0.73%",
+        "market_cap": "$49.04B"
+      },
+      {
+        "name": "Bayerische Motoren Werke AG",
+        "ticker": "BMW",
+        "change_percent": "-0.76%",
+        "market_cap": "€35.18B"
+      },
+      {
+        "name": "NIO Inc. ADR",
+        "ticker": "NIO",
+        "change_percent": "-3.81%",
+        "market_cap": "$8.46B"
+      },
+      {
+        "name": "Stellantis N.V.",
+        "ticker": "STLAM",
+        "change_percent": "-0.89%",
+        "market_cap": "€14.42B"
+      },
+      {
+        "name": "Honda Motor Co. Ltd.",
+        "ticker": "7267",
+        "change_percent": "-4.53%",
+        "market_cap": "¥7.21T"
+      }
+    ],
     "eps": 0.91,
     "float_shares": 2820000000.0,
     "market_cap": 1580000000000.0,
     "name": "Tesla Inc.",
     "pe_ratio": 439.79,
     "price": 402.38,
+    "rating": "Over",
     "shares_outstanding": 3950000000.0,
     "shares_short": 69350000.0,
     "short_percent_float": 2.46,

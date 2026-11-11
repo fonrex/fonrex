@@ -435,6 +435,28 @@ class TestMarketwatchKeyData:
             {"symbols": [other, no_isin, exact]}, "fr0000121014"
         ) == exact
 
+    def test_analyst_ratings_and_competitors_edge_cases(self):
+        html = page(
+            '<div class="element element--analyst">'
+            '<ul class="analyst__rating"><li class="analyst__option active">Buy</li></ul>'
+            '<span class="analyst__count">Number of Ratings: 12</span>'
+            "</div>"
+            '<div class="element element--table Competitors">'
+            "<table><tbody>"
+            "<tr><td>Only one cell</td></tr>"
+            "<tr><td></td><td>1%</td><td>$1B</td></tr>"
+            '<tr><td><span>Plain Competitor</span></td><td>+2.5%</td><td>$10B</td></tr>'
+            "</tbody></table></div>"
+        )
+        metrics = MarketwatchProvider()._parse_page(html, "TST")
+        assert metrics.rating == "Buy"
+        assert metrics.analyst_count == 12
+        assert len(metrics.competitors) == 1
+        assert metrics.competitors[0].name == "Plain Competitor"
+        assert metrics.competitors[0].ticker == "Plain Competitor"
+        assert metrics.competitors[0].change_percent == "+2.5%"
+        assert metrics.competitors[0].market_cap == "$10B"
+
 
 class TestWallStreetJournalHelpers:
     def test_window_state_and_sibling_fallback_and_insider_titles(self):

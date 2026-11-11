@@ -96,7 +96,11 @@ KNOWN_GAPS = [
 
 def same_value(actual, displayed) -> bool:
     if isinstance(displayed, list):
-        return isinstance(actual, list) and sorted(actual) == sorted(displayed)
+        if not isinstance(actual, list) or len(actual) != len(displayed):
+            return False
+        if all(isinstance(x, dict) for x in displayed):
+            return actual == displayed
+        return sorted(actual) == sorted(displayed)
     if isinstance(displayed, (int, float)) and not isinstance(displayed, bool):
         return isinstance(actual, (int, float)) and actual == pytest.approx(displayed, rel=1e-3)
     return actual == displayed

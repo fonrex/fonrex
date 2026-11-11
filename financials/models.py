@@ -82,5 +82,6 @@ class FinancialMetrics(StandardFinancials):
     news: Optional[list[NewsArticle]] = Field(None, description="Recent news (Dow Jones, Other Sources)")
     competitors: Optional[list[Competitor]] = Field(None, description="List of competitors")
     rating: Optional[str] = Field(None, description="Analyst Rating")
+    analyst_count: Optional[int] = Field(None, description="Number of Analyst Ratings")
     sentiment: Optional[str] = Field(None, description="Sentiment Score")
 

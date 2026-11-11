@@ -909,9 +909,11 @@ Providers are called in parallel with a timeout. An error or timeout on one prov
 
 1. the Yahoo payload fetched for this request;
 2. the figures stored in the database by the deep enrichment — an earlier Yahoo answer, reported as `database (date of the fetch)`; they answer when Yahoo is not asked (listing without a verified symbol) or lacks the figure;
-3. for the trailing P/E, the earnings per share and the dividend yield only, the scraped providers that publish the same quantity (GoogleFinance, Barrons, Marketwatch, wallStreetJournal, Investing).
+3. for the trailing P/E, the earnings per share and the dividend yield, the scraped providers that publish the same quantity (GoogleFinance, Barrons, Marketwatch, wallStreetJournal, Investing); in `AnalystRatings`, the consensus label (`Rating`), the number of analysts (`AnalystCount`) and the `Sentiment` label displayed by Barrons and Marketwatch.
 
-Boursorama and ZoneBourse publish estimates for the current fiscal year, GoogleFinance publishes revenue and margins of the last quarter: these are other quantities and are never used as a fallback; they remain available with `fmt=raw`. The document holds ratios: a percentage published by a source (Yahoo `dividendYield`, the fields declared in `monitoring/units.py`) is converted. Zero is a value; only a missing figure (or NaN, infinity, a text) falls back to the next source.
+`General` takes the ISIN, the country and the CIK left empty by the instrument and Yahoo from the providers that answered without error, and gives `IPODate` as a UTC date (`1980-12-12`). `Competitors` numbers the competitors listed by the scraped providers (Marketwatch). News articles are not part of this document: they are served by the `/news` routes.
+
+Boursorama and ZoneBourse publish estimates for the current fiscal year, GoogleFinance publishes revenue and margins of the last quarter: these are other quantities and are never used as a fallback; they remain available with `fmt=raw`. The document holds ratios: a percentage published by a source (Yahoo `dividendYield`, the fields declared in `monitoring/units.py`) is converted. Zero is a value; only a missing figure (or NaN, infinity, a text where a number is expected) falls back to the next source.
 
 **Numbers displayed on pages** are read by `financials/numbers.py` (`parse_number` for a cell, `find_number` for a sentence): sign (including the typographic minus and accounting parentheses), thousands separators (any kind of space, comma or dot according to the page), scales (`k`, `M`, `Md`, `B`, `T`), currencies. A text that is more than a number is not half read.
 

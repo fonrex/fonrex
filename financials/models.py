@@ -3,23 +3,14 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class NewsArticle(BaseModel):
-    """
-    Model for news articles.
-    """
-    title: str = Field(..., description="Article title")
-    url: str = Field(..., description="Article URL")
-    date: Optional[str] = Field(None, description="Publication date")
-    source: Optional[str] = Field(None, description="Article source (e.g., Dow Jones, MarketWatch)")
-    image: Optional[str] = Field(None, description="Image URL")
-
-
 class Competitor(BaseModel):
     """
     Model for a competitor extracted from MarketWatch.
     """
     name: str = Field(..., description="Competitor Name")
-    ticker: str = Field(..., description="Competitor Ticker Symbol")
+    ticker: Optional[str] = Field(
+        None, description="Competitor ticker symbol, when the page links to its quote"
+    )
     change_percent: Optional[str] = Field(None, description="Change Percentage")
     market_cap: Optional[str] = Field(None, description="Market Capitalization")
 
@@ -79,9 +70,7 @@ class FinancialMetrics(StandardFinancials):
     provider_url: Optional[str] = Field(None, description="Source URL")
     ticker: Optional[str] = Field(None, description="Stock ticker (Provider format)")
 
-    news: Optional[list[NewsArticle]] = Field(None, description="Recent news (Dow Jones, Other Sources)")
     competitors: Optional[list[Competitor]] = Field(None, description="List of competitors")
     rating: Optional[str] = Field(None, description="Analyst Rating")
     analyst_count: Optional[int] = Field(None, description="Number of Analyst Ratings")
-    sentiment: Optional[str] = Field(None, description="Sentiment Score")
-
+    sentiment: Optional[str] = Field(None, description="Sentiment label")

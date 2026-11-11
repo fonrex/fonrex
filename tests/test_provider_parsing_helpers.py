@@ -453,7 +453,7 @@ class TestMarketwatchKeyData:
         assert metrics.analyst_count == 12
         assert len(metrics.competitors) == 1
         assert metrics.competitors[0].name == "Plain Competitor"
-        assert metrics.competitors[0].ticker == "Plain Competitor"
+        assert metrics.competitors[0].ticker is None
         assert metrics.competitors[0].change_percent == "+2.5%"
         assert metrics.competitors[0].market_cap == "$10B"
 

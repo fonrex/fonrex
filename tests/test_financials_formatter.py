@@ -535,3 +535,109 @@ def test_build_etf_data():
     assert formatted["ETF_Data"]["Net_Expense_Ratio"] == 0.0007
     assert formatted["ETF_Data"]["Top_10_Holdings"]["0"]["Symbol"] == "AAPL"
     assert formatted["ETF_Data"]["Top_10_Holdings"]["0"]["Assets_%"] == 0.075
+
+
+def test_general_reads_isin_country_and_cik_from_the_providers():
+    results = {
+        "asset_profile": {"ticker": "TSLA"},
+        "YahooFinance": {"symbol": "TSLA"},
+        "Barrons": {"error": "another instrument", "isin": "FR0000045072"},
+        "Investing": {"isin": "not an isin", "country": "United States"},
+        "Marketwatch": {"isin": "us88160r1014"},
+        "SECEdgar": MockPydanticModel({"cik": "0001318605"}),
+    }
+
+    general = FinancialsFormatter.to_eodhd(results)["General"]
+
+    # The ISIN of a provider that found another instrument is not read.
+    assert general["ISIN"] == "US88160R1014"
+    assert general["CountryName"] == "United States"
+    assert general["CountryISO"] == "US"
+    assert general["CIK"] == "0001318605"
+
+
+def test_general_keeps_the_isin_of_the_instrument():
+    results = {
+        "asset_profile": {"ticker": "TSLA", "isin": "US88160R1014", "country": "United States"},
+        "Marketwatch": {"isin": "FR0000045072", "country": "France"},
+    }
+
+    general = FinancialsFormatter.to_eodhd(results)["General"]
+
+    assert general["ISIN"] == "US88160R1014"
+    assert general["CountryName"] == "United States"
+
+
+def test_general_dates_are_iso_dates():
+    yahoo = {
+        "symbol": "AAPL",
+        "currency": "USD",
+        "firstTradeDateEpochUtc": 345479400,
+        "lastFiscalYearEnd": 1727481600,
+    }
+    general = FinancialsFormatter.to_eodhd({"YahooFinance": yahoo})["General"]
+
+    assert general["IPODate"] == "1980-12-12"
+    assert general["FiscalYearEnd"] == "September"
+    assert general["CurrencySymbol"] == "$"
+
+    milliseconds = {"symbol": "AAPL", "firstTradeDateMilliseconds": 345479400000}
+    general = FinancialsFormatter.to_eodhd({"YahooFinance": milliseconds})["General"]
+    assert general["IPODate"] == "1980-12-12"
+
+    no_date = {"symbol": "AAPL", "firstTradeDateEpochUtc": "not a date"}
+    assert FinancialsFormatter.to_eodhd({"YahooFinance": no_date})["General"]["IPODate"] is None
+
+
+def test_analyst_rating_of_the_providers_fills_what_yahoo_does_not_give():
+    results = {
+        "YahooFinance": {"symbol": "ACA"},
+        "Barrons": {"rating": " Hold ", "sentiment": "Bullish"},
+        "Marketwatch": {"rating": "Over", "analyst_count": 49},
+    }
+
+    formatted = FinancialsFormatter.to_eodhd(results)
+    ratings = formatted["AnalystRatings"]
+
+    assert ratings["Rating"] == "Hold"
+    assert ratings["AnalystCount"] == 49
+    assert ratings["Sentiment"] == "Bullish"
+    assert formatted["Sources"]["AnalystRatings"] == {
+        "Rating": "Barrons",
+        "AnalystCount": "Marketwatch",
+        "Sentiment": "Barrons",
+    }
+
+
+def test_yahoo_analyst_rating_comes_first():
+    results = {
+        "YahooFinance": {"symbol": "TSLA", "recommendationKey": "hold"},
+        "Marketwatch": {"rating": "Over", "analyst_count": "49"},
+    }
+
+    formatted = FinancialsFormatter.to_eodhd(results)
+
+    assert formatted["AnalystRatings"]["Rating"] == "hold"
+    # A text is not a count.
+    assert formatted["AnalystRatings"]["AnalystCount"] is None
+    assert formatted["Sources"]["AnalystRatings"] == {"Rating": "YahooFinance"}
+
+
+def test_competitors_of_the_providers_are_numbered():
+    results = {
+        "Marketwatch": {
+            "competitors": [
+                {"name": "Toyota Motor Corp.", "ticker": "7203", "market_cap": "¥40.43T"},
+                {"name": "Ford Motor Co.", "ticker": "F"},
+            ]
+        },
+        "Barrons": {"error": "timeout", "competitors": [{"name": "Ignored"}]},
+    }
+
+    competitors = FinancialsFormatter.to_eodhd(results)["Competitors"]
+
+    assert competitors == {
+        "0": {"name": "Toyota Motor Corp.", "ticker": "7203", "market_cap": "¥40.43T"},
+        "1": {"name": "Ford Motor Co.", "ticker": "F"},
+    }
+    assert "News" not in FinancialsFormatter.to_eodhd(results)

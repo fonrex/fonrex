@@ -593,7 +593,8 @@ class MarketwatchProvider(BaseProvider):
 
             href = (link.attributes.get("href") or "") if link else ""
             url_match = _MW_URL_RE.search(href)
-            comp_ticker = url_match.group(1).upper() if url_match else name
+            # Without a link to its quote the ticker is unknown: the name is not one.
+            comp_ticker = url_match.group(1).upper() if url_match else None
 
             chg_node = cells[1].css_first("bg-quote") or cells[1]
             change_percent = _text(chg_node.text(strip=True))

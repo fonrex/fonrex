@@ -73,6 +73,31 @@ class BarronsProviderTest(unittest.TestCase):
         self.assertEqual(rating, "Overweight")
         self.assertEqual(sentiment, "Bullish")
 
+    def test_parse_rating_sentiment_reads_the_label_before_the_value(self):
+        html = """
+        <section>
+            <div><span>Credit Rating</span><span class="value">AA-</span></div>
+            <div><span>ESG Rating</span><span class="data">Low risk</span></div>
+            <div>
+                <p>A container whose text is far longer than a single label</p>
+                <span>Analysts' Ratings</span>
+                <span class="value">Overweight</span>
+            </div>
+            <ul><li>Market Sentiment</li><li class="data">Bearish</li></ul>
+        </section>
+        """
+        rating, sentiment = self.provider._parse_rating_sentiment(HTMLParser(html))
+
+        self.assertEqual(rating, "Overweight")
+        self.assertEqual(sentiment, "Bearish")
+
+    def test_parse_rating_sentiment_without_label(self):
+        html = '<div><span class="value">Overweight</span></div>'
+        rating, sentiment = self.provider._parse_rating_sentiment(HTMLParser(html))
+
+        self.assertIsNone(rating)
+        self.assertIsNone(sentiment)
+
     def test_parse_rating_sentiment_classes(self):
         html = """
         <div>
@@ -121,6 +146,11 @@ class BarronsProviderTest(unittest.TestCase):
         """
         metrics_next = self.provider._parse_page(HTMLParser(next_only_html), "ACA")
         self.assertEqual(metrics_next.rating, "Over")
+        self.assertEqual(metrics_next.analyst_count, 18)
+
+        no_count_html = next_only_html.replace('"totalRatings":18', '"totalRatings":true')
+        metrics_no_count = self.provider._parse_page(HTMLParser(no_count_html), "ACA")
+        self.assertIsNone(metrics_no_count.analyst_count)
 
     def test_select_symbol_prefers_matching_french_isin_over_us_otc(self):
         data = {

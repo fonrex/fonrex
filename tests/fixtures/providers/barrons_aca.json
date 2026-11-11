@@ -4,6 +4,7 @@
   "source_url": "https://www.barrons.com/market-data/stocks/aca?countrycode=fr",
   "captured_on": "2026-11-02",
   "expected": {
+    "analyst_count": 18,
     "average_volume": 4960000.0,
     "currency": "EUR",
     "dividend_rate": 1.13,

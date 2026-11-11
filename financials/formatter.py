@@ -390,6 +390,18 @@ class FinancialsFormatter:
         return str(val)
 
     @staticmethod
+    def _identity_sources(results: Dict) -> List[str]:
+        """Providers read for the identity of the instrument, the most reliable first.
+
+        The SEC gives the CIK it files under, then come the providers that publish the
+        same quantities as Yahoo, then the other providers called; the internal sections
+        of ``results`` (profile, stored figures) are not providers.
+        """
+        called = sorted(results.get("raw_providers") or {})
+        ordered = ["SECEdgar", *LIKE_FOR_LIKE_PROVIDERS, *called]
+        return list(dict.fromkeys(ordered))
+
+    @staticmethod
     def _build_general(profile: Dict, yf: Dict, results: Optional[Dict] = None) -> Dict:
         results = results or {}
         isin = profile.get("isin") or yf.get("isin")
@@ -399,7 +411,7 @@ class FinancialsFormatter:
         # What the instrument and Yahoo leave empty, the scraped providers may tell.
         # A provider that found another instrument answered with an error (see the
         # provider runner), so its ISIN is not read.
-        for name in sorted(results):
+        for name in FinancialsFormatter._identity_sources(results):
             payload = _as_dict(results.get(name))
             if not payload or payload.get("error"):
                 continue

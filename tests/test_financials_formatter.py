@@ -641,3 +641,20 @@ def test_competitors_of_the_providers_are_numbered():
         "1": {"name": "Ford Motor Co.", "ticker": "F"},
     }
     assert "News" not in FinancialsFormatter.to_eodhd(results)
+
+
+def test_general_prefers_the_cik_of_the_sec_and_skips_internal_sections():
+    results = {
+        "asset_profile": {"ticker": "TSLA"},
+        "highlights": {"isin": "FR0000045072", "cik": "0000000001"},
+        "Barrons": {"cik": "0000000002"},
+        "Boursorama": {"isin": "US88160R1014"},
+        "SECEdgar": MockPydanticModel({"cik": "0001318605"}),
+        "raw_providers": {"Boursorama": "https://www.boursorama.com/cours/TSLA/"},
+    }
+
+    general = FinancialsFormatter.to_eodhd(results)["General"]
+
+    assert general["CIK"] == "0001318605"
+    # A stored section is not a provider; a provider called is read after the others.
+    assert general["ISIN"] == "US88160R1014"

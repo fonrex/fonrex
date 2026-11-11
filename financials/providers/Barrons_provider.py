@@ -34,6 +34,10 @@ _BARRONS_URL_RE = re.compile(
 _SEARCH_TOKEN_REJECTED = frozenset({400})
 _DYLAN_TOKEN_REJECTED = frozenset({400, 401})
 _ANALYST_RATING_SCALE = ("Sell", "Under", "Hold", "Over", "Buy")
+# Labels of a value cell: the consensus of the analysts, not a credit or ESG rating.
+_ANALYST_RATING_LABEL_RE = re.compile(r"\banalysts?'?\s+ratings?\b", re.IGNORECASE)
+_SENTIMENT_LABEL_RE = re.compile(r"\bsentiment\b", re.IGNORECASE)
+_LABEL_MAX_LENGTH = 40
 _EMOTION_CLASS_RE = re.compile(r"\b(emotion-[A-Za-z0-9_-]+)\b")
 
 USER_AGENTS = [
@@ -618,19 +622,14 @@ class BarronsProvider(BaseProvider):
                 rating = _text(span.text(strip=True))
                 break
 
-        # 2. Heuristic search for Rating and Sentiment labels
-        for node in parser.css("div, span, li"):
+        # 2. A value cell (".value", ".data") read under the label written before it
+        for label, value in _labelled_values(parser):
             if rating and sentiment:
                 break
-            text = node.text(strip=True).lower()
-            if not text or len(text) >= 30:
-                continue
-
-            if "rating" in text and not rating:
-                rating = _adjacent_label_value(node)
-
-            if "sentiment" in text and not sentiment:
-                sentiment = _adjacent_label_value(node)
+            if not rating and _ANALYST_RATING_LABEL_RE.search(label):
+                rating = value
+            elif not sentiment and _SENTIMENT_LABEL_RE.search(label):
+                sentiment = value
 
         # 3. Fallback on explicit rating/sentiment classes
         if not rating:
@@ -712,6 +711,13 @@ class BarronsProvider(BaseProvider):
             and 0 <= raw_rating < len(_ANALYST_RATING_SCALE)
         ):
             _put(metrics, "rating", _ANALYST_RATING_SCALE[raw_rating])
+        total_ratings = analyst_card.get("totalRatings")
+        if (
+            isinstance(total_ratings, int)
+            and not isinstance(total_ratings, bool)
+            and total_ratings > 0
+        ):
+            _put(metrics, "analyst_count", total_ratings)
 
     def _find_range_by_label(
         self, parser: HTMLParser, labels: list[str]
@@ -768,10 +774,25 @@ class BarronsProvider(BaseProvider):
         return None
 
 
-def _adjacent_label_value(node: Any) -> Optional[str]:
-    val_node = node.css_first(".value, .data")
-    if val_node and val_node != node:
-        return _text(val_node.text(strip=True))
+def _labelled_values(parser: HTMLParser) -> list[tuple[str, str]]:
+    """Each value cell of the page with the label written right before it."""
+    pairs = []
+    for value_node in parser.css(".value, .data"):
+        value = _text(value_node.text(strip=True))
+        label = _previous_label(value_node)
+        if value and label:
+            pairs.append((label, value))
+    return pairs
+
+
+def _previous_label(node: Any) -> Optional[str]:
+    """Text of the nearest element before ``node`` among its siblings, when short."""
+    sibling = node.prev
+    while sibling is not None:
+        text = sibling.text(strip=True)
+        if sibling.tag != "-text" or text:
+            return text if 0 < len(text) < _LABEL_MAX_LENGTH else None
+        sibling = sibling.prev
     return None
 
 

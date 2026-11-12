@@ -211,7 +211,6 @@ class YFinanceEnricher:
             "esg": (self._fetch_esg, yf_ticker),
             "earnings_trend": (self._fetch_earnings_trend, yf_ticker),
             "shares_history": (self._fetch_outstanding_shares, yf_ticker),
-            "gics": (self._fetch_gics, info),
         }
         # A step that stores nothing is reported as skipped, not as a success.
         skipped = {}
@@ -219,7 +218,6 @@ class YFinanceEnricher:
             skipped = {
                 "profile": NO_INFO,
                 "highlights": NO_INFO,
-                "gics": NO_INFO,
                 "statements_currency": NO_INFO,
             }
         operations = {name: step for name, step in steps.items() if name not in skipped}
@@ -924,28 +922,6 @@ class YFinanceEnricher:
                 session.close()
         except Exception as e:
             logger.error("_fetch_outstanding_shares error asset_id=%s: %s", asset_id, e)
-
-    # ------------------------------------------------------------------
-    # GICS classification
-    # ------------------------------------------------------------------
-
-    def _fetch_gics(self, asset_id: int, info: dict) -> None:
-        """Update the GICS classification of the asset."""
-        try:
-            from models import Asset
-
-            session = self.db_service.get_session()
-            try:
-                asset = session.get(Asset, asset_id)
-                if asset:
-                    # yfinance gives no direct GICS: sector/industry are mapped instead
-                    asset.gic_sector = info.get("sector")
-                    asset.gic_industry = info.get("industry")
-                    session.commit()
-            finally:
-                session.close()
-        except Exception as e:
-            logger.error("_fetch_gics error asset_id=%s: %s", asset_id, e)
 
     # ------------------------------------------------------------------
     # Solvency Ratios & Cost of Debt (Phase 13)

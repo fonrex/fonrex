@@ -657,8 +657,9 @@ class TestEnrich(_DatabaseTestCase):
         self.assertEqual(session.query(FundamentalsHighlights).filter_by(asset_id=1).count(), 1)
         currencies = {row.currency for row in session.query(FinancialStatement)}
         self.assertEqual(currencies, {"EUR"})
-        self.assertEqual(session.get(Asset, 1).gic_sector, "Industrials")
         session.close()
+        metadata = self.db_service.update_asset_profile_from_metadata.call_args.args[1]
+        self.assertEqual(metadata["sector"], "Industrials")
 
     def _store_profiles(self):
         """The real profile write, on the test database."""
@@ -797,14 +798,12 @@ class TestEnrich(_DatabaseTestCase):
 
         self.assertFalse(result["profile"])
         self.assertFalse(result["highlights"])
-        self.assertFalse(result["gics"])
         self.assertFalse(result["solvency"])
         self.assertEqual(
             result["skipped"],
             {
                 "profile": "Yahoo returned no info",
                 "highlights": "Yahoo returned no info",
-                "gics": "Yahoo returned no info",
                 "statements_currency": "Yahoo returned no info",
             },
         )
@@ -815,7 +814,50 @@ class TestEnrich(_DatabaseTestCase):
         session = self.Session()
         self.assertEqual(session.query(FundamentalsHighlights).filter_by(asset_id=1).count(), 0)
         self.assertGreater(session.query(FinancialStatement).filter_by(asset_id=1).count(), 0)
-        self.assertIsNone(session.get(Asset, 1).gic_sector)
+        session.close()
+
+    def _enrich_with_sector_and_industry(self):
+        mock_ticker = _make_mock_ticker()
+        mock_ticker.info.update(
+            {"symbol": "AIR.PA", "sector": "Industrials", "industry": "Aerospace & Defense"}
+        )
+        with patch("financials.enrichment.yfinance_enricher.yf.Ticker", return_value=mock_ticker):
+            return asyncio.run(self.enricher.enrich(1, "AIR.PA", 10))
+
+    def test_yahoo_sector_and_industry_are_not_stored_as_gics(self):
+        """Yahoo publishes no GICS: its sector and industry go to the profile only."""
+        self._store_profiles()
+
+        result = self._enrich_with_sector_and_industry()
+
+        self.assertTrue(result["profile"])
+        self.assertNotIn("gics", result)
+        session = self.Session()
+        asset = session.get(Asset, 1)
+        self.assertEqual((asset.sector, asset.industry), ("Industrials", "Aerospace & Defense"))
+        gics = (asset.gic_sector, asset.gic_group, asset.gic_industry, asset.gic_sub_industry)
+        self.assertEqual(gics, (None, None, None, None))
+        session.close()
+
+    def test_stored_gics_values_are_left_untouched(self):
+        """Values written by earlier versions are neither overwritten nor cleared."""
+        self._store_profiles()
+        session = self.Session()
+        asset = session.get(Asset, 1)
+        asset.gic_sector = "Old sector"
+        asset.gic_group = "Old group"
+        asset.gic_industry = "Old industry"
+        asset.gic_sub_industry = "Old sub-industry"
+        session.commit()
+        session.close()
+
+        self._enrich_with_sector_and_industry()
+
+        session = self.Session()
+        asset = session.get(Asset, 1)
+        gics = (asset.gic_sector, asset.gic_group, asset.gic_industry, asset.gic_sub_industry)
+        self.assertEqual(gics, ("Old sector", "Old group", "Old industry", "Old sub-industry"))
+        self.assertEqual(asset.sector, "Industrials")
         session.close()
 
 

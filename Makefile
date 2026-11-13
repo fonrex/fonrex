@@ -1,6 +1,6 @@
 # Makefile for Fonrex (FonRex Pro) API
 SHELL := /bin/bash
-PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
+PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,$(if $(wildcard venv/bin/python),venv/bin/python,python3))
 DOCKER_COMPOSE := docker-compose
 CONTAINER_NAME := fonrex-api
 PORT := 5000
@@ -64,7 +64,7 @@ clean: ## Clean cache files, __pycache__, and coverage artifacts
 
 test: ## Run unit and integration tests with pytest
 	@echo -e "$(BLUE)🧪 Running pytest test suite...$(NC)"
-	PYTHONPATH=. pytest
+	PYTHONPATH=. $(PYTHON) -m pytest
 	@echo -e "$(GREEN)✅ Tests completed$(NC)"
 
 # Throwaway TimescaleDB for the database tests: the image of docker-compose.yml,
@@ -119,7 +119,7 @@ run: ## Run FastAPI application locally with uvicorn (loads .env when present)
 	@echo -e "$(BLUE)🚀 Starting application...$(NC)"
 	@echo -e "$(CYAN)🔗 API: http://localhost:$(PORT)$(NC)"
 	@echo -e "$(CYAN)🔗 Docs: http://localhost:$(PORT)/docs$(NC)"
-	set -a; [ -f .env ] && . ./.env; set +a; uvicorn main:app --reload --port $(PORT)
+	set -a; [ -f .env ] && . ./.env; set +a; $(PYTHON) -m uvicorn main:app --reload --port $(PORT)
 
 dev: run ## Alias for run (local dev server)
 
@@ -162,7 +162,7 @@ status: ## Check Docker service status
 
 health: ## Check API health endpoint
 	@echo -e "$(BLUE)🏥 Performing health check...$(NC)"
-	@curl -s http://localhost:$(PORT)/health | python3 -m json.tool 2>/dev/null || echo -e "$(RED)❌ API unavailable$(NC)"
+	@curl -s http://localhost:$(PORT)/health | $(PYTHON) -m json.tool 2>/dev/null || echo -e "$(RED)❌ API unavailable$(NC)"
 
 db-reset: ## Reset PostgreSQL/TimescaleDB database in Docker
 	@echo -e "$(YELLOW)🗄️ Resetting and applying migrations...$(NC)"
@@ -181,15 +181,15 @@ cache-clear: ## Clear global Redis cache
 
 example-quote: ## Example: Fetch real-time price snapshot (REST) for AAPL
 	@echo -e "$(BLUE)📈 Fetching quote for AAPL...$(NC)"
-	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quote/AAPL" | python3 -m json.tool
+	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quote/AAPL" | $(PYTHON) -m json.tool
 
 example-quotes: ## Example: Batch fetch quotes for AAPL, AIR.PA, BNP.PA (REST)
 	@echo -e "$(BLUE)📈 Batch fetching quotes...$(NC)"
-	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quotes?tickers=AAPL,AIR.PA,BNP.PA" | python3 -m json.tool
+	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quotes?tickers=AAPL,AIR.PA,BNP.PA" | $(PYTHON) -m json.tool
 
 example-client: ## Example: Run real-time python client (WebSocket/REST) for AAPL
 	@echo -e "$(BLUE)⚡ Starting real-time client (Ctrl+C to quit)...$(NC)"
-	python3 scripts/example_realtime_client.py AAPL
+	$(PYTHON) scripts/example_realtime_client.py AAPL
 
 info: ## Project information
 	@echo -e "$(CYAN)🚀 Fonrex (FonRex Pro) API$(NC)"

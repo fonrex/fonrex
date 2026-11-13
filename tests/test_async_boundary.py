@@ -44,6 +44,12 @@ def test_application_code_uses_the_shared_async_boundary():
         "technical",
         "valuation",
         "news",
+        "macro",
+        "factors",
+        "monitoring",
+        "database",
+        "cache",
+        "zipline_bundle",
     )
     allowed = {
         root / "concurrency.py",

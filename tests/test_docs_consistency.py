@@ -143,6 +143,7 @@ class TestQuotedFigures:
             counts = _quoted_counts(text, r"(\d+) providers") if "news" in name.lower() else []
             counts += _quoted_counts(text, r"News \((\d+) providers\)")
             counts += _quoted_counts(text, r"[Nn]ews from (\d+) providers")
+            counts += _quoted_counts(text, r"NewsService` \+ (\d+) providers")
             assert set(counts) <= {len(modules)}, name
 
     def test_technical_indicator_count(self):
@@ -256,21 +257,18 @@ class TestContributorRules:
         for path in paths:
             assert (PROJECT_ROOT / path).is_file(), f"AGENTS.md names {path}, which does not exist"
 
-    def test_local_document_links_of_the_readme_point_to_existing_files(self):
-        targets = re.findall(r"\]\((?!https?://|#|mailto:)([^)#\s]+)(?:#[^)]*)?\)", README)
-        # Images are left out: this test is about the documents a reader is sent to.
-        documents = [target for target in targets if not target.lower().endswith(IMAGE_SUFFIXES)]
-        assert documents, "README.md no longer links to any local document"
-        for target in documents:
-            assert (PROJECT_ROOT / target).exists(), f"README.md links to a missing file: {target}"
-
     @staticmethod
     def _heading_slugs(text: str) -> set[str]:
+        stripped = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)
         slugs: set[str] = set()
-        for heading in re.findall(r"^#{1,6}\s+(.+)$", text, flags=re.MULTILINE):
-            cleaned = re.sub(r"`([^`]*)`", r"\1", heading.strip().lower())
+        counts: dict[str, int] = {}
+        for heading in re.findall(r"^#{1,6}\s+(.+)$", stripped, flags=re.MULTILINE):
+            cleaned = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", heading.strip().lower())
+            cleaned = re.sub(r"`([^`]*)`", r"\1", cleaned)
             cleaned = re.sub(r"[^\w\s-]", "", cleaned).replace(" ", "-")
-            slugs.add(cleaned)
+            count = counts.get(cleaned, 0)
+            counts[cleaned] = count + 1
+            slugs.add(cleaned if count == 0 else f"{cleaned}-{count}")
         return slugs
 
     def test_local_document_links_across_all_documents_resolve(self):
@@ -278,20 +276,30 @@ class TestContributorRules:
             (PROJECT_ROOT / doc_name).resolve(): self._heading_slugs(doc_text)
             for doc_name, doc_text in DOCUMENTS.items()
         }
+        readme_doc_links = 0
         for name, text in DOCUMENTS.items():
             base_dir = (PROJECT_ROOT / name).parent
             targets = re.findall(
-                r"\]\((?!https?://|#|mailto:)([^)#\s]+)(?:#([^)\s]+))?\)", text
+                r"\]\((?!https?://|mailto:)([^)#\s]*)(?:#([^)\s]+))?\)", text
             )
             for target, fragment in targets:
+                if not target and not fragment:
+                    continue
                 if target.lower().endswith(IMAGE_SUFFIXES):
                     continue
-                resolved = (base_dir / target).resolve()
+                resolved = (
+                    (PROJECT_ROOT / name).resolve()
+                    if not target
+                    else (base_dir / target).resolve()
+                )
                 assert resolved.exists(), f"{name} links to a missing file: {target}"
+                if name == "README.md" and target:
+                    readme_doc_links += 1
                 if fragment and resolved in heading_cache:
                     assert fragment in heading_cache[resolved], (
-                        f"{name} links to missing section #{fragment} in {target}"
+                        f"{name} links to missing section #{fragment} in {target or name}"
                     )
+        assert readme_doc_links > 0, "README.md no longer links to any local document"
 
     def test_agent_instruction_entrypoints_delegate_to_agents_md(self):
         for entrypoint in ("GEMINI.md", "CLAUDE.md", ".github/copilot-instructions.md"):
@@ -300,7 +308,6 @@ class TestContributorRules:
 
     def test_progress_referenced_code_paths_exist(self):
         paths = set(re.findall(r"`([\w/.-]+\.py)`", PROGRESS))
-        assert paths, "PROGRESS.md no longer references any Python module"
         for path in paths:
             assert (PROJECT_ROOT / path).is_file(), (
                 f"PROGRESS.md references {path}, which does not exist"

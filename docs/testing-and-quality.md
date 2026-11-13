@@ -17,7 +17,7 @@ PYTHONPATH=. pytest
 The local `make ci` command is also the GitHub Actions CI entry point (`.github/workflows/quality.yml`). It successively executes:
 
 1. Strict Ruff on style errors, full Pyflakes, imports, exception chaining, and safe Python modernizations.
-2. Annotation checking on application boundaries.
+2. Annotation checking (`ruff check --select ANN`) on declared application boundaries (`TYPED_BOUNDARIES` in `Makefile`).
 3. `compileall` on the repository excluding temporary environments and directories.
 4. Unique Alembic head verification.
 5. Tests with blocking warnings, branch coverage, XML/JSON reports, minimal 70% global threshold, and a dedicated floor per module in `scripts/check_coverage_distribution.py`: the critical application modules and every module of `financials/providers/`. A provider module without a declared floor fails the gate.
@@ -128,7 +128,7 @@ This table tracks the structural health of each domain package across four dimen
 | `financials/providers/` | Common HTTP base (`base.py`) + `numbers.py` | Guarded by HTTP/unit/number tests | Enforced on every provider module (`GUARDED_PACKAGES`) | **A** | Raise the lowest provider floors (`index_constituents.py`, `sec_edgar.py`) when touched |
 | `technical/` | Hexagonal ports (`technical/contracts.py`, no framework/ORM imports) | Enforced (`contracts.py`, `catalog.py`, `calculation_engine.py`, `indicator_service.py`) | Enforced on `calculation_engine.py`, `indicator_service.py`, `database/technical.py` | **A** | Keep orchestrator under 450 lines; screener query still lives in `routers/technical.py` |
 | `use_cases/` & `cache/` | Hexagonal ports (`use_cases/ports.py`) | Enforced (`use_cases/ports.py`, `use_cases/fundamentals.py`, `cache/adapters.py`, `cache/technical.py`) | Enforced on `fundamentals.py`, `specialized.py`, `cache/adapters.py` | **A** | Target architecture model for remaining direct-service routers |
-| `historical/` & `database/price_series.py` | Service + shared listing/session-date rules | Partial | Enforced on `price_series.py`, `yahoo_symbols.py`, `normalization.py`, `ingestion_service.py` | **A-** | Raise `historical/ingestion_service.py` floor with direct gap-detection unit tests |
+| `historical/` & `database/price_series.py` | Service + shared listing/session-date rules | Partial | Enforced on `price_series.py`, `yahoo_symbols.py`, `normalization.py`, `price_writer.py`, `providers.py`, `ingestion_service.py` | **A-** | Raise `historical/ingestion_service.py` floor with direct gap-detection unit tests |
 | `monitoring/` | Hexagonal ports (`monitoring/ports.py`, no ORM imports) | Enforced (`monitoring/ports.py` in `make typecheck` & `test_exception_boundaries.py`) | Enforced on `price_ranges.py`, `canary_catalog.py`, `canary_monitor.py` | **B+** | Priority coverage target: raise `monitoring/canary_monitor.py` floor (lowest guarded module) |
 | `valuation/` & `factors/` | Direct service (`DCFService`, `FactorLibrary`) | Partial (`schemas/dcf.py`) | Covered by `test_dcf_*.py`, `test_fiscal_years.py`, `test_factor_*.py` | **B+** | Add dedicated unit assertion for DCF weighted consensus and declare module floors |
 | `macro/` | Direct services (`FREDService`, `ECBService`, `EurostatService`, `TreasuryCurves`, `CotReports`) | Partial | Covered by `test_fred_service.py`, `test_ecb_service.py`, `test_eurostat_service.py`, `test_treasury_*.py`, `test_cot_*.py` | **B+** | `macro/fred_service.py` still creates its own `httpx` client outside `financials/providers/base.py` |

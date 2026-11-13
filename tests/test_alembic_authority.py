@@ -14,7 +14,7 @@ def test_runtime_contains_no_schema_creation_fallback():
     excluded = {ROOT / "alembic", ROOT / "tests"}
     offenders = []
     for path in ROOT.rglob("*.py"):
-        if "venv" in path.parts or ".venv" in path.parts:
+        if {"venv", ".venv", "scratch", "node_modules"}.intersection(path.parts):
             continue
         if any(parent == path or parent in path.parents for parent in excluded):
             continue

@@ -46,7 +46,7 @@ The `ValidationLayer` sits in the `FinancialProviderRunner` between collecting r
 | `roe`, `roa` | -5.0 / -2.0 | 10.0 / 2.0 | As a ratio |
 | ... | ... | ... | see `FIELD_RANGES` for the other fields |
 
-**Unit normalisation** — `FIELD_RANGES` and `CANARY_ASSETS` are expressed as ratios, while scraped providers return some fields as displayed percentages (`3.45` for 3.45 %). `monitoring/units.py` declares, per provider, which fields are percentages (`PROVIDER_PERCENT_FIELDS`); the `ValidationLayer` and the `CanaryMonitor` convert them with `to_ratio()` before any range, consensus or canary check. Logged values are the normalised ratios; the provider payload returned by the API keeps its native unit.
+**Unit normalisation** — In `FIELD_RANGES` and `CANARY_ASSETS`, percentage and rate fields (`dividend_yield`, `roe`, `roa`…) are expressed as ratios, while scraped providers return them as displayed percentages (`3.45` for 3.45 %). Absolute fields such as `price`, `pe_ratio` or `beta` keep their own unit and are never converted. `monitoring/units.py` declares, per provider, which fields are percentages (`PROVIDER_PERCENT_FIELDS`); the `ValidationLayer` and the `CanaryMonitor` convert them with `to_ratio()` before any range, consensus or canary check. Logged percentage fields are the normalised ratios and absolute fields are logged as received; the provider payload returned by the API keeps its native unit.
 
 **Cross-provider consensus** — For each field, the `ValidationLayer` calculates the median of valid values (within range) across all providers. If a provider deviates by more than `VALIDATION_OUTLIER_THRESHOLD` (default 50%) from the consensus, its value is reset to `None`. The minimum threshold of providers to calculate the consensus is configurable (`VALIDATION_MIN_PROVIDERS`, default 2).
 
@@ -64,7 +64,7 @@ The `CanaryMonitor` runs daily targeted checks on a few "canary" assets (highly 
 | `AIR.PA` | pe_ratio, dividend_yield, beta, price | pe: [15, 60], price: [80, 300] |
 | `BNP.PA` | pe_ratio, dividend_yield, pb_ratio, price | pe: [4, 15], div: [0.04, 0.12] |
 | `MSFT` | pe_ratio, beta, price | pe: [25, 50], price: [200, 600] |
-| `TSLA` | pe_ratio, beta, price | pe: [30, 300], beta: [1.5, 3.5] |
+| `TSLA` | pe_ratio, beta, price | pe: [30, 800], beta: [1.5, 3.5] |
 
 The price range written in the catalogue is only a fallback: when the database holds at least ten daily closes of the last 90 days for the canary asset, the expected range is their mean ± 3 standard deviations (`monitoring/price_ranges.py`), kept in memory for `CANARY_PRICE_RANGE_TTL_SECONDS`.
 

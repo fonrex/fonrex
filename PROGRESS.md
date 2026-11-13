@@ -2,7 +2,7 @@
 
 ## Current State
 
-- **Last commit**: `945ce0b` (`v2.16.0` — `feat: update financial models and implement sentiment extraction (#4)`)
+- **Last commit**: `cd21813` (`v2.16.0` + 1 — `fix(enrichment): store the asset profile during enrichment (#54)`)
 - **Verification**: `make ci` (run after any harness or code change)
 - **Active focus**: Harness engineering improvements (progressive disclosure in `docs/`, `PROGRESS.md`, `Makefile` & `AGENTS.md` ergonomics)
 

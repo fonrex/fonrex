@@ -4,7 +4,7 @@ This document describes the architecture observed in the source code. Its tables
 
 Fonrex is a self-hosted FastAPI API that aggregates market data, fundamentals, asset metadata and financial news. It combines PostgreSQL/TimescaleDB, Redis, yfinance, asynchronous web providers, an ISIN-based CSV import, a multi-source news aggregation engine and an automated provider health monitoring system.
 
-**Scope.** Fonrex runs on the machine of the person who uses it: the instance fetches public pages for its owner and keeps the result in its own database. There is no Fonrex-operated data API, no account and no billing in this code base. Two consequences shape the architecture: authentication protects a personal instance (a few keys set in `.env`, see [Startup](#startup)), and every client — OpenBB Workspace, the Google Sheets connector — talks to the user's own instance (see [Integrations](#integrations)).
+**Scope.** Fonrex runs on the machine of the person who uses it: the instance fetches public pages for its owner and keeps the result in its own database. There is no Fonrex-operated data API, no account and no billing in this code base. Two consequences shape the architecture: authentication protects a personal instance (a few keys set in `.env`, see [Startup](#startup)), and every client — OpenBB Workspace, the Google Sheets connector — talks to the user's own instance (see [Integrations](docs/monitoring-and-integrations.md#integrations)).
 
 ## Overview
 
@@ -420,7 +420,7 @@ Every route of the application is listed here, and `tests/test_docs_consistency.
 | POST | `/factors/refresh` | Download files of the library (`dataset`, `frequency`, `force`) |
 | GET | `/factors/exposure/{ticker}` | Exposure of a listing to the Fama/French factors (`model` ff3, ff5 or carhart; `frequency`, `window`, `end`, `region`): betas, alpha, R², on returns in US dollars |
 
-OpenBB Workspace routes (`routers/openbb.py`). Each one calls the route function of the Fonrex route it adapts, with the same parameters, and reshapes the answer (see [Integrations](#integrations)):
+OpenBB Workspace routes (`routers/openbb.py`). Each one calls the route function of the Fonrex route it adapts, with the same parameters, and reshapes the answer (see [Integrations](docs/monitoring-and-integrations.md#integrations)):
 
 | Method | Endpoint | Adapts | Widget type |
 | --- | --- | --- | --- |
@@ -510,7 +510,7 @@ Real-time outlier validation (`ValidationLayer`) and daily canary checks (`Canar
 | `AIR.PA` | pe_ratio, dividend_yield, beta, price | pe: [15, 60], price: [80, 300] |
 | `BNP.PA` | pe_ratio, dividend_yield, pb_ratio, price | pe: [4, 15], div: [0.04, 0.12] |
 | `MSFT` | pe_ratio, beta, price | pe: [25, 50], price: [200, 600] |
-| `TSLA` | pe_ratio, beta, price | pe: [30, 300], beta: [1.5, 3.5] |
+| `TSLA` | pe_ratio, beta, price | pe: [30, 800], beta: [1.5, 3.5] |
 
 ## Alembic Migrations
 

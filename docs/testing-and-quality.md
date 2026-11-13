@@ -53,7 +53,7 @@ Test coverage, by theme:
 - `tests/test_use_cases.py`: the use cases without HTTP — fundamentals (verified Yahoo symbol, refused listing, identity, enrichment, cache), deep fundamentals, specialised lookups, real-time quotes, with injected ports.
 - `tests/test_financials_formatter.py`: the rendered `/fundamental` document — source of each figure, stored figures when Yahoo is not asked, ratios, zero kept as a value.
 - `tests/test_numbers.py`: the common reader of displayed numbers (signs, thousands separators, scales, currencies, dates and double figures refused), and no provider converts a text by itself.
-- `tests/test_yfinance_enricher.py`: deep fundamentals enrichment — highlights, statements, earnings, ratings, full run and partial failure. ESG scores, earnings trend and shares history have no test.
+- `tests/test_yfinance_enricher.py`: deep fundamentals enrichment — profile (stored, refused as another instrument's, nothing left to fill, database error), highlights, statements, earnings, ratings, full run and partial failure. ESG scores, earnings trend and shares history have no test.
 - `tests/test_solvency_ratios.py`: solvency ratios and weighted average cost of debt computed by the enricher.
 - `tests/test_provider_real_pages.py` and `tests/test_provider_parsing_helpers.py`: provider parsers run on reduced extracts of real pages (`tests/fixtures/providers/`), with the expected values recorded next to each extract.
 - `tests/test_provider_network.py`, `tests/test_base_provider_http.py` and `tests/test_provider_http_policy.py`: symbol search, download, retries and error handling of every provider against a simulated network (`fake_network` fixture, no real request); one HTTP policy, and no provider creating its own client.

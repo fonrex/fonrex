@@ -13,7 +13,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m
 
-.PHONY: help install install-dev lock lock-upgrade clean test test-db test-cov lint typecheck syntax migration-check quality ci run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
+.PHONY: help install install-dev lock lock-upgrade clean test test-db test-cov lint typecheck syntax migration-check quality ci check run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
 
 # The API requires a key by default: export FONREX_API_KEY so the curl-based
 # targets below can authenticate (e.g. `FONREX_API_KEY=frx_live_... make example-quote`).
@@ -55,11 +55,11 @@ setup: ## Initial setup (create logs, instance, backup dirs)
 	chmod +x entrypoint.sh start.sh
 	@echo -e "$(GREEN)✅ Project configured$(NC)"
 
-clean: ## Clean cache files and __pycache__
+clean: ## Clean cache files, __pycache__, and coverage artifacts
 	@echo -e "$(YELLOW)🧹 Cleaning cache files and __pycache__...$(NC)"
 	find . -name "*.pyc" -delete
 	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .pytest_cache
+	rm -rf .pytest_cache .ruff_cache .coverage coverage.xml coverage.json
 	@echo -e "$(GREEN)✅ Cleanup completed$(NC)"
 
 test: ## Run unit and integration tests with pytest
@@ -110,11 +110,15 @@ quality: lint typecheck syntax migration-check test-cov ## Run complete local qu
 
 ci: quality ## CI pipeline entrypoint
 
+check: ci ## Alias for ci (standard verification entrypoint)
+
 run: ## Run FastAPI application locally with uvicorn (loads .env when present)
 	@echo -e "$(BLUE)🚀 Starting application...$(NC)"
 	@echo -e "$(CYAN)🔗 API: http://localhost:$(PORT)$(NC)"
 	@echo -e "$(CYAN)🔗 Docs: http://localhost:$(PORT)/docs$(NC)"
 	set -a; [ -f .env ] && . ./.env; set +a; uvicorn main:app --reload --port $(PORT)
+
+dev: run ## Alias for run (local dev server)
 
 docker-build: ## Build Docker images
 	@echo -e "$(BLUE)🐳 Building Docker images...$(NC)"

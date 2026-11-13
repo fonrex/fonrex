@@ -77,6 +77,26 @@ Never claim that something works without having run it; say what you could not v
 5. Add its coverage floor to `scripts/check_coverage_distribution.py` (rule 6).
 6. Update the provider count in `README.md` (rule 3).
 
+## Session Lifecycle & Scope
+
+- **Clock-in.** Before touching code: read `PROGRESS.md` and run `make ci` (or `make check`) to confirm a green baseline.
+- **Scope & atomicity.** One logical change per session/commit; never mix unrelated refactoring with a feature. Explain *why* in commit messages, not just *what*.
+- **Context anxiety.** If running low on context or blocked on a failure, do **not** rush, skip verification, or lower thresholds — update `PROGRESS.md` with the exact state and stop cleanly.
+- **Clock-out.** Confirm `make ci` exits `0` (and `make test-db` if SQL/migrations changed), update `PROGRESS.md` if multi-session work continues, and leave no debug artifacts (`make clean`).
+
+## Topic Docs
+
+Read only the domain doc relevant to your task:
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — System overview, startup, layers, module map, routes, cache, and migrations.
+- [PROGRESS.md](PROGRESS.md) — Current state, active multi-session work, and prioritized next steps.
+- [docs/data-model.md](docs/data-model.md) — Relational/TimescaleDB schema (`models.py`) and identity/listing resolution.
+- [docs/historical-and-import.md](docs/historical-and-import.md) — CSV import, duplicate cleanup, EOD ingestion, realtime streaming, and technical indicators.
+- [docs/fundamentals-and-providers.md](docs/fundamentals-and-providers.md) — `/fundamental`, `/fundamental/deep`, specialized routes, providers, and news.
+- [docs/macro-factors-valuation.md](docs/macro-factors-valuation.md) — Factor returns, DCF/WACC valuation, macro series, and SEC/ESEF XBRL filings.
+- [docs/monitoring-and-integrations.md](docs/monitoring-and-integrations.md) — `ValidationLayer`, `CanaryMonitor`, OpenBB, Sheets connector, and Zipline ([docs/zipline-bundle.md](docs/zipline-bundle.md)).
+- [docs/testing-and-quality.md](docs/testing-and-quality.md) — Test isolation, quality pipeline, test catalog, and module health scores.
+
 ## When a guard test fails
 
 A guard fails because the change broke a rule above. Fix the change. Lowering a floor,

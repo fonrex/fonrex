@@ -80,7 +80,7 @@ Never claim that something works without having run it; say what you could not v
 
 ## Session Lifecycle & Scope
 
-- **Clock-in.** Before touching code: read `PROGRESS.md` and run `make ci` (or `make check`) to confirm a green baseline.
+- **Clock-in.** Before touching code: read `PROGRESS.md` and run `make fast` to confirm a green baseline (use `make ci` / `make check` for the full gate).
 - **Scope & atomicity.** One logical change per session/commit; never mix unrelated refactoring with a feature. Explain *why* in commit messages, not just *what*.
 - **Context anxiety.** If running low on context or blocked on a failure, do **not** rush, skip verification, or lower thresholds — update `PROGRESS.md` with the exact state and stop cleanly.
 - **Clock-out.** Confirm `make ci` exits `0` (and `make test-db` if SQL/migrations changed), update `PROGRESS.md` if multi-session work continues, and leave no debug artifacts (`make clean`).

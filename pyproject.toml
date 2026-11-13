@@ -2,6 +2,7 @@
 target-version = "py312"
 line-length = 100
 extend-exclude = [
+    ".venv",
     "data",
     "node_modules",
     "scratch",
@@ -40,6 +41,7 @@ select = [
 branch = true
 source = ["."]
 omit = [
+    ".venv/*",
     "alembic/*",
     "data/*",
     "scratch/*",

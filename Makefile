@@ -1,6 +1,6 @@
 # Makefile for Fonrex (FonRex Pro) API
 SHELL := /bin/bash
-PYTHON := python3
+PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 DOCKER_COMPOSE := docker-compose
 CONTAINER_NAME := fonrex-api
 PORT := 5000
@@ -19,7 +19,7 @@ NC := \033[0m
 # targets below can authenticate (e.g. `FONREX_API_KEY=frx_live_... make example-quote`).
 AUTH_HEADER := $(if $(FONREX_API_KEY),-H "X-API-KEY: $(FONREX_API_KEY)",)
 
-TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py
+TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py monitoring/ports.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py
 
 .DEFAULT_GOAL := help
 
@@ -57,8 +57,8 @@ setup: ## Initial setup (create logs, instance, backup dirs)
 
 clean: ## Clean cache files, __pycache__, and coverage artifacts
 	@echo -e "$(YELLOW)🧹 Cleaning cache files and __pycache__...$(NC)"
-	find . -name "*.pyc" -delete
-	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+	find . \( -path './.venv' -o -path './venv' -o -path './node_modules' \) -prune -o -name "*.pyc" -delete
+	find . \( -path './.venv' -o -path './venv' -o -path './node_modules' \) -prune -o -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .pytest_cache .ruff_cache .coverage coverage.xml coverage.json
 	@echo -e "$(GREEN)✅ Cleanup completed$(NC)"
 
@@ -101,13 +101,13 @@ typecheck: ## Check typed boundaries with Ruff
 	$(PYTHON) -m ruff check --select ANN $(TYPED_BOUNDARIES)
 
 syntax: ## Compile Python sources without writing bytecode
-	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m compileall -q -x '/(venv|node_modules|scratch)/' .
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m compileall -q -x '/(\.?venv|node_modules|scratch)/' .
 
 migration-check: ## Verify single Alembic migration head
 	@test "$$($(PYTHON) -m alembic heads | grep -c '(head)')" -eq 1 || (echo "Alembic must have exactly one head" && exit 1)
 
 fast: lint typecheck syntax migration-check ## Run fast static and architectural guard checks
-	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py -q --no-cov
+	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py tests/test_docker_image.py tests/test_dependency_lock.py tests/test_warning_hygiene.py tests/test_alembic_authority.py tests/test_ci_workflow.py -q --no-cov
 
 quality: lint typecheck syntax migration-check test-cov ## Run complete local quality pipeline
 

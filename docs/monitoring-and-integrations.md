@@ -143,76 +143,7 @@ Sites increasingly refuse direct requests from a personal connection. The planne
 
 ## Zipline Bundle (Backtesting Integration)
 
-The `zipline_bundle/` package exposes Fonrex historical data to the [`zipline-reloaded`](https://github.com/stefan-jansen/zipline-reloaded) backtesting engine without exporting intermediary CSV files or shipping a parallel dataset.
+The `zipline_bundle/` package exposes Fonrex historical data (`prices_eod` at daily resolution) to [`zipline-reloaded`](https://github.com/stefan-jansen/zipline-reloaded) without intermediary CSV exports.
 
-### Runtime Boundary
-
-- The FastAPI runtime **never** imports `zipline`. `zipline-reloaded` is an optional developer dependency documented in [docs/zipline-bundle.md](zipline-bundle.md) and is not listed in `requirements.txt` to keep the API container free of `bcolz`, `empyrical`, `tables`, and other heavy transitive dependencies.
-- `zipline_bundle.data_source` is Zipline-free by design: it only depends on `pandas` and `sqlalchemy` (both already required by Fonrex), which allows the CI to exercise the extraction pipeline in isolation.
-
-### Ingestion Flow
-
-```mermaid
-flowchart LR
-    subgraph "Zipline CLI"
-        CLI["zipline ingest -b fonrex"]
-        Ext["~/.zipline/extension.py"]
-    end
-    subgraph Fonrex
-        Data["FonRexBundleDataSource\n(SQLAlchemy sync)"]
-        Bundle["FonRexBundle.ingest"]
-    end
-    subgraph "Zipline Writers"
-        Assets["AssetDBWriter\nassets.sqlite"]
-        Bars["BcolzDailyBarWriter\ndaily_equities.bcolz"]
-        Adj["SQLiteAdjustmentWriter\nadjustments.sqlite"]
-    end
-    subgraph "Fonrex Storage"
-        DB[(PostgreSQL / TimescaleDB\nprices_eod)]
-    end
-
-    CLI --> Ext --> Bundle
-    Bundle --> Data
-    Data --> DB
-    Bundle --> Assets
-    Bundle --> Bars
-    Bundle --> Adj
-```
-
-### Design Decisions
-
-- **Reads `prices_eod` at daily resolution only.** The Zipline daily bar writer accepts one bar per session; minute-level data (`prices_intraday`) is not exposed for now.
-- **One listing per instrument.** Among the listings that have daily prices in the window, the bundle keeps one per instrument: the primary one, then an active one, then the lowest `asset_listings.id`. It has its own query for this and does not use `database/price_series.py`; the other listings of an instrument (its other currencies) are not exposed.
-- **Deterministic `sid` allocation.** `sid` values are assigned in the alphabetical order of the symbols, starting at 0. Two consecutive ingests over the same window produce identical `sid` mappings. A listing whose rows all fall outside the trading calendar is skipped and leaves its number unused; the metadata table assumes numbers without gap, so such a case adds an empty row to it (known defect, never met with a calendar matching the listings).
-- **`adj_close` wins over `close`.** When a row exposes `adj_close`, the bundle propagates it as the Zipline `close` so backtests run on split/dividend-adjusted prices out of the box. The ingestion stores Yahoo's adjusted close in both columns, so the two are equal for ingested rows.
-- **Session alignment.** The bundle intersects rows with `calendar.sessions_in_range(start, end)` before handing them to `BcolzDailyBarWriter`, which otherwise rejects timestamps outside the trading calendar. With an older calendar API the `all_sessions` attribute is used instead; when neither exists, the alignment step is skipped.
-- **Empty adjustments.** Fonrex does not track corporate actions as first-class rows yet: the bundle passes empty splits/dividends DataFrames to `SQLiteAdjustmentWriter` so the schema initialises correctly, and relies on `adj_close` for adjusted pricing. Extending the bundle is a matter of filling those DataFrames from a future `corporate_actions` table.
-
-### Public API
-
-```python
-from zipline_bundle import (
-    FonRexBundle,              # ingest callable class
-    FonRexBundleDataSource,    # SQL extraction (test-friendly)
-    fonrex_equities,           # factory returning a Zipline-compatible ingest
-    register_fonrex_bundle,    # convenience wrapper around zipline.data.bundles.register
-    TickerMetadata,
-    TickerBars,
-)
-```
-
-### CLI
-
-Two subcommands are exposed as `python -m zipline_bundle`:
-
-- `preview --start <date> --end <date> [--tickers ...] [--database-url ...]` — prints the tickers, sid allocation, and row counts the bundle would generate. Does not require Zipline to be installed.
-- `ingest --start <date> --end <date> [--tickers ...] [--database-url ...] [--bundle-name ...] [--calendar ...] [--quiet]` — registers the bundle in-process and triggers `zipline.data.bundles.ingest`. Requires `zipline-reloaded`.
-
-### Configuration Reference
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `DATABASE_URL` | `postgresql://fonrex:fonrex_password@localhost:5432/fonrex` (the default of `.env.example`) | SQLAlchemy URL. `postgresql+asyncpg://` URLs are auto-normalised to the sync driver. |
-| `FONREX_BUNDLE_NAME` | `fonrex` | Bundle name registered with Zipline. |
-| `FONREX_BUNDLE_TICKERS` | *(empty)* | Comma-separated whitelist. Empty means "every asset with EOD rows in the window". |
-| `FONREX_BUNDLE_CALENDAR` | `NYSE` | Zipline trading calendar name. Use `XPAR`, `XETR`, `XLON`, `XSWX` etc. for non-US markets. |
+- **Runtime boundary**: the FastAPI runtime **never** imports `zipline` (`zipline-reloaded` stays out of `requirements.txt`), and `zipline_bundle/data_source.py` only depends on `pandas` and `sqlalchemy` so the CI can test extraction in isolation.
+- **Full guide**: prerequisites, ingestion flow, design decisions (`sid` allocation, `adj_close` precedence, session alignment), CLI (`preview` / `ingest`), and configuration variables are documented in [docs/zipline-bundle.md](zipline-bundle.md).

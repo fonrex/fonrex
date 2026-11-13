@@ -148,7 +148,8 @@ class TestQuotedFigures:
     def test_technical_indicator_count(self):
         counts = _quoted_counts(README, r"Technical Indicators \((\d+) indicators\)")
         counts += _quoted_counts(ARCHITECTURE, r"registry of (\d+) indicators")
-        counts += _quoted_counts(ARCHITECTURE, r"(\d+) technical indicators")
+        for text in DOCUMENTS.values():
+            counts += _quoted_counts(text, r"(?:\*\*)?(\d+) technical indicators(?:\*\*)?")
         assert counts
         assert set(counts) == {len(INDICATOR_REGISTRY)}
 
@@ -263,15 +264,34 @@ class TestContributorRules:
         for target in documents:
             assert (PROJECT_ROOT / target).exists(), f"README.md links to a missing file: {target}"
 
+    @staticmethod
+    def _heading_slugs(text: str) -> set[str]:
+        slugs: set[str] = set()
+        for heading in re.findall(r"^#{1,6}\s+(.+)$", text, flags=re.MULTILINE):
+            cleaned = re.sub(r"`([^`]*)`", r"\1", heading.strip().lower())
+            cleaned = re.sub(r"[^\w\s-]", "", cleaned).replace(" ", "-")
+            slugs.add(cleaned)
+        return slugs
+
     def test_local_document_links_across_all_documents_resolve(self):
+        heading_cache = {
+            (PROJECT_ROOT / doc_name).resolve(): self._heading_slugs(doc_text)
+            for doc_name, doc_text in DOCUMENTS.items()
+        }
         for name, text in DOCUMENTS.items():
             base_dir = (PROJECT_ROOT / name).parent
-            targets = re.findall(r"\]\((?!https?://|#|mailto:)([^)#\s]+)(?:#[^)]*)?\)", text)
-            for target in targets:
+            targets = re.findall(
+                r"\]\((?!https?://|#|mailto:)([^)#\s]+)(?:#([^)\s]+))?\)", text
+            )
+            for target, fragment in targets:
                 if target.lower().endswith(IMAGE_SUFFIXES):
                     continue
                 resolved = (base_dir / target).resolve()
                 assert resolved.exists(), f"{name} links to a missing file: {target}"
+                if fragment and resolved in heading_cache:
+                    assert fragment in heading_cache[resolved], (
+                        f"{name} links to missing section #{fragment} in {target}"
+                    )
 
     def test_agent_instruction_entrypoints_delegate_to_agents_md(self):
         for entrypoint in ("GEMINI.md", "CLAUDE.md", ".github/copilot-instructions.md"):

@@ -13,7 +13,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m
 
-.PHONY: help install install-dev lock lock-upgrade clean test test-db test-cov lint typecheck syntax migration-check quality ci check run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
+.PHONY: help install install-dev lock lock-upgrade clean test test-db test-cov lint typecheck syntax migration-check fast quality ci check run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
 
 # The API requires a key by default: export FONREX_API_KEY so the curl-based
 # targets below can authenticate (e.g. `FONREX_API_KEY=frx_live_... make example-quote`).
@@ -105,6 +105,9 @@ syntax: ## Compile Python sources without writing bytecode
 
 migration-check: ## Verify single Alembic migration head
 	@test "$$($(PYTHON) -m alembic heads | grep -c '(head)')" -eq 1 || (echo "Alembic must have exactly one head" && exit 1)
+
+fast: lint typecheck syntax migration-check ## Run fast static and architectural guard checks
+	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py -q --no-cov
 
 quality: lint typecheck syntax migration-check test-cov ## Run complete local quality pipeline
 

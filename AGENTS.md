@@ -19,7 +19,8 @@ enforced by a test: if a test of the "guards" fails, fix the code, not the test.
 
 ```bash
 make install-dev   # Python 3.12 or 3.13: the exact versions of requirements-dev.lock
-make ci            # lint, typing, migrations, tests, coverage
+make fast          # fast iteration loop: lint, typing, migrations, and guard tests
+make ci            # full gate: lint, typing, migrations, all tests, and coverage floors
 ```
 
 `make ci` is exactly what GitHub Actions runs. A change is not finished until it passes.

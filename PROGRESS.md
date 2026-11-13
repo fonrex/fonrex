@@ -3,8 +3,8 @@
 ## Current State
 
 - **Last commit**: `cd21813` (`v2.16.0` + 1 — `fix(enrichment): store the asset profile during enrichment (#54)`)
-- **Verification**: `make ci` (run after any harness or code change)
-- **Active focus**: Harness engineering improvements (progressive disclosure in `docs/`, `PROGRESS.md`, `Makefile` & `AGENTS.md` ergonomics)
+- **Verification**: `make fast` (rapid guard loop) and `make ci` (full quality gate after any harness or code change)
+- **Active focus**: Harness engineering improvements (progressive disclosure in `docs/`, `PROGRESS.md`, multi-agent entrypoints `CLAUDE.md` / `.github/copilot-instructions.md`, `make fast` & `AGENTS.md` ergonomics)
 
 ## Active / Multi-Session Work
 

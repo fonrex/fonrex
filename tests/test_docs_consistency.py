@@ -28,9 +28,19 @@ from technical.catalog import INDICATOR_REGISTRY
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 README = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
 ARCHITECTURE = (PROJECT_ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
+AGENTS = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+PROGRESS = (PROJECT_ROOT / "PROGRESS.md").read_text(encoding="utf-8")
 DOCUMENTS = {
     "README.md": README,
     "ARCHITECTURE.md": ARCHITECTURE,
+    "AGENTS.md": AGENTS,
+    "PROGRESS.md": PROGRESS,
+    "CONTRIBUTING.md": (PROJECT_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8"),
+    "GEMINI.md": (PROJECT_ROOT / "GEMINI.md").read_text(encoding="utf-8"),
+    "CLAUDE.md": (PROJECT_ROOT / "CLAUDE.md").read_text(encoding="utf-8"),
+    ".github/copilot-instructions.md": (
+        PROJECT_ROOT / ".github/copilot-instructions.md"
+    ).read_text(encoding="utf-8"),
     "integrations/openbb/README.md": (PROJECT_ROOT / "integrations/openbb/README.md").read_text(
         encoding="utf-8"
     ),
@@ -38,8 +48,8 @@ DOCUMENTS = {
         PROJECT_ROOT / "fonrex-sheets-connector/README.md"
     ).read_text(encoding="utf-8"),
 }
-AGENTS = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-DOCUMENTS["AGENTS.md"] = AGENTS
+for _doc_path in sorted((PROJECT_ROOT / "docs").glob("*.md")):
+    DOCUMENTS[f"docs/{_doc_path.name}"] = _doc_path.read_text(encoding="utf-8")
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
 SHEETS_SCRIPT = (PROJECT_ROOT / "fonrex-sheets-connector/Code.gs").read_text(encoding="utf-8")
 SHEETS_MANIFEST = json.loads(
@@ -161,8 +171,11 @@ class TestQuotedFigures:
             )
 
     def test_referenced_test_files_exist(self):
-        for path in set(re.findall(r"`(tests/test_\w+\.py)`", ARCHITECTURE)):
-            assert (PROJECT_ROOT / path).is_file(), f"{path} is documented but does not exist"
+        for name, text in DOCUMENTS.items():
+            for path in set(re.findall(r"`(tests/test_\w+\.py)`", text)):
+                assert (PROJECT_ROOT / path).is_file(), (
+                    f"{name} documents {path}, which does not exist"
+                )
 
 
 class TestArchitectureTables:
@@ -249,6 +262,29 @@ class TestContributorRules:
         assert documents, "README.md no longer links to any local document"
         for target in documents:
             assert (PROJECT_ROOT / target).exists(), f"README.md links to a missing file: {target}"
+
+    def test_local_document_links_across_all_documents_resolve(self):
+        for name, text in DOCUMENTS.items():
+            base_dir = (PROJECT_ROOT / name).parent
+            targets = re.findall(r"\]\((?!https?://|#|mailto:)([^)#\s]+)(?:#[^)]*)?\)", text)
+            for target in targets:
+                if target.lower().endswith(IMAGE_SUFFIXES):
+                    continue
+                resolved = (base_dir / target).resolve()
+                assert resolved.exists(), f"{name} links to a missing file: {target}"
+
+    def test_agent_instruction_entrypoints_delegate_to_agents_md(self):
+        for entrypoint in ("GEMINI.md", "CLAUDE.md", ".github/copilot-instructions.md"):
+            text = DOCUMENTS[entrypoint]
+            assert "AGENTS.md" in text, f"{entrypoint} must delegate to AGENTS.md"
+
+    def test_progress_referenced_code_paths_exist(self):
+        paths = set(re.findall(r"`([\w/.-]+\.py)`", PROGRESS))
+        assert paths, "PROGRESS.md no longer references any Python module"
+        for path in paths:
+            assert (PROJECT_ROOT / path).is_file(), (
+                f"PROGRESS.md references {path}, which does not exist"
+            )
 
     def test_pull_request_types_match_the_title_check(self):
         workflow = (PROJECT_ROOT / ".github/workflows/pr-title-check.yml").read_text(

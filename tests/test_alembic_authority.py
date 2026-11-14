@@ -1,5 +1,6 @@
 """Architecture tests enforcing Alembic as the only schema authority."""
 
+import ast
 from pathlib import Path
 
 from project_sources import relative, scope
@@ -20,14 +21,52 @@ def test_runtime_contains_no_schema_creation_fallback():
     assert offenders == []
 
 
+def _migrations() -> dict[str, tuple[str, str | None]]:
+    """Each migration file, with the revision and the down revision it declares."""
+    migrations = {}
+    for path in sorted((ROOT / "alembic" / "versions").glob("*.py")):
+        if path.name.startswith("_"):
+            continue
+        declared = {}
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target = node.targets[0]
+                if isinstance(target, ast.Name) and target.id in {"revision", "down_revision"}:
+                    declared[target.id] = ast.literal_eval(node.value)
+        assert "revision" in declared, f"{path.name} declares no revision"
+        migrations[path.name] = (declared["revision"], declared.get("down_revision"))
+    assert migrations
+    return migrations
+
+
 def _latest_migration_revision() -> str:
-    revisions = sorted(
-        path.name.split("_", 1)[0]
-        for path in (ROOT / "alembic" / "versions").glob("*.py")
-        if not path.name.startswith("_")
+    """The head of the graph the migrations declare: the revision no other one follows."""
+    migrations = _migrations().values()
+    followed = {down for _, down in migrations}
+    heads = sorted(revision for revision, _ in migrations if revision not in followed)
+    assert len(heads) == 1, f"the migrations have {len(heads)} heads: {heads}"
+    return heads[0]
+
+
+def test_each_migration_file_is_named_after_its_revision():
+    """A file named 030_* must declare revision 030: the files sort like the graph."""
+    misnamed = {
+        name: revision
+        for name, (revision, _) in _migrations().items()
+        if name.split("_", 1)[0] != revision
+    }
+    assert misnamed == {}
+
+
+def test_the_migrations_form_one_chain():
+    """Every migration but the first follows one that exists."""
+    migrations = _migrations().values()
+    revisions = {revision for revision, _ in migrations}
+    roots = [revision for revision, down in migrations if down is None]
+    dangling = sorted(
+        f"{revision} -> {down}" for revision, down in migrations if down and down not in revisions
     )
-    assert revisions
-    return revisions[-1]
+    assert len(roots) == 1 and not dangling, (roots, dangling)
 
 
 def test_migration_inspection_does_not_create_version_table():

@@ -75,19 +75,22 @@ TEST_DB_URL := postgresql://fonrex:fonrex_password@127.0.0.1:$(TEST_DB_PORT)/pos
 
 test-db: ## Run the database tests on a throwaway TimescaleDB container (needs Docker)
 	@docker rm -f -v $(TEST_DB_CONTAINER) >/dev/null 2>&1 || true
-	docker run -d --name $(TEST_DB_CONTAINER) -e POSTGRES_USER=fonrex -e POSTGRES_PASSWORD=fonrex_password -e POSTGRES_DB=postgres -p 127.0.0.1:$(TEST_DB_PORT):5432 $(TEST_DB_IMAGE) >/dev/null
-	@echo "Waiting for the test database..."
-	@ready=0; for attempt in $$(seq 1 90); do \
+	@# One shell from the start of the container to the end of the tests: its trap removes
+	@# the container however the shell ends (tests done, failed, Ctrl+C or a timeout).
+	@trap 'docker rm -f -v $(TEST_DB_CONTAINER) >/dev/null 2>&1 || true' EXIT; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; \
+	echo "docker run -d --name $(TEST_DB_CONTAINER) ... $(TEST_DB_IMAGE)"; \
+	docker run -d --name $(TEST_DB_CONTAINER) -e POSTGRES_USER=fonrex -e POSTGRES_PASSWORD=fonrex_password -e POSTGRES_DB=postgres -p 127.0.0.1:$(TEST_DB_PORT):5432 $(TEST_DB_IMAGE) >/dev/null || exit 1; \
+	echo "Waiting for the test database..."; \
+	ready=0; for attempt in $$(seq 1 90); do \
 		if docker exec $(TEST_DB_CONTAINER) pg_isready -h 127.0.0.1 -U fonrex -d postgres >/dev/null 2>&1; then ready=1; break; fi; \
 		sleep 1; \
 	done; \
 	if [ $$ready -ne 1 ]; then \
 		echo "The test database did not start:"; docker logs --tail 30 $(TEST_DB_CONTAINER); \
-		docker rm -f -v $(TEST_DB_CONTAINER) >/dev/null; exit 1; \
+		exit 1; \
 	fi; \
-	FONREX_TEST_DATABASE_URL=$(TEST_DB_URL) PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_timescale_integration.py --no-cov; status=$$?; \
-	docker rm -f -v $(TEST_DB_CONTAINER) >/dev/null; \
-	exit $$status
+	FONREX_TEST_DATABASE_URL=$(TEST_DB_URL) PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_timescale_integration.py --no-cov
 
 test-db-auto: ## Run TimescaleDB tests automatically when Docker is running and FONREX_TEST_DATABASE_URL is unset
 	@if [ -n "$$FONREX_TEST_DATABASE_URL" ]; then \

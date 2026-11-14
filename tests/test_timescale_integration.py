@@ -120,6 +120,54 @@ def _alembic(url: str, *arguments: str) -> None:
         check=False,
     )
     assert completed.returncode == 0, completed.stderr[-3000:]
+    if arguments[0] == "upgrade":
+        _pause_background_jobs(url)
+
+
+# Jobs the migrations schedule on the price tables (compression, refresh of the
+# weekly and monthly aggregates).
+BACKGROUND_JOBS = ["policy_compression", "policy_refresh_continuous_aggregate"]
+
+
+def _pause_background_jobs(url: str, timeout: float = 60) -> None:
+    """Unschedule the TimescaleDB jobs of the test database, and wait for a running one.
+
+    A job created by an upgrade starts within seconds, at a moment no test chose:
+    one compressing a chunk while the duplicate cleanup deleted from it ended in a
+    deadlock. The tests that need a compression or a refresh run it themselves
+    (``compress_chunk``, ``refresh_continuous_aggregate``).
+    """
+    engine = create_engine(url, poolclass=NullPool)
+    try:
+        with engine.begin() as connection:
+            if not connection.execute(
+                text("SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'")
+            ).scalar():
+                return
+            connection.execute(
+                text("""
+                    SELECT alter_job(job_id, scheduled => false)
+                    FROM timescaledb_information.jobs WHERE proc_name = ANY(:jobs)
+                """),
+                {"jobs": BACKGROUND_JOBS},
+            )
+        deadline = time.monotonic() + timeout
+        while True:
+            with engine.connect() as connection:
+                running = connection.execute(
+                    text("""
+                        SELECT count(*) FROM timescaledb_information.job_stats s
+                        JOIN timescaledb_information.jobs j USING (job_id)
+                        WHERE j.proc_name = ANY(:jobs) AND s.job_status = 'Running'
+                    """),
+                    {"jobs": BACKGROUND_JOBS},
+                ).scalar()
+            if not running:
+                return
+            assert time.monotonic() < deadline, f"{running} TimescaleDB job(s) still running"
+            time.sleep(0.2)
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture(scope="module")

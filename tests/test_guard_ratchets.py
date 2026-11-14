@@ -231,6 +231,19 @@ def number_never_drops(baseline, current) -> list[str]:
     return [f"lowered: {baseline} -> {current}"] if current < baseline else []
 
 
+def scopes_never_widen(baseline, current) -> list[str]:
+    """What each guard scope leaves out never grows; a new scope leaves out no more than
+    an existing one."""
+    loosened = []
+    for name, left_out in sorted(current.items()):
+        if name in baseline:
+            added = sorted(set(left_out) - set(baseline[name]))
+            loosened.extend(f"{name!r} also leaves out {directory!r}" for directory in added)
+        elif not any(set(left_out) <= set(known) for known in baseline.values()):
+            loosened.append(f"new scope {name!r} leaves out {sorted(left_out)}")
+    return loosened
+
+
 def stays_on(baseline, current) -> list[str]:
     return (
         [f"turned off: {baseline!r} -> {current!r}"]
@@ -312,6 +325,19 @@ RATCHETS = [
         ini_values("pytest", "filterwarnings"),
         may_shrink_never_grow,
     ),
+    # Files the guards read (tests/project_sources.py)
+    Ratchet(
+        "directories no guard reads",
+        "tests/project_sources.py",
+        python_constant("SKIPPED_DIRS"),
+        may_shrink_never_grow,
+    ),
+    Ratchet(
+        "directories left out of the guard scopes",
+        "tests/project_sources.py",
+        python_constant("GUARD_SCOPES"),
+        scopes_never_widen,
+    ),
     # Architecture guards
     Ratchet(
         "modules with their own HTTP client",
@@ -381,6 +407,34 @@ def test_guard_never_loosens_compared_with_main(ratchet: Ratchet, ref: str):
         f"{ratchet.name} in {ratchet.path} loosened compared with {ref}: "
         + "; ".join(loosened)
         + ". Fix the code instead (AGENTS.md, 'When a guard test fails')."
+    )
+
+
+def test_guards_read_the_project_through_project_sources():
+    """A guard walking the repository itself would choose its own exclusions."""
+    walks = []
+    for path in sorted((PROJECT_ROOT / "tests").glob("*.py")):
+        if path.name == "project_sources.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"rglob", "walk"}
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id in {"ROOT", "PROJECT_ROOT", "PROJECT", "root"}
+            ) or (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "rglob"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in {"ROOT", "PROJECT_ROOT", "PROJECT", "root"}
+            ):
+                walks.append(f"tests/{path.name}:{node.lineno}")
+    assert not walks, (
+        f"Guards walking the whole repository: {walks}. Read it with "
+        "tests/project_sources.py (python_files, scope), whose exclusions are ratchets."
     )
 
 
@@ -480,6 +534,17 @@ class TestChecks:
         ]
         assert budgets_never_rise({"Makefile": 500}, {}) == [
             "removed the budget of 'Makefile' (500)"
+        ]
+
+    def test_scopes_never_widen(self):
+        baseline = {"code": ("tests",), "service": ("tests", "scripts")}
+        assert scopes_never_widen(baseline, {"code": (), "service": ("tests",)}) == []
+        assert scopes_never_widen(baseline, {"code": ("tests", "macro")}) == [
+            "'code' also leaves out 'macro'"
+        ]
+        assert scopes_never_widen(baseline, {"other": ("scripts",)}) == []
+        assert scopes_never_widen(baseline, {"other": ("macro",)}) == [
+            "new scope 'other' leaves out ['macro']"
         ]
 
     def test_strict_mode_stays_on(self):

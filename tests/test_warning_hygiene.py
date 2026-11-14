@@ -1,21 +1,16 @@
 """Prevent known deprecation warnings from returning to project code."""
 
 import ast
-import functools
 import tomllib
 from pathlib import Path
+
+from project_sources import scope, syntax_tree
 
 ROOT = Path(__file__).parents[1]
 
 
-@functools.lru_cache(maxsize=1)
 def _application_trees() -> list[tuple[Path, ast.AST]]:
-    trees = []
-    for path in sorted(ROOT.rglob("*.py")):
-        if {"venv", ".venv", "tests", "scratch", "node_modules"}.intersection(path.parts):
-            continue
-        trees.append((path, ast.parse(path.read_text(encoding="utf-8"))))
-    return trees
+    return [(path, syntax_tree(path)) for path in scope("code")]
 
 
 def test_application_does_not_use_datetime_utcnow():

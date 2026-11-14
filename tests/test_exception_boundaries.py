@@ -3,6 +3,8 @@
 import ast
 from pathlib import Path
 
+from project_sources import relative, scope, syntax_tree
+
 ROOT = Path(__file__).parents[1]
 
 # The lists below are ratchets (tests/test_guard_ratchets.py): compared with main,
@@ -59,17 +61,14 @@ def _broad_handlers(path: Path) -> list[int]:
 
 def test_no_bare_except_in_application_code():
     offenders = {}
-    for path in ROOT.rglob("*.py"):
-        if {"venv", ".venv", "tests", "scratch", "node_modules"}.intersection(path.parts):
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+    for path in scope("code"):
         lines = [
             node.lineno
-            for node in ast.walk(tree)
+            for node in ast.walk(syntax_tree(path))
             if isinstance(node, ast.ExceptHandler) and node.type is None
         ]
         if lines:
-            offenders[path.relative_to(ROOT).as_posix()] = lines
+            offenders[relative(path)] = lines
     assert offenders == {}
 
 

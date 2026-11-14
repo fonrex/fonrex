@@ -2,7 +2,6 @@
 
 import importlib.util
 import logging
-import os
 import re
 import sys
 from decimal import Decimal
@@ -11,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
+from project_sources import scope
 
 import routers.technical as technical_router
 import valuation.dcf_service as dcf_service_module
@@ -22,21 +22,9 @@ from settings import env_decimal, env_int
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_EXAMPLE = PROJECT_ROOT / ".env.example"
 
-# Where a setting can legitimately be read.
-SOURCE_SUFFIXES = {".py", ".yml", ".yaml", ".sh", ".gs"}
-SOURCE_NAMES = {"Dockerfile", "Makefile"}
-SKIPPED_DIRECTORIES = {
-    "tests",
-    "venv",
-    "node_modules",
-    "scratch",
-    "data",
-    "static",
-    "logs",
-    "docs",
-    "img",
-    "__pycache__",
-}
+# Where a setting can legitimately be read: the scope "settings_readers" of
+# tests/project_sources.py leaves out the tests, the documents and the data.
+SOURCE_PATTERNS = ("*.py", "*.yml", "*.yaml", "*.sh", "*.gs", "Dockerfile", "Makefile")
 
 
 def _documented_variables() -> list[str]:
@@ -45,18 +33,10 @@ def _documented_variables() -> list[str]:
 
 
 def _source_text() -> str:
-    chunks = []
-    for directory, subdirectories, files in os.walk(PROJECT_ROOT):
-        subdirectories[:] = [
-            name
-            for name in subdirectories
-            if name not in SKIPPED_DIRECTORIES and not name.startswith(".")
-        ]
-        for name in files:
-            path = Path(directory) / name
-            if path.suffix in SOURCE_SUFFIXES or name in SOURCE_NAMES:
-                chunks.append(path.read_text(encoding="utf-8", errors="ignore"))
-    return "\n".join(chunks)
+    return "\n".join(
+        path.read_text(encoding="utf-8", errors="ignore")
+        for path in scope("settings_readers", *SOURCE_PATTERNS)
+    )
 
 
 def _load_copy(monkeypatch, relative_path: str, env: dict[str, str]):

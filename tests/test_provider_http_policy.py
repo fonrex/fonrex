@@ -12,6 +12,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from project_sources import relative, scope
 
 import main
 from financials.providers import base
@@ -84,14 +85,13 @@ class TestNoProviderBypassesTheCommonClient:
         )
 
     def test_no_new_application_module_creates_an_http_client(self):
-        excluded_dirs = {"tests", "scripts", "alembic", "venv", ".venv", "scratch", "node_modules"}
         base_module = PROJECT_ROOT / "financials" / "providers" / "base.py"
         offenders = []
         still_direct = set()
-        for path in sorted(PROJECT_ROOT.rglob("*.py")):
-            if excluded_dirs.intersection(path.parts) or path == base_module:
+        for path in scope("service_code"):
+            if path == base_module:
                 continue
-            rel = path.relative_to(PROJECT_ROOT).as_posix()
+            rel = relative(path)
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 if self.FORBIDDEN.search(line) and not line.lstrip().startswith("#"):
                     if rel in self.LEGACY_DIRECT_HTTP_CLIENTS:

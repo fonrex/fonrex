@@ -11,7 +11,6 @@ that nothing checks stops being true at the next change.
 
 import importlib
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -20,6 +19,7 @@ from pathlib import Path
 import pytest
 from fastapi import APIRouter
 from fastapi.routing import APIRoute, APIWebSocketRoute
+from project_sources import project_files, relative
 
 import main
 from cache.service import CacheService
@@ -27,15 +27,6 @@ from monitoring.canary_catalog import CANARY_ASSETS
 from technical.catalog import INDICATOR_REGISTRY
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-EXCLUDED_DOC_DIRS = {
-    ".git",
-    ".venv",
-    "venv",
-    "scratch",
-    "node_modules",
-    ".pytest_cache",
-    ".ruff_cache",
-}
 REQUIRED_DOCUMENTS = (
     "README.md",
     "ARCHITECTURE.md",
@@ -64,12 +55,7 @@ def _ignored_by_git(paths: list[str]) -> set[str]:
 
 def _discover_documents() -> dict[str, str]:
     """Load all tracked/non-ignored Markdown files without requiring manual registration."""
-    candidates: list[str] = []
-    for directory, subdirectories, files in os.walk(PROJECT_ROOT):
-        subdirectories[:] = sorted(d for d in subdirectories if d not in EXCLUDED_DOC_DIRS)
-        for filename in sorted(files):
-            if filename.endswith(".md"):
-                candidates.append((Path(directory) / filename).relative_to(PROJECT_ROOT).as_posix())
+    candidates = [relative(path) for path in project_files("*.md")]
     ignored = _ignored_by_git(candidates)
     return {
         rel: (PROJECT_ROOT / rel).read_text(encoding="utf-8")

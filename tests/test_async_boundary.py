@@ -2,9 +2,9 @@
 
 import contextvars
 import threading
-from pathlib import Path
 
 import pytest
+from project_sources import relative, scope
 
 from concurrency import run_sync
 
@@ -37,14 +37,11 @@ async def test_run_sync_propagates_operation_errors():
 
 
 def test_application_code_uses_the_shared_async_boundary():
-    root = Path(__file__).parents[1]
-    excluded_dirs = {"tests", "scripts", "alembic", "venv", ".venv", "scratch", "node_modules"}
     violations = []
-    for candidate in sorted(root.rglob("*.py")):
-        relative = candidate.relative_to(root).as_posix()
-        if excluded_dirs.intersection(candidate.parts) or relative in ALLOWED_THREAD_MODULES:
+    for candidate in scope("service_code"):
+        if relative(candidate) in ALLOWED_THREAD_MODULES:
             continue
         source = candidate.read_text(encoding="utf-8")
         if "asyncio.to_thread" in source or "run_in_executor" in source:
-            violations.append(candidate.relative_to(root).as_posix())
+            violations.append(relative(candidate))
     assert violations == []

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from project_sources import relative, scope
 from sqlalchemy import create_engine, inspect
 
 from database.migrations import MigrationInspector
@@ -11,16 +12,11 @@ ROOT = Path(__file__).parents[1]
 
 
 def test_runtime_contains_no_schema_creation_fallback():
-    excluded = {ROOT / "alembic", ROOT / "tests"}
     offenders = []
-    for path in ROOT.rglob("*.py"):
-        if {"venv", ".venv", "scratch", "node_modules"}.intersection(path.parts):
-            continue
-        if any(parent == path or parent in path.parents for parent in excluded):
-            continue
+    for path in scope("code_without_migrations"):
         source = path.read_text(encoding="utf-8")
         if "metadata.create_all" in source or "ensure_schema_updates" in source:
-            offenders.append(path.relative_to(ROOT).as_posix())
+            offenders.append(relative(path))
     assert offenders == []
 
 

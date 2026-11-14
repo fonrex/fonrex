@@ -34,29 +34,16 @@ async def test_run_sync_propagates_operation_errors():
 
 def test_application_code_uses_the_shared_async_boundary():
     root = Path(__file__).parents[1]
-    scanned_roots = (
-        "main.py",
-        "routers",
-        "use_cases",
-        "financials",
-        "historical",
-        "realtime",
-        "technical",
-        "valuation",
-        "news",
-    )
+    excluded_dirs = {"tests", "scripts", "alembic", "venv", ".venv", "scratch", "node_modules"}
     allowed = {
         root / "concurrency.py",
         root / "realtime" / "worker.py",
     }
     violations = []
-    for relative in scanned_roots:
-        path = root / relative
-        candidates = [path] if path.is_file() else path.rglob("*.py")
-        for candidate in candidates:
-            if candidate in allowed:
-                continue
-            source = candidate.read_text()
-            if "asyncio.to_thread" in source or "run_in_executor" in source:
-                violations.append(candidate.relative_to(root).as_posix())
+    for candidate in sorted(root.rglob("*.py")):
+        if excluded_dirs.intersection(candidate.parts) or candidate in allowed:
+            continue
+        source = candidate.read_text(encoding="utf-8")
+        if "asyncio.to_thread" in source or "run_in_executor" in source:
+            violations.append(candidate.relative_to(root).as_posix())
     assert violations == []

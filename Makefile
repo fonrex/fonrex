@@ -1,6 +1,6 @@
 # Makefile for Fonrex (FonRex Pro) API
 SHELL := /bin/bash
-PYTHON := python3
+PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,$(if $(wildcard venv/bin/python),venv/bin/python,python3))
 DOCKER_COMPOSE := docker-compose
 CONTAINER_NAME := fonrex-api
 PORT := 5000
@@ -13,13 +13,13 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m
 
-.PHONY: help install install-dev lock lock-upgrade clean test test-db test-cov lint typecheck syntax migration-check quality ci run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
+.PHONY: help install install-dev lock lock-upgrade clean test test-db test-db-auto test-cov lint typecheck syntax migration-check fast quality ci check run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
 
 # The API requires a key by default: export FONREX_API_KEY so the curl-based
 # targets below can authenticate (e.g. `FONREX_API_KEY=frx_live_... make example-quote`).
 AUTH_HEADER := $(if $(FONREX_API_KEY),-H "X-API-KEY: $(FONREX_API_KEY)",)
 
-TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py
+TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py monitoring/ports.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py
 
 .DEFAULT_GOAL := help
 
@@ -55,16 +55,16 @@ setup: ## Initial setup (create logs, instance, backup dirs)
 	chmod +x entrypoint.sh start.sh
 	@echo -e "$(GREEN)✅ Project configured$(NC)"
 
-clean: ## Clean cache files and __pycache__
+clean: ## Clean cache files, __pycache__, and coverage artifacts
 	@echo -e "$(YELLOW)🧹 Cleaning cache files and __pycache__...$(NC)"
-	find . -name "*.pyc" -delete
-	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .pytest_cache
+	find . \( -path './.venv' -o -path './venv' -o -path './node_modules' \) -prune -o -name "*.pyc" -delete
+	find . \( -path './.venv' -o -path './venv' -o -path './node_modules' \) -prune -o -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+	rm -rf .pytest_cache .ruff_cache .coverage coverage.xml coverage.json
 	@echo -e "$(GREEN)✅ Cleanup completed$(NC)"
 
 test: ## Run unit and integration tests with pytest
 	@echo -e "$(BLUE)🧪 Running pytest test suite...$(NC)"
-	PYTHONPATH=. pytest
+	PYTHONPATH=. $(PYTHON) -m pytest
 	@echo -e "$(GREEN)✅ Tests completed$(NC)"
 
 # Throwaway TimescaleDB for the database tests: the image of docker-compose.yml,
@@ -90,6 +90,17 @@ test-db: ## Run the database tests on a throwaway TimescaleDB container (needs D
 	docker rm -f -v $(TEST_DB_CONTAINER) >/dev/null; \
 	exit $$status
 
+test-db-auto: ## Run TimescaleDB tests automatically when Docker is running and FONREX_TEST_DATABASE_URL is unset
+	@if [ -n "$$FONREX_TEST_DATABASE_URL" ]; then \
+		exit 0; \
+	elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
+		echo -e "$(BLUE)🐘 Running TimescaleDB integration tests via Docker...$(NC)"; \
+		$(MAKE) test-db PYTHON="$(PYTHON)"; \
+	else \
+		echo -e "$(YELLOW)⚠️  WARNING: Docker is unavailable and FONREX_TEST_DATABASE_URL is unset — tests/test_timescale_integration.py was SKIPPED.$(NC)"; \
+		echo -e "$(YELLOW)   PostgreSQL/TimescaleDB migrations, hypertables, and SQL were NOT verified locally.$(NC)"; \
+	fi
+
 test-cov: ## Run tests with coverage reporting
 	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest --cov=. --cov-branch --cov-report=term-missing --cov-report=xml --cov-report=json:coverage.json
 	$(PYTHON) scripts/check_coverage_distribution.py coverage.json
@@ -101,20 +112,27 @@ typecheck: ## Check typed boundaries with Ruff
 	$(PYTHON) -m ruff check --select ANN $(TYPED_BOUNDARIES)
 
 syntax: ## Compile Python sources without writing bytecode
-	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m compileall -q -x '/(venv|node_modules|scratch)/' .
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m compileall -q -x '/(\.?venv|node_modules|scratch)/' .
 
 migration-check: ## Verify single Alembic migration head
 	@test "$$($(PYTHON) -m alembic heads | grep -c '(head)')" -eq 1 || (echo "Alembic must have exactly one head" && exit 1)
 
-quality: lint typecheck syntax migration-check test-cov ## Run complete local quality pipeline
+fast: lint typecheck syntax migration-check ## Run fast static and architectural guard checks
+	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py tests/test_docker_image.py tests/test_dependency_lock.py tests/test_warning_hygiene.py tests/test_alembic_authority.py tests/test_ci_workflow.py tests/test_coverage_gate.py tests/test_suite_isolation.py tests/test_numbers.py tests/test_cache_service.py -q --no-cov
+
+quality: lint typecheck syntax migration-check test-cov test-db-auto ## Run complete local quality pipeline
 
 ci: quality ## CI pipeline entrypoint
+
+check: ci ## Alias for ci (standard verification entrypoint)
 
 run: ## Run FastAPI application locally with uvicorn (loads .env when present)
 	@echo -e "$(BLUE)🚀 Starting application...$(NC)"
 	@echo -e "$(CYAN)🔗 API: http://localhost:$(PORT)$(NC)"
 	@echo -e "$(CYAN)🔗 Docs: http://localhost:$(PORT)/docs$(NC)"
-	set -a; [ -f .env ] && . ./.env; set +a; uvicorn main:app --reload --port $(PORT)
+	set -a; [ -f .env ] && . ./.env; set +a; $(PYTHON) -m uvicorn main:app --reload --port $(PORT)
+
+dev: run ## Alias for run (local dev server)
 
 docker-build: ## Build Docker images
 	@echo -e "$(BLUE)🐳 Building Docker images...$(NC)"
@@ -155,7 +173,7 @@ status: ## Check Docker service status
 
 health: ## Check API health endpoint
 	@echo -e "$(BLUE)🏥 Performing health check...$(NC)"
-	@curl -s http://localhost:$(PORT)/health | python3 -m json.tool 2>/dev/null || echo -e "$(RED)❌ API unavailable$(NC)"
+	@curl -s http://localhost:$(PORT)/health | $(PYTHON) -m json.tool 2>/dev/null || echo -e "$(RED)❌ API unavailable$(NC)"
 
 db-reset: ## Reset PostgreSQL/TimescaleDB database in Docker
 	@echo -e "$(YELLOW)🗄️ Resetting and applying migrations...$(NC)"
@@ -174,15 +192,15 @@ cache-clear: ## Clear global Redis cache
 
 example-quote: ## Example: Fetch real-time price snapshot (REST) for AAPL
 	@echo -e "$(BLUE)📈 Fetching quote for AAPL...$(NC)"
-	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quote/AAPL" | python3 -m json.tool
+	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quote/AAPL" | $(PYTHON) -m json.tool
 
 example-quotes: ## Example: Batch fetch quotes for AAPL, AIR.PA, BNP.PA (REST)
 	@echo -e "$(BLUE)📈 Batch fetching quotes...$(NC)"
-	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quotes?tickers=AAPL,AIR.PA,BNP.PA" | python3 -m json.tool
+	@curl -s $(AUTH_HEADER) "http://localhost:$(PORT)/quotes?tickers=AAPL,AIR.PA,BNP.PA" | $(PYTHON) -m json.tool
 
 example-client: ## Example: Run real-time python client (WebSocket/REST) for AAPL
 	@echo -e "$(BLUE)⚡ Starting real-time client (Ctrl+C to quit)...$(NC)"
-	python3 scripts/example_realtime_client.py AAPL
+	$(PYTHON) scripts/example_realtime_client.py AAPL
 
 info: ## Project information
 	@echo -e "$(CYAN)🚀 Fonrex (FonRex Pro) API$(NC)"

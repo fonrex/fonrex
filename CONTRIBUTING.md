@@ -7,7 +7,7 @@ Contributions are welcome — bug reports, provider fixes, new providers, docume
 2. Set up the development environment (Python 3.12):
 
    ```bash
-   python -m venv venv && source venv/bin/activate
+   python -m venv .venv && source .venv/bin/activate
    make install-dev          # the exact versions of requirements-dev.lock
    ```
 

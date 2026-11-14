@@ -63,6 +63,11 @@ def test_local_target_uses_the_same_image():
     assert re.search(r"^test-db:.*## ", MAKEFILE, re.MULTILINE)
 
 
+def test_local_ci_pipeline_runs_database_tests_when_docker_is_available():
+    assert re.search(r"^quality:.*\btest-db-auto\b", MAKEFILE, re.MULTILINE)
+    assert re.search(r"^test-db-auto:", MAKEFILE, re.MULTILINE)
+
+
 def test_database_tests_are_not_skipped_on_the_ci():
     """On GitHub Actions the variable must be set, whatever the workflow that runs pytest."""
     if os.environ.get("GITHUB_ACTIONS") == "true":

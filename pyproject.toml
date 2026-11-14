@@ -2,6 +2,7 @@
 target-version = "py312"
 line-length = 100
 extend-exclude = [
+    ".venv",
     "data",
     "node_modules",
     "scratch",
@@ -29,9 +30,7 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 # These bootstrap files deliberately mutate sys.path before importing the app.
 "scripts/*.py" = ["E402"]
-"tests/debug_db_asset.py" = ["E402"]
 "tests/test_migrations.py" = ["E402"]
-"tests/verify_asset_mapping.py" = ["E402"]
 
 # `l` is the public low-price field in the compact OHLCV wire contract.
 "schemas/technical.py" = ["E741"]
@@ -40,6 +39,7 @@ select = [
 branch = true
 source = ["."]
 omit = [
+    ".venv/*",
     "alembic/*",
     "data/*",
     "scratch/*",

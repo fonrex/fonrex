@@ -11,6 +11,7 @@ that nothing checks stops being true at the next change.
 
 import importlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -26,20 +27,61 @@ from monitoring.canary_catalog import CANARY_ASSETS
 from technical.catalog import INDICATOR_REGISTRY
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-README = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-ARCHITECTURE = (PROJECT_ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
-DOCUMENTS = {
-    "README.md": README,
-    "ARCHITECTURE.md": ARCHITECTURE,
-    "integrations/openbb/README.md": (PROJECT_ROOT / "integrations/openbb/README.md").read_text(
-        encoding="utf-8"
-    ),
-    "fonrex-sheets-connector/README.md": (
-        PROJECT_ROOT / "fonrex-sheets-connector/README.md"
-    ).read_text(encoding="utf-8"),
+EXCLUDED_DOC_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "scratch",
+    "node_modules",
+    ".pytest_cache",
+    ".ruff_cache",
 }
-AGENTS = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-DOCUMENTS["AGENTS.md"] = AGENTS
+REQUIRED_DOCUMENTS = (
+    "README.md",
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "GEMINI.md",
+    "CLAUDE.md",
+    ".github/copilot-instructions.md",
+    "fonrex-sheets-connector/README.md",
+)
+
+
+def _ignored_by_git(paths: list[str]) -> set[str]:
+    """The paths that the .gitignore rules exclude, tracked or not (empty without Git)."""
+    if not paths or shutil.which("git") is None or not (PROJECT_ROOT / ".git").exists():
+        return set()
+    result = subprocess.run(
+        ["git", "check-ignore", "--no-index", "--stdin"],
+        cwd=PROJECT_ROOT,
+        input="\n".join(paths),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return set(result.stdout.split())
+
+
+def _discover_documents() -> dict[str, str]:
+    """Load all tracked/non-ignored Markdown files without requiring manual registration."""
+    candidates: list[str] = []
+    for directory, subdirectories, files in os.walk(PROJECT_ROOT):
+        subdirectories[:] = sorted(d for d in subdirectories if d not in EXCLUDED_DOC_DIRS)
+        for filename in sorted(files):
+            if filename.endswith(".md"):
+                candidates.append((Path(directory) / filename).relative_to(PROJECT_ROOT).as_posix())
+    ignored = _ignored_by_git(candidates)
+    return {
+        rel: (PROJECT_ROOT / rel).read_text(encoding="utf-8")
+        for rel in candidates
+        if rel not in ignored
+    }
+
+
+DOCUMENTS = _discover_documents()
+README = DOCUMENTS["README.md"]
+ARCHITECTURE = DOCUMENTS["ARCHITECTURE.md"]
+AGENTS = DOCUMENTS["AGENTS.md"]
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
 SHEETS_SCRIPT = (PROJECT_ROOT / "fonrex-sheets-connector/Code.gs").read_text(encoding="utf-8")
 SHEETS_MANIFEST = json.loads(
@@ -60,21 +102,6 @@ def _section(title: str) -> str:
     marker = f"\n## {title}\n"
     assert marker in ARCHITECTURE, f"ARCHITECTURE.md has no section named {title!r}"
     return ARCHITECTURE.split(marker, 1)[1].split("\n## ", 1)[0]
-
-
-def _ignored_by_git(paths: list[str]) -> set[str]:
-    """The paths that the .gitignore rules exclude, tracked or not (empty without Git)."""
-    if shutil.which("git") is None or not (PROJECT_ROOT / ".git").exists():
-        return set()
-    result = subprocess.run(
-        ["git", "check-ignore", "--no-index", "--stdin"],
-        cwd=PROJECT_ROOT,
-        input="\n".join(paths),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return set(result.stdout.split())
 
 
 def _application_operations() -> set[tuple[str, str]]:
@@ -133,12 +160,14 @@ class TestQuotedFigures:
             counts = _quoted_counts(text, r"(\d+) providers") if "news" in name.lower() else []
             counts += _quoted_counts(text, r"News \((\d+) providers\)")
             counts += _quoted_counts(text, r"[Nn]ews from (\d+) providers")
+            counts += _quoted_counts(text, r"NewsService` \+ (\d+) providers")
             assert set(counts) <= {len(modules)}, name
 
     def test_technical_indicator_count(self):
         counts = _quoted_counts(README, r"Technical Indicators \((\d+) indicators\)")
         counts += _quoted_counts(ARCHITECTURE, r"registry of (\d+) indicators")
-        counts += _quoted_counts(ARCHITECTURE, r"(\d+) technical indicators")
+        for text in DOCUMENTS.values():
+            counts += _quoted_counts(text, r"(?:\*\*)?(\d+) technical indicators(?:\*\*)?")
         assert counts
         assert set(counts) == {len(INDICATOR_REGISTRY)}
 
@@ -161,8 +190,11 @@ class TestQuotedFigures:
             )
 
     def test_referenced_test_files_exist(self):
-        for path in set(re.findall(r"`(tests/test_\w+\.py)`", ARCHITECTURE)):
-            assert (PROJECT_ROOT / path).is_file(), f"{path} is documented but does not exist"
+        for name, text in DOCUMENTS.items():
+            for path in set(re.findall(r"`(tests/test_\w+\.py)`", text)):
+                assert (PROJECT_ROOT / path).is_file(), (
+                    f"{name} documents {path}, which does not exist"
+                )
 
 
 class TestArchitectureTables:
@@ -242,13 +274,75 @@ class TestContributorRules:
         for path in paths:
             assert (PROJECT_ROOT / path).is_file(), f"AGENTS.md names {path}, which does not exist"
 
-    def test_local_document_links_of_the_readme_point_to_existing_files(self):
-        targets = re.findall(r"\]\((?!https?://|#|mailto:)([^)#\s]+)(?:#[^)]*)?\)", README)
-        # Images are left out: this test is about the documents a reader is sent to.
-        documents = [target for target in targets if not target.lower().endswith(IMAGE_SUFFIXES)]
-        assert documents, "README.md no longer links to any local document"
-        for target in documents:
-            assert (PROJECT_ROOT / target).exists(), f"README.md links to a missing file: {target}"
+    @staticmethod
+    def _strip_code(text: str) -> str:
+        without_fences = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)
+        return re.sub(r"`[^`\n]+`", "", without_fences)
+
+    @staticmethod
+    def _heading_slugs(text: str) -> set[str]:
+        stripped = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)
+        slugs: set[str] = set()
+        counts: dict[str, int] = {}
+        for heading in re.findall(r"^#{1,6}\s+(.+)$", stripped, flags=re.MULTILINE):
+            cleaned = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", heading.strip().lower())
+            cleaned = re.sub(r"`([^`]*)`", r"\1", cleaned)
+            cleaned = re.sub(r"[^\w\s-]", "", cleaned).replace(" ", "-")
+            count = counts.get(cleaned, 0)
+            counts[cleaned] = count + 1
+            slugs.add(cleaned if count == 0 else f"{cleaned}-{count}")
+        return slugs
+
+    @classmethod
+    def _local_links(cls, text: str) -> list[tuple[str, str]]:
+        return re.findall(
+            r"\]\((?!https?://|mailto:)([^)#\s]*)(?:#([^)\s]+))?\)", cls._strip_code(text)
+        )
+
+    def test_local_document_links_across_all_documents_resolve(self):
+        heading_cache = {
+            (PROJECT_ROOT / doc_name).resolve(): self._heading_slugs(doc_text)
+            for doc_name, doc_text in DOCUMENTS.items()
+        }
+        readme_doc_links = 0
+        for name, text in DOCUMENTS.items():
+            base_dir = (PROJECT_ROOT / name).parent
+            targets = self._local_links(text)
+            for target, fragment in targets:
+                if not target and not fragment:
+                    continue
+                if target.lower().endswith(IMAGE_SUFFIXES):
+                    continue
+                resolved = (
+                    (PROJECT_ROOT / name).resolve()
+                    if not target
+                    else (base_dir / target).resolve()
+                )
+                assert resolved.exists(), f"{name} links to a missing file: {target}"
+                if name == "README.md" and target:
+                    readme_doc_links += 1
+                if fragment and resolved in heading_cache:
+                    assert fragment in heading_cache[resolved], (
+                        f"{name} links to missing section #{fragment} in {target or name}"
+                    )
+        assert readme_doc_links > 0, "README.md no longer links to any local document"
+
+    def test_link_extraction_ignores_code_blocks_and_inline_code(self):
+        sample = (
+            "Real link to [README](README.md#overview).\n"
+            "Inline example `[fake](missing_inline.md#nope)` is ignored.\n"
+            "```markdown\n[fenced](missing_fenced.md#nope)\n```\n"
+        )
+        assert self._local_links(sample) == [("README.md", "overview")]
+
+    def test_core_documents_exist(self):
+        missing = [doc for doc in REQUIRED_DOCUMENTS if doc not in DOCUMENTS]
+        assert not missing, f"Core documents missing: {missing}"
+
+    def test_agent_instruction_entrypoints_delegate_to_agents_md(self):
+        for entrypoint in ("GEMINI.md", "CLAUDE.md", ".github/copilot-instructions.md"):
+            text = DOCUMENTS[entrypoint]
+            assert "AGENTS.md" in text, f"{entrypoint} must delegate to AGENTS.md"
 
     def test_pull_request_types_match_the_title_check(self):
         workflow = (PROJECT_ROOT / ".github/workflows/pr-title-check.yml").read_text(

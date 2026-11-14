@@ -19,14 +19,17 @@ enforced by a test: if a test of the "guards" fails, fix the code, not the test.
 
 ```bash
 make install-dev   # Python 3.12 or 3.13: the exact versions of requirements-dev.lock
-make ci            # lint, typing, migrations, tests, coverage
+make fast          # fast iteration loop: lint, typing, migrations, and guard tests
+make ci            # full gate: lint, typing, migrations, all tests, and coverage floors
 ```
 
 `make ci` is exactly what GitHub Actions runs. A change is not finished until it passes.
-The CI also runs the database tests on a TimescaleDB service; locally they are skipped
-unless `FONREX_TEST_DATABASE_URL` is set. Run them with `make test-db` (needs Docker)
-after any change to a migration, to `prices_eod` or to SQL meant for PostgreSQL.
-Never claim that something works without having run it; say what you could not verify.
+The CI runs the database tests (`tests/test_timescale_integration.py`) on a TimescaleDB
+service via `FONREX_TEST_DATABASE_URL`. Locally, `make ci` automatically runs
+`make test-db` whenever Docker is running (and warns loudly if Docker is unavailable).
+Ensure `make test-db` ran after any change to a migration, to `prices_eod`, or to SQL
+meant for PostgreSQL. Never claim that something works without having run it; say what
+you could not verify.
 
 ## Invariants
 
@@ -76,6 +79,26 @@ Never claim that something works without having run it; say what you could not v
    network scenarios (search, page, refusal, server error) to `tests/test_provider_network.py`.
 5. Add its coverage floor to `scripts/check_coverage_distribution.py` (rule 6).
 6. Update the provider count in `README.md` (rule 3).
+
+## Session Lifecycle & Scope
+
+- **Clock-in.** Before touching code: read `PROGRESS.md` and run `make fast` to confirm a green baseline (use `make ci` / `make check` for the full gate).
+- **Scope & atomicity.** One logical change per session/commit; never mix unrelated refactoring with a feature. Explain *why* in commit messages, not just *what*.
+- **Context anxiety.** If running low on context or blocked on a failure, do **not** rush, skip verification, or lower thresholds — update `PROGRESS.md` with the exact state and stop cleanly.
+- **Clock-out.** Confirm `make ci` exits `0` (and verify `make test-db` ran when SQL or migrations changed), update `PROGRESS.md` if multi-session work continues, and leave no debug artifacts (`make clean`).
+
+## Topic Docs
+
+Read only the domain doc relevant to your task:
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — System overview, startup, layers, module map, routes, cache, and migrations.
+- [PROGRESS.md](PROGRESS.md) — Current state, active multi-session work, and prioritized next steps.
+- [docs/data-model.md](docs/data-model.md) — Relational/TimescaleDB schema (`models.py`) and identity/listing resolution.
+- [docs/historical-and-import.md](docs/historical-and-import.md) — CSV import, duplicate cleanup, EOD ingestion, realtime streaming, and technical indicators.
+- [docs/fundamentals-and-providers.md](docs/fundamentals-and-providers.md) — `/fundamental`, `/fundamental/deep`, specialized routes, providers, and news.
+- [docs/macro-factors-valuation.md](docs/macro-factors-valuation.md) — Factor returns, DCF/WACC valuation, macro series, and SEC/ESEF XBRL filings.
+- [docs/monitoring-and-integrations.md](docs/monitoring-and-integrations.md) — `ValidationLayer`, `CanaryMonitor`, OpenBB, Sheets connector, and Zipline ([docs/zipline-bundle.md](docs/zipline-bundle.md)).
+- [docs/testing-and-quality.md](docs/testing-and-quality.md) — Test isolation, quality pipeline, test catalog, and module health scores.
 
 ## When a guard test fails
 

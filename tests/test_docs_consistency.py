@@ -274,6 +274,17 @@ class TestContributorRules:
         for path in paths:
             assert (PROJECT_ROOT / path).is_file(), f"AGENTS.md names {path}, which does not exist"
 
+    def test_every_guard_of_make_fast_is_named_in_the_rules(self):
+        """A guard without a rule is a rule an agent only learns by breaking it."""
+        makefile = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
+        recipe = re.search(r"^fast:.*\n((?:\t.*\n)+)", makefile, flags=re.MULTILINE)
+        assert recipe, "the fast target of the Makefile is not found"
+        guards = set(re.findall(r"tests/test_\w+\.py", recipe[1]))
+        assert guards, "make fast no longer runs guard tests"
+        named = set(re.findall(r"`((?:tests|scripts)/[\w/]+\.py)`", AGENTS))
+        unnamed = sorted(guards - named)
+        assert not unnamed, f"Guards run by make fast but named by no rule of AGENTS.md: {unnamed}"
+
     @staticmethod
     def _strip_code(text: str) -> str:
         without_fences = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)

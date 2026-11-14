@@ -13,7 +13,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m
 
-.PHONY: help install install-dev lock lock-upgrade clean test test-db test-cov lint typecheck syntax migration-check fast quality ci check run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
+.PHONY: help install install-dev lock lock-upgrade clean test test-db test-db-auto test-cov lint typecheck syntax migration-check fast quality ci check run dev docker-build docker-run docker-stop logs health status db-reset cache-clear example-quote example-quotes example-client info
 
 # The API requires a key by default: export FONREX_API_KEY so the curl-based
 # targets below can authenticate (e.g. `FONREX_API_KEY=frx_live_... make example-quote`).
@@ -90,6 +90,17 @@ test-db: ## Run the database tests on a throwaway TimescaleDB container (needs D
 	docker rm -f -v $(TEST_DB_CONTAINER) >/dev/null; \
 	exit $$status
 
+test-db-auto: ## Run TimescaleDB tests automatically when Docker is running and FONREX_TEST_DATABASE_URL is unset
+	@if [ -n "$$FONREX_TEST_DATABASE_URL" ]; then \
+		exit 0; \
+	elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
+		echo -e "$(BLUE)🐘 Running TimescaleDB integration tests via Docker...$(NC)"; \
+		$(MAKE) test-db PYTHON="$(PYTHON)"; \
+	else \
+		echo -e "$(YELLOW)⚠️  WARNING: Docker is unavailable and FONREX_TEST_DATABASE_URL is unset — tests/test_timescale_integration.py was SKIPPED.$(NC)"; \
+		echo -e "$(YELLOW)   PostgreSQL/TimescaleDB migrations, hypertables, and SQL were NOT verified locally.$(NC)"; \
+	fi
+
 test-cov: ## Run tests with coverage reporting
 	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest --cov=. --cov-branch --cov-report=term-missing --cov-report=xml --cov-report=json:coverage.json
 	$(PYTHON) scripts/check_coverage_distribution.py coverage.json
@@ -109,7 +120,7 @@ migration-check: ## Verify single Alembic migration head
 fast: lint typecheck syntax migration-check ## Run fast static and architectural guard checks
 	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py tests/test_docker_image.py tests/test_dependency_lock.py tests/test_warning_hygiene.py tests/test_alembic_authority.py tests/test_ci_workflow.py tests/test_coverage_gate.py tests/test_suite_isolation.py tests/test_numbers.py tests/test_cache_service.py -q --no-cov
 
-quality: lint typecheck syntax migration-check test-cov ## Run complete local quality pipeline
+quality: lint typecheck syntax migration-check test-cov test-db-auto ## Run complete local quality pipeline
 
 ci: quality ## CI pipeline entrypoint
 

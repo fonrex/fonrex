@@ -24,10 +24,12 @@ make ci            # full gate: lint, typing, migrations, all tests, and coverag
 ```
 
 `make ci` is exactly what GitHub Actions runs. A change is not finished until it passes.
-The CI also runs the database tests on a TimescaleDB service; locally they are skipped
-unless `FONREX_TEST_DATABASE_URL` is set. Run them with `make test-db` (needs Docker)
-after any change to a migration, to `prices_eod` or to SQL meant for PostgreSQL.
-Never claim that something works without having run it; say what you could not verify.
+The CI runs the database tests (`tests/test_timescale_integration.py`) on a TimescaleDB
+service via `FONREX_TEST_DATABASE_URL`. Locally, `make ci` automatically runs
+`make test-db` whenever Docker is running (and warns loudly if Docker is unavailable).
+Ensure `make test-db` ran after any change to a migration, to `prices_eod`, or to SQL
+meant for PostgreSQL. Never claim that something works without having run it; say what
+you could not verify.
 
 ## Invariants
 
@@ -83,7 +85,7 @@ Never claim that something works without having run it; say what you could not v
 - **Clock-in.** Before touching code: read `PROGRESS.md` and run `make fast` to confirm a green baseline (use `make ci` / `make check` for the full gate).
 - **Scope & atomicity.** One logical change per session/commit; never mix unrelated refactoring with a feature. Explain *why* in commit messages, not just *what*.
 - **Context anxiety.** If running low on context or blocked on a failure, do **not** rush, skip verification, or lower thresholds — update `PROGRESS.md` with the exact state and stop cleanly.
-- **Clock-out.** Confirm `make ci` exits `0` (and `make test-db` if SQL/migrations changed), update `PROGRESS.md` if multi-session work continues, and leave no debug artifacts (`make clean`).
+- **Clock-out.** Confirm `make ci` exits `0` (and verify `make test-db` ran when SQL or migrations changed), update `PROGRESS.md` if multi-session work continues, and leave no debug artifacts (`make clean`).
 
 ## Topic Docs
 

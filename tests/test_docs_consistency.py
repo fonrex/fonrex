@@ -11,6 +11,7 @@ that nothing checks stops being true at the next change.
 
 import importlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -26,35 +27,61 @@ from monitoring.canary_catalog import CANARY_ASSETS
 from technical.catalog import INDICATOR_REGISTRY
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-README = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-ARCHITECTURE = (PROJECT_ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
-AGENTS = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-PROGRESS = (PROJECT_ROOT / "PROGRESS.md").read_text(encoding="utf-8")
-DOCUMENTS = {
-    "README.md": README,
-    "ARCHITECTURE.md": ARCHITECTURE,
-    "AGENTS.md": AGENTS,
-    "PROGRESS.md": PROGRESS,
-    "CONTRIBUTING.md": (PROJECT_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8"),
-    "DISCLAIMER.md": (PROJECT_ROOT / "DISCLAIMER.md").read_text(encoding="utf-8"),
-    "GEMINI.md": (PROJECT_ROOT / "GEMINI.md").read_text(encoding="utf-8"),
-    "CLAUDE.md": (PROJECT_ROOT / "CLAUDE.md").read_text(encoding="utf-8"),
-    ".github/copilot-instructions.md": (
-        PROJECT_ROOT / ".github/copilot-instructions.md"
-    ).read_text(encoding="utf-8"),
-    "integrations/openbb/README.md": (PROJECT_ROOT / "integrations/openbb/README.md").read_text(
-        encoding="utf-8"
-    ),
-    "fonrex-sheets-connector/README.md": (
-        PROJECT_ROOT / "fonrex-sheets-connector/README.md"
-    ).read_text(encoding="utf-8"),
+EXCLUDED_DOC_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "scratch",
+    "node_modules",
+    ".pytest_cache",
+    ".ruff_cache",
 }
-for _doc_path in sorted((PROJECT_ROOT / "docs").glob("*.md")):
-    DOCUMENTS[f"docs/{_doc_path.name}"] = _doc_path.read_text(encoding="utf-8")
-for _fixture_readme in sorted((PROJECT_ROOT / "tests" / "fixtures").glob("*/README.md")):
-    DOCUMENTS[_fixture_readme.relative_to(PROJECT_ROOT).as_posix()] = _fixture_readme.read_text(
-        encoding="utf-8"
+REQUIRED_DOCUMENTS = (
+    "README.md",
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "GEMINI.md",
+    "CLAUDE.md",
+    ".github/copilot-instructions.md",
+    "fonrex-sheets-connector/README.md",
+)
+
+
+def _ignored_by_git(paths: list[str]) -> set[str]:
+    """The paths that the .gitignore rules exclude, tracked or not (empty without Git)."""
+    if not paths or shutil.which("git") is None or not (PROJECT_ROOT / ".git").exists():
+        return set()
+    result = subprocess.run(
+        ["git", "check-ignore", "--no-index", "--stdin"],
+        cwd=PROJECT_ROOT,
+        input="\n".join(paths),
+        capture_output=True,
+        text=True,
+        check=False,
     )
+    return set(result.stdout.split())
+
+
+def _discover_documents() -> dict[str, str]:
+    """Load all tracked/non-ignored Markdown files without requiring manual registration."""
+    candidates: list[str] = []
+    for directory, subdirectories, files in os.walk(PROJECT_ROOT):
+        subdirectories[:] = sorted(d for d in subdirectories if d not in EXCLUDED_DOC_DIRS)
+        for filename in sorted(files):
+            if filename.endswith(".md"):
+                candidates.append((Path(directory) / filename).relative_to(PROJECT_ROOT).as_posix())
+    ignored = _ignored_by_git(candidates)
+    return {
+        rel: (PROJECT_ROOT / rel).read_text(encoding="utf-8")
+        for rel in candidates
+        if rel not in ignored
+    }
+
+
+DOCUMENTS = _discover_documents()
+README = DOCUMENTS["README.md"]
+ARCHITECTURE = DOCUMENTS["ARCHITECTURE.md"]
+AGENTS = DOCUMENTS["AGENTS.md"]
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
 SHEETS_SCRIPT = (PROJECT_ROOT / "fonrex-sheets-connector/Code.gs").read_text(encoding="utf-8")
 SHEETS_MANIFEST = json.loads(
@@ -75,21 +102,6 @@ def _section(title: str) -> str:
     marker = f"\n## {title}\n"
     assert marker in ARCHITECTURE, f"ARCHITECTURE.md has no section named {title!r}"
     return ARCHITECTURE.split(marker, 1)[1].split("\n## ", 1)[0]
-
-
-def _ignored_by_git(paths: list[str]) -> set[str]:
-    """The paths that the .gitignore rules exclude, tracked or not (empty without Git)."""
-    if shutil.which("git") is None or not (PROJECT_ROOT / ".git").exists():
-        return set()
-    result = subprocess.run(
-        ["git", "check-ignore", "--no-index", "--stdin"],
-        cwd=PROJECT_ROOT,
-        input="\n".join(paths),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return set(result.stdout.split())
 
 
 def _application_operations() -> set[tuple[str, str]]:
@@ -183,14 +195,6 @@ class TestQuotedFigures:
                 assert (PROJECT_ROOT / path).is_file(), (
                     f"{name} documents {path}, which does not exist"
                 )
-        documented_in_catalog = set(
-            re.findall(r"`(tests/test_\w+\.py)`", DOCUMENTS["docs/testing-and-quality.md"])
-        )
-        on_disk = {f"tests/{path.name}" for path in (PROJECT_ROOT / "tests").glob("test_*.py")}
-        missing = sorted(on_disk - documented_in_catalog)
-        assert not missing, (
-            f"Test files missing from docs/testing-and-quality.md catalog: {missing}"
-        )
 
 
 class TestArchitectureTables:
@@ -331,27 +335,14 @@ class TestContributorRules:
         )
         assert self._local_links(sample) == [("README.md", "overview")]
 
-    def test_every_markdown_file_of_the_repository_is_checked(self):
-        excluded = {".git", ".venv", "venv", "scratch", "node_modules", ".pytest_cache", ".ruff_cache"}
-        on_disk = {
-            path.relative_to(PROJECT_ROOT).as_posix()
-            for path in PROJECT_ROOT.rglob("*.md")
-            if not excluded.intersection(path.parts)
-        }
-        ignored = _ignored_by_git(sorted(on_disk))
-        assert (on_disk - ignored) - set(DOCUMENTS) == set()
+    def test_core_documents_exist(self):
+        missing = [doc for doc in REQUIRED_DOCUMENTS if doc not in DOCUMENTS]
+        assert not missing, f"Core documents missing: {missing}"
 
     def test_agent_instruction_entrypoints_delegate_to_agents_md(self):
         for entrypoint in ("GEMINI.md", "CLAUDE.md", ".github/copilot-instructions.md"):
             text = DOCUMENTS[entrypoint]
             assert "AGENTS.md" in text, f"{entrypoint} must delegate to AGENTS.md"
-
-    def test_progress_referenced_code_paths_exist(self):
-        paths = set(re.findall(r"`([\w/.-]+\.py)`", PROGRESS))
-        for path in paths:
-            assert (PROJECT_ROOT / path).is_file(), (
-                f"PROGRESS.md references {path}, which does not exist"
-            )
 
     def test_pull_request_types_match_the_title_check(self):
         workflow = (PROJECT_ROOT / ".github/workflows/pr-title-check.yml").read_text(

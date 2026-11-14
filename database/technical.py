@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Sequence
 from datetime import date
 from typing import Protocol, TypeAlias
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.orm import Session
 
 from concurrency import run_sync
@@ -64,8 +64,9 @@ class SqlAlchemyTechnicalRepository:
                 table_name, time_column = "prices_eod", "time"
                 series_filter = "asset_listing_id = :series_id"
                 series_id = series.listing_id
-                lower = session_timestamp(from_date) if from_date else None
-                upper = session_timestamp(to_date) if to_date else None
+                # A datetime is a date: both kinds of bound are compared below.
+                lower: date | None = session_timestamp(from_date) if from_date else None
+                upper: date | None = session_timestamp(to_date) if to_date else None
             else:
                 table_name, time_column = "prices_intraday", "timestamp"
                 series_filter = "asset_id = :series_id"
@@ -125,7 +126,7 @@ class SqlAlchemyTechnicalRepository:
         return self._database, False
 
     @staticmethod
-    def _rows_to_dataframe(rows: list[Mapping[str, object]]) -> pd.DataFrame:
+    def _rows_to_dataframe(rows: Sequence[RowMapping]) -> pd.DataFrame:
         if not rows:
             return pd.DataFrame()
         dataframe = pd.DataFrame([dict(row) for row in rows])

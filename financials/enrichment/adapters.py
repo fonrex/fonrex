@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
 from concurrency import run_sync
 from financials.enrichment.yfinance_enricher import YFinanceEnricher
@@ -12,8 +13,10 @@ from use_cases.ports import (
     AssetProfile,
     AssetProfileRepositoryPort,
     FundamentalPayload,
-    FundamentalsRepositoryPort,
 )
+
+if TYPE_CHECKING:
+    from database.service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +58,7 @@ class YFinanceAssetProfileEnricher:
                 run_sync(fetch_yfinance_data, enrichment_ticker),
                 timeout=self.timeout_seconds,
             )
-            if not self.database.metadata_has_profile_enrichment(metadata):
+            if metadata is None or not self.database.metadata_has_profile_enrichment(metadata):
                 continue
             await run_sync(
                 self.database.update_asset_profile_from_metadata,
@@ -67,9 +70,13 @@ class YFinanceAssetProfileEnricher:
 
 
 class YFinanceDeepFundamentalsEnricher:
-    """Adapter exposing the concrete yfinance deep enricher as an app port."""
+    """Adapter exposing the concrete yfinance deep enricher as an app port.
 
-    def __init__(self, database: FundamentalsRepositoryPort) -> None:
+    The enricher writes every section itself: it takes the database service,
+    which gives the sessions, not only the read port of the use case.
+    """
+
+    def __init__(self, database: DatabaseService) -> None:
         self._delegate = YFinanceEnricher(database)
 
     async def enrich(

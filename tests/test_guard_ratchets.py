@@ -110,6 +110,35 @@ def toml_ignore_pairs(source: str) -> set[str] | None:
     return {f"{pattern}: {rule}" for pattern, rules in ignores.items() for rule in rules}
 
 
+# mypy settings that let more code through when they are set.
+LOOSENING_MYPY_PREFIXES = ("ignore_", "allow_", "implicit_")
+LOOSENING_MYPY_KEYS = {"disable_error_code", "follow_imports", "exclude"}
+
+
+def mypy_relaxations(source: str) -> set[str] | None:
+    """Each loosening setting of the mypy configuration, per module it applies to."""
+    mypy = toml_value("tool", "mypy")(source)
+    if not isinstance(mypy, dict):
+        return None
+    scopes = [("*", mypy)]
+    for override in mypy.get("overrides", []):
+        modules = override.get("module", [])
+        for module in [modules] if isinstance(modules, str) else modules:
+            scopes.append((module, override))
+    relaxed = set()
+    for scope, settings in scopes:
+        for key, value in settings.items():
+            if key in {"module", "overrides"}:
+                continue
+            if (
+                key.startswith(LOOSENING_MYPY_PREFIXES)
+                or key in LOOSENING_MYPY_KEYS
+                or value is False
+            ):
+                relaxed.add(f"{scope}: {key} = {value!r}")
+    return relaxed
+
+
 def ini_values(section: str, key: str) -> Callable[[str], list[str] | None]:
     """A list option of an ini file, one item per line or per word."""
 
@@ -202,6 +231,14 @@ def number_never_drops(baseline, current) -> list[str]:
     return [f"lowered: {baseline} -> {current}"] if current < baseline else []
 
 
+def stays_on(baseline, current) -> list[str]:
+    return (
+        [f"turned off: {baseline!r} -> {current!r}"]
+        if baseline is True and current is not True
+        else []
+    )
+
+
 # ── The ratchets ─────────────────────────────────────────────────────────────
 
 
@@ -259,6 +296,8 @@ RATCHETS = [
         make_variable("TYPED_BOUNDARIES"),
         guarded_paths_never_dropped,
     ),
+    Ratchet("mypy strict mode", "pyproject.toml", toml_value("tool", "mypy", "strict"), stays_on),
+    Ratchet("mypy relaxations", "pyproject.toml", mypy_relaxations, may_shrink_never_grow),
     # Test collection
     Ratchet(
         "directories pytest does not collect",
@@ -368,7 +407,7 @@ class TestReaders:
 
     def test_toml_value_and_ignore_pairs(self):
         source = (
-            '[tool.coverage.report]\nfail_under = 70\n'
+            "[tool.coverage.report]\nfail_under = 70\n"
             '[tool.ruff.lint.per-file-ignores]\n"a.py" = ["E402", "E741"]\n'
         )
         assert toml_value("tool", "coverage", "report", "fail_under")(source) == 70
@@ -377,10 +416,27 @@ class TestReaders:
         assert toml_ignore_pairs("") is None
 
     def test_ini_values_on_one_line_and_several(self):
-        source = "[pytest]\nnorecursedirs = venv .venv\nfilterwarnings =\n    ignore:a\n    ignore:b\n"
+        source = (
+            "[pytest]\nnorecursedirs = venv .venv\nfilterwarnings =\n    ignore:a\n    ignore:b\n"
+        )
         assert ini_values("pytest", "norecursedirs")(source) == ["venv", ".venv"]
         assert ini_values("pytest", "filterwarnings")(source) == ["ignore:a", "ignore:b"]
         assert ini_values("pytest", "missing")(source) is None
+
+    def test_mypy_relaxations_per_module(self):
+        source = (
+            '[tool.mypy]\nstrict = true\nfollow_imports = "silent"\nwarn_unreachable = true\n'
+            '[[tool.mypy.overrides]]\nmodule = ["pandas", "pandas.*"]\n'
+            "ignore_missing_imports = true\ncheck_untyped_defs = false\n"
+        )
+        assert mypy_relaxations(source) == {
+            "*: follow_imports = 'silent'",
+            "pandas: ignore_missing_imports = True",
+            "pandas.*: ignore_missing_imports = True",
+            "pandas: check_untyped_defs = False",
+            "pandas.*: check_untyped_defs = False",
+        }
+        assert mypy_relaxations("[tool.ruff]\n") is None
 
     def test_make_variable(self):
         source = "X := 1\nTYPED_BOUNDARIES := a.py b.py\n"
@@ -425,6 +481,11 @@ class TestChecks:
         assert budgets_never_rise({"Makefile": 500}, {}) == [
             "removed the budget of 'Makefile' (500)"
         ]
+
+    def test_strict_mode_stays_on(self):
+        assert stays_on(True, True) == []
+        assert stays_on(True, False) == ["turned off: True -> False"]
+        assert stays_on(None, False) == []
 
     def test_number_never_drops(self):
         assert number_never_drops(70, 75) == []

@@ -18,7 +18,7 @@ class ResilientAsyncJsonCache(AsyncJsonCachePort):
     errors still propagate to make defects visible during development.
     """
 
-    def __init__(self, redis_client: object) -> None:
+    def __init__(self, redis_client: AsyncJsonCachePort) -> None:
         self._redis = redis_client
 
     async def get(self, key: str) -> str | bytes | None:

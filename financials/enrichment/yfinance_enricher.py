@@ -12,6 +12,7 @@ import logging
 import math
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,9 @@ import yfinance as yf
 from concurrency import run_sync
 from database.assets import ProfileMetadataRefused
 from database.isin import clean_yahoo_isin
+
+if TYPE_CHECKING:
+    from database.service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +189,7 @@ class YFinanceEnricher:
     Every private method is synchronous (run in a thread pool).
     """
 
-    def __init__(self, db_service):
+    def __init__(self, db_service: "DatabaseService") -> None:
         """
         Args:
             db_service: DatabaseService instance (gives the sessions).

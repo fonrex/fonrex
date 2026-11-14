@@ -29,6 +29,7 @@ from schemas.technical import (
     IndicatorResult,
     MultiIndicatorResult,
     TechnicalSeries,
+    datetime_bound,
 )
 from technical.calculation_engine import TechnicalCalculationEngine
 from technical.catalog import CACHE_TTL, INDICATOR_DEFAULTS, INDICATOR_REGISTRY
@@ -157,7 +158,7 @@ class TechnicalIndicatorService:
             if actual_name:
                 col_names.append(actual_name)
 
-        series = await run_sync(
+        indicator_series = await run_sync(
             self._df_to_series,
             calc_df,
             col_names,
@@ -181,7 +182,7 @@ class TechnicalIndicatorService:
             if not calc_df.empty
             else None,
             count=len(calc_df),
-            series=series,
+            series=indicator_series,
             cached=False,
             calculated_at=datetime.now(timezone.utc),
         )
@@ -234,8 +235,8 @@ class TechnicalIndicatorService:
             return MultiIndicatorResult(
                 ticker=ticker,
                 resolution=resolution,
-                from_date=from_date,
-                to_date=to_date,
+                from_date=datetime_bound(from_date),
+                to_date=datetime_bound(to_date),
                 count=0,
                 ohlcv=[] if include_ohlcv else None,
                 indicators={},

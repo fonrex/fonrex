@@ -2,12 +2,17 @@
 
 import asyncio
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import ParamSpec, TypeVar
 
+Parameters = ParamSpec("Parameters")
 Result = TypeVar("Result")
 
 
-async def run_sync(operation: Callable[..., Result], *args: Any, **kwargs: Any) -> Result:
+async def run_sync(
+    operation: Callable[Parameters, Result],
+    *args: Parameters.args,
+    **kwargs: Parameters.kwargs,
+) -> Result:
     """Run a blocking operation in the default worker pool.
 
     Context variables are propagated by ``asyncio.to_thread`` and keyword

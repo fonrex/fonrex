@@ -7,12 +7,14 @@ yfinance, provider, and presentation adapters are composed by the HTTP layer.
 import asyncio
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from concurrency import run_sync
 from use_cases.errors import DependencyUnavailable, InvalidInput, ResourceNotFound
 from use_cases.ports import (
+    AssetProfile,
     AssetProfileEnricherPort,
     AsyncJsonCachePort,
     DeepFundamentalsEnricherPort,
@@ -57,7 +59,21 @@ DEEP_SECTION_KEYS = {
 }
 
 
-def _requested_sections(answer: dict, requested: set[str], want_all: bool) -> dict:
+def _text(record: Mapping[str, object] | None, key: str) -> str | None:
+    """A text field of a record read from the database, or None when it is blank."""
+    value = (record or {}).get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _identifier(record: Mapping[str, object] | None, key: str) -> int | None:
+    """An identifier of a record read from the database, or None when there is none."""
+    value = (record or {}).get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value else None
+
+
+def _requested_sections(
+    answer: FundamentalPayload, requested: set[str], want_all: bool
+) -> FundamentalPayload:
     """Keep, from a complete deep answer, the sections a request asked for."""
     if want_all:
         return answer
@@ -67,8 +83,8 @@ def _requested_sections(answer: dict, requested: set[str], want_all: bool) -> di
 
 async def yahoo_symbol_of(
     symbols: SourceSymbolResolverPort | None,
-    asset_profile: dict | None,
-    ticker: str,
+    asset_profile: Mapping[str, object] | None,
+    ticker: str | None,
     refresh: bool = False,
 ) -> tuple[str | None, str | None]:
     """Symbol to ask Yahoo with, or the reason Yahoo is not asked.
@@ -78,7 +94,7 @@ async def yahoo_symbol_of(
     verified for it is used, and Yahoo is not asked without one. A ticker that
     is not in the catalogue is used as the caller typed it.
     """
-    listing_id = (asset_profile or {}).get("listing_id")
+    listing_id = _identifier(asset_profile, "listing_id")
     if symbols is None or not listing_id:
         return ticker, None
     try:
@@ -139,24 +155,25 @@ class GetFundamentals:
         if provider:
             provider_params = [p.strip() for p in provider.split(",") if p.strip()]
 
-        if not ticker and not isin:
-            raise InvalidInput(
-                {
-                    "error": "Missing parameter",
-                    "message": "The ticker or isin parameter is required",
-                    "examples": {
-                        "ticker": "/fundamental?ticker=AAPL",
-                        "isin": "/fundamental?isin=FR0004125920",
-                        "listing": "/fundamental?ticker=GOVY&currency=CHF",
-                        "provider_specific": "/fundamental?ticker=AAPL&provider=zonebourse",
-                        "multiple_providers": "/fundamental?ticker=AAPL&provider=googlefinance,gurufocus",
-                    },
-                }
-            )
-
-        # If ISIN provided, try to find the corresponding ticker
-        if isin and not ticker:
+        if not ticker:
+            if not isin:
+                raise InvalidInput(
+                    {
+                        "error": "Missing parameter",
+                        "message": "The ticker or isin parameter is required",
+                        "examples": {
+                            "ticker": "/fundamental?ticker=AAPL",
+                            "isin": "/fundamental?isin=FR0004125920",
+                            "listing": "/fundamental?ticker=GOVY&currency=CHF",
+                            "provider_specific": "/fundamental?ticker=AAPL&provider=zonebourse",
+                            "multiple_providers": "/fundamental?ticker=AAPL&provider=googlefinance,gurufocus",
+                        },
+                    }
+                )
+            # Only the ISIN is given: find the corresponding ticker. The ISIN
+            # stands for it when none is found.
             logger.info(f"Searching ticker for ISIN: {isin}")
+            ticker = isin
             if db_service:
                 asset_details = await run_sync(
                     db_service.get_asset_details,
@@ -164,14 +181,10 @@ class GetFundamentals:
                     exchange=exchange,
                     currency=currency,
                 )
-                if asset_details and asset_details.get("ticker"):
-                    ticker = asset_details.get("ticker")
+                found_ticker = _text(asset_details, "ticker")
+                if found_ticker:
+                    ticker = found_ticker
                     logger.info(f"Ticker found in DB for ISIN {isin}: {ticker}")
-                else:
-                    ticker = isin
-            else:
-                ticker = isin
-            ticker = ticker or isin
 
         # If ticker provided but no ISIN, try to find the ISIN in the database
         if ticker and not isin:
@@ -182,8 +195,9 @@ class GetFundamentals:
                     exchange=exchange,
                     currency=currency,
                 )
-                if asset_details and asset_details.get("isin"):
-                    isin = asset_details.get("isin")
+                found_isin = _text(asset_details, "isin")
+                if found_isin:
+                    isin = found_isin
                     logger.info(f"ISIN found in DB for {ticker}: {isin}")
 
         # Automatic conversion of Google Finance tickers to Yahoo Finance format
@@ -193,7 +207,7 @@ class GetFundamentals:
             logger.info(f"Ticker converted: {original_ticker} -> {ticker}")
 
         # Retrieve data
-        results = {}
+        results: FundamentalPayload = {}
 
         # Build cache key. The providers asked are part of it: without them, the
         # answer of one provider was served to a request for all of them.
@@ -207,13 +221,14 @@ class GetFundamentals:
                 except (json.JSONDecodeError, TypeError, UnicodeError) as exc:
                     logger.warning("Invalid fundamentals cache entry %s: %s", cache_key, exc)
 
-        raw_providers = {}  # Stores source provider links
+        raw_providers: FundamentalPayload = {}  # Stores source provider links
 
         # 1. Enrich from local database (Assets) and retrieve mappings
-        asset_mappings = {}
-        provider_default_tickers = {}
-        verified_symbols = {}
-        refused_providers = {}
+        asset_profile: AssetProfile | None = None
+        asset_mappings: Mapping[str, object] = {}
+        provider_default_tickers: dict[str, str] = {}
+        verified_symbols: dict[str, str] = {}
+        refused_providers: dict[str, str] = {}
         if db_service:
             asset_context = await run_sync(
                 db_service.get_asset_context,
@@ -232,7 +247,8 @@ class GetFundamentals:
                 if asset_profile.get("listing_id") and self.symbols is not None:
                     if yahoo_symbol:
                         verified_symbols[YAHOO] = yahoo_symbol
-                    else:
+                    elif yahoo_refusal:
+                        # Always the case: without a symbol, the lookup gives its reason.
                         refused_providers[YAHOO] = yahoo_refusal
 
                 if self.profile_enricher and not yahoo_refusal:
@@ -253,18 +269,15 @@ class GetFundamentals:
                         if refreshed_context:
                             asset_context = refreshed_context
                             asset_profile = asset_context["details"]
-                            if not isin and asset_profile.get("isin"):
-                                isin = asset_profile.get("isin")
+                            profile_isin = _text(asset_profile, "isin")
+                            if not isin and profile_isin:
+                                isin = profile_isin
 
                 results["asset_profile"] = asset_profile
                 asset_mappings = asset_context["mappings"]
-                if (
-                    isin
-                    and ticker == isin
-                    and asset_profile.get("ticker")
-                    and asset_profile.get("ticker") != isin
-                ):
-                    provider_default_tickers["msn"] = asset_profile["ticker"]
+                profile_ticker = _text(asset_profile, "ticker")
+                if isin and ticker == isin and profile_ticker and profile_ticker != isin:
+                    provider_default_tickers["msn"] = profile_ticker
 
         if self.provider_runner is None:
             raise DependencyUnavailable("Financial provider runner unavailable")
@@ -277,11 +290,11 @@ class GetFundamentals:
                 provider_params=provider_params,
                 asset_mappings=asset_mappings,
                 provider_default_tickers=provider_default_tickers,
-                asset_profile=results.get("asset_profile"),
+                asset_profile=asset_profile,
                 verified_symbols=verified_symbols,
                 refused_providers=refused_providers,
             ),
-            self._insider_transactions(ticker, isin, results.get("asset_profile")),
+            self._insider_transactions(ticker, isin, asset_profile),
         )
 
         # Merge provider results
@@ -296,10 +309,10 @@ class GetFundamentals:
             results["SECEdgar"] = insider_result
 
         # 3. Deep data (statements, earnings, ratings, ...) stored in the database
-        deep_sections = {}
-        if results.get("asset_profile") and results["asset_profile"].get("asset_id"):
-            asset_id = results["asset_profile"]["asset_id"]
-            deep_data = await run_sync(db_service.get_deep_fundamentals, asset_id)
+        deep_sections: FundamentalPayload = {}
+        profile_asset_id = _identifier(asset_profile, "asset_id")
+        if db_service and profile_asset_id:
+            deep_data = await run_sync(db_service.get_deep_fundamentals, profile_asset_id)
             if deep_data:
                 results["Financials"] = deep_data.get("statements", {})
                 results["AnalystRatings"] = deep_data.get("analyst_ratings", {})
@@ -319,7 +332,9 @@ class GetFundamentals:
                 raise DependencyUnavailable("Fundamentals formatter unavailable")
             # The formatter reads the stored sections under their own names: handed
             # over under other names, every stored figure was left out of the answer.
-            final_response = self.formatter.to_eodhd({**results, **deep_sections})
+            final_response: FundamentalPayload = self.formatter.to_eodhd(
+                {**results, **deep_sections}
+            )
         else:
             # Raw format (default, or when asked)
             final_response = results
@@ -331,7 +346,7 @@ class GetFundamentals:
         return FundamentalResult(final_response, provider_used=provider_used)
 
     async def _insider_transactions(
-        self, ticker: str, isin: str | None, asset_profile: dict | None = None
+        self, ticker: str, isin: str | None, asset_profile: Mapping[str, object] | None = None
     ) -> object | None:
         """Insider transactions filed with the SEC, for a share listed in the US."""
         if not self.sec_edgar_provider or not ticker:
@@ -349,11 +364,14 @@ class GetFundamentals:
             return None
         # Plain data: the answer is also stored as JSON in the cache.
         if hasattr(result, "model_dump"):
-            return result.model_dump(mode="json")
+            plain: object = result.model_dump(mode="json")
+            return plain
         return result
 
     @staticmethod
-    def _files_with_the_sec(ticker: str, isin: str | None, asset_profile: dict) -> bool:
+    def _files_with_the_sec(
+        ticker: str, isin: str | None, asset_profile: Mapping[str, object]
+    ) -> bool:
         """Whether the ticker can be looked up at the SEC without naming another company.
 
         A ticker without suffix is not enough: ``SPFF`` is a fund quoted in EUR in
@@ -411,16 +429,16 @@ class GetDeepFundamentals:
         want_all = "all" in requested_sections or not requested_sections
 
         # 1. Resolve the asset
-        asset_profile = None
-        asset_id = None
+        asset_profile: AssetProfile | None = None
+        asset_id: int | None = None
         resolved_ticker = ticker
 
         if db_service:
             asset_context = await run_sync(db_service.get_asset_context, ticker=ticker, isin=isin)
             if asset_context:
                 asset_profile = asset_context["details"]
-                asset_id = asset_profile.get("asset_id")
-                resolved_ticker = asset_profile.get("ticker") or ticker
+                asset_id = _identifier(asset_profile, "asset_id")
+                resolved_ticker = _text(asset_profile, "ticker") or ticker
 
         if not asset_id:
             raise ResourceNotFound(f"Asset not found for ticker={ticker}, isin={isin}")
@@ -437,7 +455,12 @@ class GetDeepFundamentals:
             cached = await run_sync(cache_service.get, cache_key_prefix)
             if cached:
                 cache_hit = True
-                cached["meta"] = {**cached.get("meta", {}), "source": "yfinance", "cache_hit": True}
+                cached_meta = cached.get("meta", {})
+                cached["meta"] = {
+                    **(cached_meta if isinstance(cached_meta, Mapping) else {}),
+                    "source": "yfinance",
+                    "cache_hit": True,
+                }
                 return _requested_sections(cached, requested_sections, want_all)
 
         # 3. Cache miss or refresh → run YFinanceEnricher, with the Yahoo
@@ -453,7 +476,7 @@ class GetDeepFundamentals:
                 # exchange and currency when blank. Without a resolver the ticker
                 # is used as typed: it is verified for no listing.
                 verified_listing_id = (
-                    asset_profile.get("listing_id") if self.symbols is not None else None
+                    _identifier(asset_profile, "listing_id") if self.symbols is not None else None
                 )
                 enrich_result = await self.enricher.enrich(
                     asset_id, yahoo_symbol, listing_id=verified_listing_id
@@ -463,7 +486,7 @@ class GetDeepFundamentals:
                 logger.warning("Deep fundamentals not refreshed: %s", yahoo_refusal)
 
         # 4. Read the data from PostgreSQL
-        response = {}
+        response: FundamentalPayload = {}
 
         if asset_profile:
             response["asset_profile"] = {
@@ -477,18 +500,19 @@ class GetDeepFundamentals:
         response.update(await run_sync(db_service.get_deep_sections, asset_id, set(), True))
 
         # 5. Metadata
-        response["meta"] = {
+        meta: dict[str, object] = {
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "source": "yfinance",
             "cache_hit": False,
         }
+        response["meta"] = meta
         if yahoo_symbol:
-            response["meta"]["symbol"] = yahoo_symbol
+            meta["symbol"] = yahoo_symbol
         if yahoo_refusal:
             # What follows is what the database already held, not a fresh answer:
             # it is said, and it is not kept in the cache as if it were one.
-            response["meta"]["source"] = "database"
-            response["meta"]["note"] = yahoo_refusal
+            meta["source"] = "database"
+            meta["note"] = yahoo_refusal
 
         # 6. Cache it in Redis
         if cache_service and cache_service.enabled and not yahoo_refusal:

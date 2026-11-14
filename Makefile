@@ -19,8 +19,7 @@ NC := \033[0m
 # targets below can authenticate (e.g. `FONREX_API_KEY=frx_live_... make example-quote`).
 AUTH_HEADER := $(if $(FONREX_API_KEY),-H "X-API-KEY: $(FONREX_API_KEY)",)
 
-TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py monitoring/ports.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py
-
+TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py monitoring/ports.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py concurrency.py use_cases/errors.py
 .DEFAULT_GOAL := help
 
 help: ## Display this help message
@@ -108,8 +107,9 @@ test-cov: ## Run tests with coverage reporting
 lint: ## Lint Python source code with Ruff
 	$(PYTHON) -m ruff check .
 
-typecheck: ## Check typed boundaries with Ruff
+typecheck: ## Check the typed boundaries: annotations (Ruff), then types (mypy, strict)
 	$(PYTHON) -m ruff check --select ANN $(TYPED_BOUNDARIES)
+	$(PYTHON) -m mypy $(TYPED_BOUNDARIES)
 
 syntax: ## Compile Python sources without writing bytecode
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m compileall -q -x '/(\.?venv|node_modules|scratch)/' .
@@ -118,7 +118,7 @@ migration-check: ## Verify single Alembic migration head
 	@test "$$($(PYTHON) -m alembic heads | grep -c '(head)')" -eq 1 || (echo "Alembic must have exactly one head" && exit 1)
 
 fast: lint typecheck syntax migration-check ## Run fast static and architectural guard checks
-	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py tests/test_docker_image.py tests/test_dependency_lock.py tests/test_warning_hygiene.py tests/test_alembic_authority.py tests/test_ci_workflow.py tests/test_coverage_gate.py tests/test_suite_isolation.py tests/test_numbers.py tests/test_cache_service.py -q --no-cov
+	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py tests/test_docker_image.py tests/test_dependency_lock.py tests/test_warning_hygiene.py tests/test_alembic_authority.py tests/test_ci_workflow.py tests/test_coverage_gate.py tests/test_guard_ratchets.py tests/test_suite_isolation.py tests/test_numbers.py tests/test_cache_service.py -q --no-cov
 
 quality: lint typecheck syntax migration-check test-cov test-db-auto ## Run complete local quality pipeline
 

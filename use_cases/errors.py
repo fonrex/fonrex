@@ -2,7 +2,7 @@
 
 
 class UseCaseError(Exception):
-    def __init__(self, detail):
+    def __init__(self, detail: object) -> None:
         super().__init__(str(detail))
         self.detail = detail
 

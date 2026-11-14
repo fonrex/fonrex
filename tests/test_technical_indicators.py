@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,7 +26,7 @@ import pytest
 from fastapi import HTTPException
 
 from cache.technical import RedisTechnicalCache
-from schemas.technical import IndicatorResult
+from schemas.technical import IndicatorResult, MultiIndicatorResult, datetime_bound
 from technical.contracts import MarketSeries
 from technical.errors import (
     InsufficientHistoricalData,
@@ -606,3 +606,20 @@ class TestTechnicalIndicatorService:
                 os.environ.pop("TECHNICAL_CACHE_ENABLED", None)
             else:
                 os.environ["TECHNICAL_CACHE_ENABLED"] = original_env
+
+
+@pytest.mark.parametrize(
+    "bound",
+    [None, date(2024, 1, 2), datetime(2024, 1, 2, 15, 30), datetime(2024, 1, 2, tzinfo=timezone.utc)],
+)
+def test_datetime_bound_reads_a_date_as_the_result_model_does(bound):
+    """The requested bounds go into a datetime field: converted first, they are typed."""
+    read_by_the_model = MultiIndicatorResult(
+        ticker="X",
+        resolution="1D",
+        from_date=bound,
+        count=0,
+        indicators={},
+        calculated_at=datetime.now(timezone.utc),
+    ).from_date
+    assert datetime_bound(bound) == read_by_the_model

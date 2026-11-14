@@ -52,7 +52,7 @@ GOOGLE_EXCHANGES = {
 
 
 class ToolsBox:
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     def extractYahooTickerFromMoning(self, test_str):
@@ -409,7 +409,7 @@ class ToolsBox:
         else:
             return yahooTicker
 
-    def googleFinanceToYahooFinance(self, googleTicker):
+    def googleFinanceToYahooFinance(self, googleTicker: str) -> str:
         """
         Converts a Google Finance ticker (e.g., EPA:AMUN) to Yahoo Finance (e.g., AMUN.PA)
         """

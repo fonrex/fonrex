@@ -15,7 +15,7 @@ with warnings.catch_warnings():
 
 from schemas.technical import DataPoint, TechnicalSeries
 from technical.catalog import INDICATOR_DEFAULTS, INDICATOR_REGISTRY
-from technical.contracts import IndicatorParams
+from technical.contracts import IndicatorParameter, IndicatorParams
 from technical.errors import IndicatorCalculationFailed
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,7 @@ class TechnicalCalculationEngine:
             indicator, raw_value = name_clean.split("_", 1)
             if indicator in INDICATOR_REGISTRY:
                 params = INDICATOR_DEFAULTS[indicator].copy()
+                value: IndicatorParameter | None
                 try:
                     value = int(raw_value)
                 except ValueError:

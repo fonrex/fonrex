@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from typing import TypeAlias
@@ -70,6 +70,13 @@ class OHLCVBar(BaseModel):
     l: Decimal | None = None
     c: Decimal | None = None
     v: int | None = None
+
+
+def datetime_bound(day: date | None) -> datetime | None:
+    """A requested bound as these models read a date in a datetime field: midnight, naive."""
+    if day is None or isinstance(day, datetime):
+        return day
+    return datetime.combine(day, time.min)
 
 
 class MultiIndicatorResult(BaseModel):

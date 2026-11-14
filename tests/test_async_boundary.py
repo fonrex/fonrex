@@ -8,6 +8,10 @@ import pytest
 
 from concurrency import run_sync
 
+# Modules allowed to call asyncio.to_thread or run_in_executor themselves.
+# A ratchet (tests/test_guard_ratchets.py): this set may shrink, never grow.
+ALLOWED_THREAD_MODULES = {"concurrency.py", "realtime/worker.py"}
+
 
 @pytest.mark.asyncio
 async def test_run_sync_uses_worker_thread_and_propagates_context():
@@ -35,13 +39,10 @@ async def test_run_sync_propagates_operation_errors():
 def test_application_code_uses_the_shared_async_boundary():
     root = Path(__file__).parents[1]
     excluded_dirs = {"tests", "scripts", "alembic", "venv", ".venv", "scratch", "node_modules"}
-    allowed = {
-        root / "concurrency.py",
-        root / "realtime" / "worker.py",
-    }
     violations = []
     for candidate in sorted(root.rglob("*.py")):
-        if excluded_dirs.intersection(candidate.parts) or candidate in allowed:
+        relative = candidate.relative_to(root).as_posix()
+        if excluded_dirs.intersection(candidate.parts) or relative in ALLOWED_THREAD_MODULES:
             continue
         source = candidate.read_text(encoding="utf-8")
         if "asyncio.to_thread" in source or "run_in_executor" in source:

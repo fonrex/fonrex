@@ -55,8 +55,9 @@ class TestNoProviderBypassesTheCommonClient:
         r"aiohttp\.ClientSession\(|urllib\.request\.urlopen\("
     )
     # Non-provider services that still create their own httpx.AsyncClient.
-    # This set is a ratchet: no new module may be added, and migrated modules
-    # must be removed from it.
+    # This set is a ratchet: migrated modules must be removed from it (checked
+    # below), and no module may be added (tests/test_guard_ratchets.py compares
+    # it with main).
     LEGACY_DIRECT_HTTP_CLIENTS = {
         "factors/french_library.py",
         "macro/ecb_service.py",

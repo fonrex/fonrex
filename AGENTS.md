@@ -40,7 +40,8 @@ you could not verify.
 | 3 | **Documents tell the truth.** A figure in `README.md` (providers, indicators, widgets) must match the code, and the tables of `ARCHITECTURE.md` list what exists: in the same change, add a new route to its routes table, a new migration to its migrations table, a new router or package to its module map. Do not write counts that go stale (test files, migrations, tables). Do not describe a hosted data API. | `tests/test_docs_consistency.py` |
 | 4 | **Providers load, or the failure is visible.** Register a provider in `PROVIDER_SPECS` / `SPECIALIZED_PROVIDER_SPECS` (`main.py`). A provider that cannot be imported is reported by `/health`. | `tests/test_docs_consistency.py` |
 | 5 | **Units are declared.** A provider returning percentages declares them in `monitoring/units.py`; validation and canary work on ratios. | `tests/test_provider_units.py` |
-| 6 | **Coverage floors only go up.** Every module of `financials/providers/` has a floor in `scripts/check_coverage_distribution.py`. Raise it when coverage rises; never lower it. | `tests/test_coverage_gate.py`, `make test-cov` |
+| 6 | **Coverage floors only go up.** Every module of `financials/providers/` has a floor in `scripts/check_coverage_distribution.py`. Raise it when coverage rises; never lower it. | `tests/test_coverage_gate.py`, `tests/test_guard_ratchets.py`, `make test-cov` |
+| 20 | **Guards never loosen.** The exceptions of the guards (allowlists, line budgets, guarded module lists) and the quality settings (coverage floors and exclusions, Ruff rules and ignores, typed boundaries, pytest exclusions) are compared with `main`: an allowlist may shrink, a guarded list may grow, a budget may go down, never the other way. | `tests/test_guard_ratchets.py` |
 | 7 | **Secure by default.** Every route requires an API key unless listed as public in `main.py`. A route that changes something must not be a `GET`, so that read-only keys (`FONREX_READ_ONLY_API_KEYS`) cannot call it. A `POST` that only computes must be added to `_READ_ONLY_POST_PATHS` in `auth/dependencies.py`, with a test. | `tests/test_auth_defaults.py` |
 | 8 | **The Docker image is self-contained.** Never exclude application code or migrations in `.dockerignore`; `.env` never goes into the image. | `tests/test_docker_image.py` |
 | 9 | **The usage log never delays a response.** The middleware only queues an entry (`usage_recorder.py`); no database write on the request path. No IP address stored unless `USAGE_LOG_IP` asks for it. | `tests/test_usage_recorder.py` |
@@ -104,4 +105,6 @@ Read only the domain doc relevant to your task:
 
 A guard fails because the change broke a rule above. Fix the change. Lowering a floor,
 deleting an assertion, adding an exclusion or skipping a test to get a green run is not a
-fix; if the rule itself must change, say so explicitly in the pull request.
+fix, and `tests/test_guard_ratchets.py` fails when an allowlist, a budget or a floor moves
+the loose way. If the rule itself must change, that is a human decision: say so explicitly
+in the pull request.

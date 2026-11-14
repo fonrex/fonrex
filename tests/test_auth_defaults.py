@@ -76,25 +76,25 @@ def test_suite_does_not_inherit_credentials_from_the_shell():
     completed = subprocess.run(
         [
             sys.executable,
-            "-m",
-            "pytest",
-            "tests/test_router_integration.py::test_get_news_stats",
-            "-q",
-            "--no-cov",
-            "-p",
-            "no:cacheprovider",
+            "-c",
+            "import runpy; runpy.run_path('tests/conftest.py'); "
+            "from auth.dependencies import get_configured_api_keys, is_auth_enforced; "
+            "assert get_configured_api_keys() == [] and not is_auth_enforced()",
         ],
         cwd=Path(__file__).resolve().parent.parent,
         env={
             **os.environ,
             "FONREX_API_KEY": "frx_live_exported_in_the_shell",
+            "FONREX_API_KEYS": "frx_live_extra",
+            "FONREX_READ_ONLY_API_KEYS": "frx_live_ro",
+            "FONREX_RELAY_KEY": "frx_live_relay",
             "FONREX_AUTH_REQUIRED": "true",
         },
         capture_output=True,
         text=True,
         check=False,
     )
-    assert completed.returncode == 0, completed.stdout[-2000:]
+    assert completed.returncode == 0, completed.stderr[-2000:]
 
 
 class TestSecureDefault:

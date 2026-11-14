@@ -36,6 +36,7 @@ DOCUMENTS = {
     "AGENTS.md": AGENTS,
     "PROGRESS.md": PROGRESS,
     "CONTRIBUTING.md": (PROJECT_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8"),
+    "DISCLAIMER.md": (PROJECT_ROOT / "DISCLAIMER.md").read_text(encoding="utf-8"),
     "GEMINI.md": (PROJECT_ROOT / "GEMINI.md").read_text(encoding="utf-8"),
     "CLAUDE.md": (PROJECT_ROOT / "CLAUDE.md").read_text(encoding="utf-8"),
     ".github/copilot-instructions.md": (
@@ -50,6 +51,10 @@ DOCUMENTS = {
 }
 for _doc_path in sorted((PROJECT_ROOT / "docs").glob("*.md")):
     DOCUMENTS[f"docs/{_doc_path.name}"] = _doc_path.read_text(encoding="utf-8")
+for _fixture_readme in sorted((PROJECT_ROOT / "tests" / "fixtures").glob("*/README.md")):
+    DOCUMENTS[_fixture_readme.relative_to(PROJECT_ROOT).as_posix()] = _fixture_readme.read_text(
+        encoding="utf-8"
+    )
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
 SHEETS_SCRIPT = (PROJECT_ROOT / "fonrex-sheets-connector/Code.gs").read_text(encoding="utf-8")
 SHEETS_MANIFEST = json.loads(
@@ -178,6 +183,14 @@ class TestQuotedFigures:
                 assert (PROJECT_ROOT / path).is_file(), (
                     f"{name} documents {path}, which does not exist"
                 )
+        documented_in_catalog = set(
+            re.findall(r"`(tests/test_\w+\.py)`", DOCUMENTS["docs/testing-and-quality.md"])
+        )
+        on_disk = {f"tests/{path.name}" for path in (PROJECT_ROOT / "tests").glob("test_*.py")}
+        missing = sorted(on_disk - documented_in_catalog)
+        assert not missing, (
+            f"Test files missing from docs/testing-and-quality.md catalog: {missing}"
+        )
 
 
 class TestArchitectureTables:
@@ -258,6 +271,11 @@ class TestContributorRules:
             assert (PROJECT_ROOT / path).is_file(), f"AGENTS.md names {path}, which does not exist"
 
     @staticmethod
+    def _strip_code(text: str) -> str:
+        without_fences = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)
+        return re.sub(r"`[^`\n]+`", "", without_fences)
+
+    @staticmethod
     def _heading_slugs(text: str) -> set[str]:
         stripped = re.sub(r"```.*?```|~~~.*?~~~", "", text, flags=re.DOTALL)
         slugs: set[str] = set()
@@ -271,6 +289,12 @@ class TestContributorRules:
             slugs.add(cleaned if count == 0 else f"{cleaned}-{count}")
         return slugs
 
+    @classmethod
+    def _local_links(cls, text: str) -> list[tuple[str, str]]:
+        return re.findall(
+            r"\]\((?!https?://|mailto:)([^)#\s]*)(?:#([^)\s]+))?\)", cls._strip_code(text)
+        )
+
     def test_local_document_links_across_all_documents_resolve(self):
         heading_cache = {
             (PROJECT_ROOT / doc_name).resolve(): self._heading_slugs(doc_text)
@@ -279,9 +303,7 @@ class TestContributorRules:
         readme_doc_links = 0
         for name, text in DOCUMENTS.items():
             base_dir = (PROJECT_ROOT / name).parent
-            targets = re.findall(
-                r"\]\((?!https?://|mailto:)([^)#\s]*)(?:#([^)\s]+))?\)", text
-            )
+            targets = self._local_links(text)
             for target, fragment in targets:
                 if not target and not fragment:
                     continue
@@ -300,6 +322,24 @@ class TestContributorRules:
                         f"{name} links to missing section #{fragment} in {target or name}"
                     )
         assert readme_doc_links > 0, "README.md no longer links to any local document"
+
+    def test_link_extraction_ignores_code_blocks_and_inline_code(self):
+        sample = (
+            "Real link to [README](README.md#overview).\n"
+            "Inline example `[fake](missing_inline.md#nope)` is ignored.\n"
+            "```markdown\n[fenced](missing_fenced.md#nope)\n```\n"
+        )
+        assert self._local_links(sample) == [("README.md", "overview")]
+
+    def test_every_markdown_file_of_the_repository_is_checked(self):
+        excluded = {".git", ".venv", "venv", "scratch", "node_modules", ".pytest_cache", ".ruff_cache"}
+        on_disk = {
+            path.relative_to(PROJECT_ROOT).as_posix()
+            for path in PROJECT_ROOT.rglob("*.md")
+            if not excluded.intersection(path.parts)
+        }
+        ignored = _ignored_by_git(sorted(on_disk))
+        assert (on_disk - ignored) - set(DOCUMENTS) == set()
 
     def test_agent_instruction_entrypoints_delegate_to_agents_md(self):
         for entrypoint in ("GEMINI.md", "CLAUDE.md", ".github/copilot-instructions.md"):

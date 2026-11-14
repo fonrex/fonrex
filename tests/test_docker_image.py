@@ -9,7 +9,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Top-level folders holding Python code that the image legitimately leaves out.
-DEVELOPMENT_ONLY = {"tests", "scratch", "venv"}
+DEVELOPMENT_ONLY = {"tests", "scratch", "venv", "node_modules"}
 
 
 def _ignored_patterns() -> set[str]:
@@ -151,18 +151,10 @@ class TestDatabaseWait:
         return match[1]
 
     def _address_waited_for(self, database_url: str | None) -> str:
-        env = {key: value for key, value in os.environ.items() if key != "DATABASE_URL"}
-        if database_url is not None:
-            env["DATABASE_URL"] = database_url
-        env["PYTHONPATH"] = str(PROJECT_ROOT)
-        result = subprocess.run(
-            [sys.executable, "-c", self._address_snippet()],
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return result.stdout.strip()
+        from database.lifecycle import database_address
+
+        host, port = database_address(database_url)
+        return f"{host} {port}"
 
     def test_compose_database_is_the_default(self):
         assert self._address_waited_for(None) == "db 5432"
@@ -186,3 +178,16 @@ class TestDatabaseWait:
         script = (PROJECT_ROOT / "entrypoint.sh").read_text(encoding="utf-8")
         assert 'check_service "${DB_HOST:-db}" "${DB_PORT:-5432}" "PostgreSQL"' in script
         assert "check_service db 5432" not in script
+        env = {
+            **os.environ,
+            "DATABASE_URL": "postgresql://fonrex:pw@db.example.com:6432/fonrex",
+            "PYTHONPATH": str(PROJECT_ROOT),
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", self._address_snippet()],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == "db.example.com 6432"

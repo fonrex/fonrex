@@ -54,6 +54,16 @@ class TestNoProviderBypassesTheCommonClient:
         r"httpx\.(AsyncClient|Client|get|post|request|stream)\(|requests\.(get|post|Session|request)\(|"
         r"aiohttp\.ClientSession\(|urllib\.request\.urlopen\("
     )
+    # Non-provider services that still create their own httpx.AsyncClient.
+    # This set is a ratchet: no new module may be added, and migrated modules
+    # must be removed from it.
+    LEGACY_DIRECT_HTTP_CLIENTS = {
+        "factors/french_library.py",
+        "macro/ecb_service.py",
+        "macro/eurostat_service.py",
+        "macro/fred_service.py",
+        "macro/fx_rates.py",
+    }
 
     def _provider_modules(self):
         for package in ("financials/providers", "news/providers"):
@@ -70,6 +80,30 @@ class TestNoProviderBypassesTheCommonClient:
         assert not offenders, (
             "Providers must use self._session(), self._get() or new_sync_client() from "
             "financials/providers/base.py:\n" + "\n".join(offenders)
+        )
+
+    def test_no_new_application_module_creates_an_http_client(self):
+        excluded_dirs = {"tests", "scripts", "alembic", "venv", ".venv", "scratch", "node_modules"}
+        base_module = PROJECT_ROOT / "financials" / "providers" / "base.py"
+        offenders = []
+        still_direct = set()
+        for path in sorted(PROJECT_ROOT.rglob("*.py")):
+            if excluded_dirs.intersection(path.parts) or path == base_module:
+                continue
+            rel = path.relative_to(PROJECT_ROOT).as_posix()
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if self.FORBIDDEN.search(line) and not line.lstrip().startswith("#"):
+                    if rel in self.LEGACY_DIRECT_HTTP_CLIENTS:
+                        still_direct.add(rel)
+                    else:
+                        offenders.append(f"{rel}:{number}: {line.strip()}")
+        assert not offenders, (
+            "Application modules must route HTTP calls through financials/providers/base.py:\n"
+            + "\n".join(offenders)
+        )
+        migrated = self.LEGACY_DIRECT_HTTP_CLIENTS - still_direct
+        assert not migrated, (
+            f"Remove migrated modules from LEGACY_DIRECT_HTTP_CLIENTS: {sorted(migrated)}"
         )
 
     def test_every_registered_provider_extends_the_common_base(self):

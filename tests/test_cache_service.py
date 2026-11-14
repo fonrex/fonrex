@@ -121,9 +121,9 @@ class CacheEntriesAreDataTest(unittest.TestCase):
         root = Path(__file__).resolve().parent.parent
         offenders = []
         for path in root.rglob("*.py"):
-            relative = path.relative_to(root)
-            if relative.parts[0] in {"tests", ".venv", "venv", "path", "node_modules"}:
+            if {"tests", ".venv", "venv", "scratch", "node_modules"}.intersection(path.parts):
                 continue
+            relative = path.relative_to(root)
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 names = []
                 if isinstance(node, ast.Import):

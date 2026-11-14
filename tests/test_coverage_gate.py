@@ -1,7 +1,10 @@
 """The per-module coverage gate run by ``make test-cov`` and the CI."""
 
+import ast
 import importlib.util
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -71,6 +74,45 @@ class TestDeclaredFloors:
 
     def test_global_floor_is_read_from_pyproject_and_never_lowered(self):
         assert gate.global_floor() >= 70.0
+
+    @staticmethod
+    def _baseline_thresholds_from_git() -> dict[str, float] | None:
+        if shutil.which("git") is None or not (PROJECT_ROOT / ".git").exists():
+            return None
+        for ref in ("main", "origin/main"):
+            result = subprocess.run(
+                ["git", "show", f"{ref}:scripts/check_coverage_distribution.py"],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                tree = ast.parse(result.stdout)
+                for node in tree.body:
+                    if isinstance(node, ast.Assign) and any(
+                        isinstance(t, ast.Name) and t.id == "MODULE_THRESHOLDS"
+                        for t in node.targets
+                    ):
+                        return ast.literal_eval(node.value)
+        return None
+
+    def test_floors_are_never_lowered_below_main(self):
+        baseline = self._baseline_thresholds_from_git()
+        if baseline is None:
+            pytest.skip("git main reference not available")
+        lowered = []
+        removed = []
+        for module, baseline_floor in baseline.items():
+            if not (PROJECT_ROOT / module).is_file():
+                continue
+            current_floor = gate.MODULE_THRESHOLDS.get(module)
+            if current_floor is None:
+                removed.append(module)
+            elif current_floor < baseline_floor:
+                lowered.append(f"{module}: {current_floor}% < {baseline_floor}%")
+        assert not removed, f"Coverage floors removed for existing modules: {removed}"
+        assert not lowered, f"Coverage floors must never be lowered (AGENTS.md rule 6): {lowered}"
 
     def test_global_floor_is_optional(self, tmp_path):
         assert gate.global_floor(tmp_path / "missing.toml") is None

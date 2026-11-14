@@ -14,7 +14,7 @@
 
 1. Raise the coverage floor of `monitoring/canary_monitor.py` in `scripts/check_coverage_distribution.py`.
 2. Add direct unit tests for historical gap detection (`historical/ingestion_service.py`) and DCF weighted consensus (`valuation/dcf_service.py`).
-3. Route `macro/fred_service.py` HTTP calls through `financials/providers/base.py` or a shared client policy (see Known Limits in `ARCHITECTURE.md`).
+3. Route the remaining direct HTTP clients (`macro/fred_service.py`, `macro/ecb_service.py`, `macro/eurostat_service.py`, `macro/fx_rates.py`, `factors/french_library.py`) through `financials/providers/base.py` (see Known Limits in `ARCHITECTURE.md`).
 4. Add a retention purge or hypertable policy for `news_articles` (currently unbounded).
 
 ## Blockers / Notes

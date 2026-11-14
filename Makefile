@@ -107,7 +107,7 @@ migration-check: ## Verify single Alembic migration head
 	@test "$$($(PYTHON) -m alembic heads | grep -c '(head)')" -eq 1 || (echo "Alembic must have exactly one head" && exit 1)
 
 fast: lint typecheck syntax migration-check ## Run fast static and architectural guard checks
-	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py tests/test_docker_image.py tests/test_dependency_lock.py tests/test_warning_hygiene.py tests/test_alembic_authority.py tests/test_ci_workflow.py -q --no-cov
+	PYTHONWARNINGS=error PYTHONPATH=. $(PYTHON) -m pytest tests/test_docs_consistency.py tests/test_exception_boundaries.py tests/test_async_boundary.py tests/test_provider_http_policy.py tests/test_env_settings.py tests/test_auth_defaults.py tests/test_docker_image.py tests/test_dependency_lock.py tests/test_warning_hygiene.py tests/test_alembic_authority.py tests/test_ci_workflow.py tests/test_coverage_gate.py tests/test_suite_isolation.py tests/test_numbers.py tests/test_cache_service.py -q --no-cov
 
 quality: lint typecheck syntax migration-check test-cov ## Run complete local quality pipeline
 

@@ -11,8 +11,8 @@
 - **Risk metrics (`GET /risk/{ticker}`), phase 1**: computed in Fonrex (numpy), with no new dependency. Branch `feat/risk-metrics-engine`, one commit per step, one pull request after step 4. FinanceToolkit is not a dependency: its figures served once as reference values (`tests/test_risk_metrics.py`).
   1. Done: pure engine `risk/metrics.py` (volatility, drawdown, historical and Gaussian VaR/CVaR, Calmar, Sharpe, Sortino).
   2. Done: OECD 3-month rates (`financials/providers/oecd.py`, `macro/short_rates.py`, `scripts/load_short_rates.py`), stored monthly in `macro_observations` (source `oecd`, indicator `rate_3m`). Seen in the answer of 2026-11-20: the euro area is `EA20`; most areas run to the month before last, `JPN` one month less, and **`GBR` stops in 2026-02** — the repository must not carry it over for long (a source for GBP, such as SONIA of the Bank of England, is a later step).
-  3. Next: short-rate repository by currency — USD from `yield_curve_points` (`3M`), other currencies from the OECD series, the last rate carried over a bounded time, `None` with a reason for a currency without source (never `DCF_RISK_FREE_RATE`).
-  4. Then: `GET /risk/{ticker}` (schemas, cache key with every parameter, routes table, README, docs).
+  3. Done: `macro/risk_free_rates.py` — USD from the Treasury `3M` (a rate carried 7 days at most), other currencies from the OECD area of the currency (a month carried 3 months at most), `GBX` read as `GBP`; no rate and the reason for a currency without source or a day beyond the bounds (never `DCF_RISK_FREE_RATE`). GBP has no rate after May 2026 until another source is added.
+  4. Next: `GET /risk/{ticker}` (schemas, cache key with every parameter, routes table, README, docs).
 - **Module quality & coverage**: See the health summary in [docs/testing-and-quality.md](docs/testing-and-quality.md#module-quality-and-health-scores) and exact per-module floors in `scripts/check_coverage_distribution.py`.
 
 ## Next Steps

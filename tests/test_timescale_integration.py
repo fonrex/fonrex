@@ -2278,6 +2278,67 @@ class TestShortRatesScriptOnPostgres:
         assert second_output.splitlines()[0].startswith("fresh")
 
 
+class TestRiskFreeRatesOnPostgres:
+    """The daily risk-free rates read from the Treasury curve and the OECD rates stored."""
+
+    NOW = datetime(2026, 11, 20, 21, 0, tzinfo=timezone.utc)
+
+    @staticmethod
+    def clean(engine):
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM yield_curve_points"))
+            connection.execute(text("DELETE FROM yield_curve_loads"))
+            connection.execute(text("DELETE FROM macro_observations WHERE source = 'oecd'"))
+            connection.execute(text("DELETE FROM macro_series_loads WHERE source = 'oecd'"))
+
+    async def test_dollar_and_euro_rates_of_the_same_days(self, database_url, engine):
+        from financials.providers.oecd import parse_short_rates_csv
+        from financials.providers.treasury import CurveFile, parse_curve_csv
+        from macro.risk_free_rates import RiskFreeRateRepository
+        from macro.short_rates import ShortRates
+        from macro.treasury_curves import TreasuryCurves
+
+        fixtures = Path(__file__).parent / "fixtures"
+        nominal_2026 = parse_curve_csv(
+            (fixtures / "treasury" / "nominal_2026.csv").read_bytes().decode(), "nominal", 2026
+        )
+        oecd = parse_short_rates_csv(
+            (fixtures / "oecd" / "ir3tib_monthly.csv").read_bytes().decode()
+        )
+
+        async def read_year(curve, year):
+            if (curve, year) == ("nominal", 2026):
+                return nominal_2026
+            return CurveFile(curve, year, (), ())
+
+        self.clean(engine)
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        sessions = async_sessionmaker(async_engine)
+        treasury = TreasuryCurves(sessions, AsyncMock(side_effect=read_year), now=lambda: self.NOW)
+        short_rates = ShortRates(sessions, AsyncMock(return_value=oecd), now=lambda: self.NOW)
+        repository = RiskFreeRateRepository(treasury, short_rates)
+        last_day = nominal_2026.days[-1].day
+        days = [last_day - timedelta(days=2), last_day]
+        try:
+            dollar = await repository.rates("USD", days)
+            euro = await repository.rates("EUR", [date(2026, 10, 30), date(2026, 11, 20)])
+            pound = await repository.rates("GBp", [date(2026, 10, 30)])
+        finally:
+            await async_engine.dispose()
+            self.clean(engine)
+
+        expected = float(nominal_2026.days[-1].points["3M"])
+        assert dollar.reason is None
+        assert dollar.rates[last_day] == pytest.approx(expected)
+        assert set(dollar.rates) == set(days)
+        assert euro.rates == {date(2026, 10, 30): 0.02634682, date(2026, 11, 20): 0.02634682}
+        assert euro.last_observation == date(2026, 10, 1)
+        assert pound.rates is None
+        assert pound.reason.startswith("no OECD, 3-month interbank rate (GBR) for 2026-10-30")
+
+
 class TestCotTablesOnPostgres:
     """Revision 025: the Commitments of Traders reports of the CFTC."""
 

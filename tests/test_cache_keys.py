@@ -317,3 +317,22 @@ async def test_indicators_cached_by_a_multi_request_belong_to_its_series(monkeyp
 
     assert same_series.cached is True
     assert other_series.cached is False
+
+
+# ── /risk ────────────────────────────────────────────────────────────────────
+
+
+def test_risk_answers_are_cached_per_window_confidence_and_listing():
+    from routers.risk import risk_cache_key
+
+    keys = [
+        risk_cache_key("AI", 3, 0.95, None, None, None),
+        risk_cache_key("AI", 5, 0.95, None, None, None),
+        risk_cache_key("AI", 3, 0.99, None, None, None),
+        risk_cache_key("AI", 3, 0.95, "USD", None, None),
+        risk_cache_key("AI", 3, 0.95, None, "XNYS", None),
+        risk_cache_key("AI", 3, 0.95, None, None, "FR0000120073"),
+    ]
+    assert len(set(keys)) == len(keys)
+    # The same request written in another case shares its entry.
+    assert risk_cache_key("ai", 3, 0.95, "usd", None, None) == keys[3]

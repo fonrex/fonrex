@@ -2339,6 +2339,86 @@ class TestRiskFreeRatesOnPostgres:
         assert pound.reason.startswith("no OECD, 3-month interbank rate (GBR) for 2026-10-30")
 
 
+class TestRiskOnPostgres:
+    """``RiskService`` reads the daily closes of a listing and the rates of its currency."""
+
+    @staticmethod
+    def clean(engine):
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM prices_eod WHERE asset_listing_id = 780"))
+            connection.execute(text("DELETE FROM asset_listings WHERE id = 780"))
+            connection.execute(text("DELETE FROM assets WHERE id = 78"))
+            connection.execute(text("DELETE FROM macro_observations WHERE source = 'oecd'"))
+            connection.execute(text("DELETE FROM macro_series_loads WHERE source = 'oecd'"))
+
+    async def test_the_risk_of_a_euro_listing(self, database_url, engine):
+        from macro.risk_free_rates import RiskFreeRateRepository
+        from macro.short_rates import ShortRates
+        from macro.treasury_curves import TreasuryCurves
+        from risk.service import RiskService
+
+        self.clean(engine)
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO assets (id, ticker, name, currency, is_active, isin)
+                    VALUES (78, 'RSK', 'Risk test', 'EUR', true, 'FR0000000078');
+                    INSERT INTO asset_listings
+                        (id, asset_id, ticker, exchange, currency, source, is_primary, is_active,
+                         created_at, updated_at)
+                    VALUES (780, 78, 'RSK', 'XPAR', 'EUR', 'csv', true, true, now(), now());
+                    -- 120 daily closes up to 2026-10-30, the last one without adj_close.
+                    INSERT INTO prices_eod
+                        (time, asset_id, asset_listing_id, close, adj_close, resolution)
+                    SELECT DATE '2026-10-30' - n, 78, 780, 100 + sin(n) * 3,
+                           CASE WHEN n = 0 THEN NULL ELSE 100 + sin(n) * 3 END, '1D'
+                    FROM generate_series(0, 119) AS n;
+                    INSERT INTO prices_eod
+                        (time, asset_id, asset_listing_id, close, adj_close, resolution)
+                    VALUES ('2026-10-30 00:00+00', 78, 780, 999, 999, '1W');
+                    INSERT INTO macro_observations
+                        (source, indicator, geo, period, frequency, value, unit, status, fetched_at)
+                    SELECT 'oecd', 'rate_3m', 'EA20', make_date(2026, m, 1), 'monthly',
+                           0.02, 'ratio', 'A', now()
+                    FROM generate_series(6, 10) AS m;
+                    INSERT INTO macro_series_loads
+                        (source, indicator, geo, fetched_at, first_period, last_period)
+                    VALUES ('oecd', 'rate_3m', 'EA20', now(), DATE '2026-06-01', DATE '2026-10-01');
+                """)
+            )
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        sessions = async_sessionmaker(async_engine)
+        # Read less than a day ago: neither the OECD nor the Treasury is asked.
+        oecd, treasury_reader = AsyncMock(), AsyncMock()
+        rates = RiskFreeRateRepository(
+            TreasuryCurves(sessions, treasury_reader), ShortRates(sessions, oecd)
+        )
+        try:
+            result = await RiskService(sessions, rates).measure("RSK", years=1)
+            missing = await RiskService(sessions, rates)._listing("NOPE", None, None, None)
+        finally:
+            await async_engine.dispose()
+            self.clean(engine)
+
+        assert result.listing == {
+            "ticker": "RSK",
+            "isin": "FR0000000078",
+            "currency": "EUR",
+            "exchange": "XPAR",
+        }
+        # Daily bars only: the weekly bar of 999 is not a close.
+        assert (result.metrics.start, result.metrics.end) == (date(2026, 7, 3), date(2026, 10, 30))
+        assert result.metrics.returns == 119
+        assert result.metrics.historical_var > -0.2
+        assert result.risk_free.source == "OECD, 3-month interbank rate (EA20)"
+        assert result.metrics.mean_risk_free_rate == pytest.approx(0.02)
+        assert result.warnings == []
+        oecd.assert_not_awaited()
+        assert missing == (None, {})
+
+
 class TestCotTablesOnPostgres:
     """Revision 025: the Commitments of Traders reports of the CFTC."""
 

@@ -149,7 +149,7 @@ At application startup, `main.py` initializes:
 - The OpenBB Workspace definitions (`integrations/openbb/widgets.json` and `apps.json`), read once.
 - All these objects are published in `app.state` and resolved by FastAPI dependencies; no mutable service is kept in a global module variable.
 
-The providers need no connection and are set up when `main.py` is imported: the classes of `PROVIDER_SPECS` are kept in a registry and instantiated by the runner for each request, the four providers of `SPECIALIZED_PROVIDER_SPECS` are instantiated once. A provider that cannot be imported is left out, and `GET /health` lists it under `providers.unavailable`. The start is tolerant: without an asynchronous database URL the realtime worker, the news service and the monitoring are not created; the worker, news, FRED, DCF and monitoring are each started on their own and leave an empty slot on failure. The routes that need a missing service answer `503`; the rest of the API starts.
+The providers need no connection and are set up when `main.py` is imported: the classes of `PROVIDER_SPECS` are kept in a registry and instantiated by the runner for each request, the providers of `SPECIALIZED_PROVIDER_SPECS` are instantiated once. A provider that cannot be imported is left out, and `GET /health` lists it under `providers.unavailable`. The start is tolerant: without an asynchronous database URL the realtime worker, the news service and the monitoring are not created; the worker, news, FRED, DCF and monitoring are each started on their own and leave an empty slot on failure. The routes that need a missing service answer `503`; the rest of the API starts.
 
 `main.py` never creates or modifies the schema. On startup, it checks the connection and then compares the stored revision in `alembic_version` with the expected head. An unmigrated or unreachable database is declared unavailable (`db_available = False`) and the routes that need it answer `503`; the Docker entrypoint applies `alembic upgrade head` beforehand.
 
@@ -176,6 +176,7 @@ How far each feature follows this split today:
 | Macro | `routers/macro.py` | `macro/fred_service.py`, `macro/ecb_service.py` | No — each service has its own HTTP client |
 | Commitments of Traders | `routers/cot.py` | `macro/cot_reports.py` | No — the router calls the service directly |
 | Factors | `routers/factors.py` | `factors/store.py`, `factors/french_library.py`, `factors/exposure.py` | No — the router calls the factor library directly |
+| Risk | `routers/risk.py` | `risk/service.py`, `risk/metrics.py`, `macro/risk_free_rates.py` | No — the router calls the service directly; the metrics are pure calculations |
 | Operations | `routers/admin.py` | `database/maintenance.py`, `cache/service.py` | No |
 | OpenBB | `routers/openbb.py` | calls the route functions of the other routers | — |
 
@@ -304,6 +305,7 @@ Detailed domain designs live in `docs/` (loaded on demand so this file stays foc
 | `factors/french_library.py` | Catalogue of the Kenneth French Data Library datasets (US, Europe, developed markets; 3 factors, 5 factors, momentum; monthly and daily), download of a zipped file and parsing of its CSV into ratios. |
 | `factors/store.py` | Factor returns stored in `factor_returns` (asynchronous session): a file is stored whole, replacing the previous one, and not downloaded again before `FACTORS_REFRESH_DAYS`. |
 | `factors/exposure.py` | Factor exposure of a listing: daily closes of the listing (`adj_close`), converted in US dollars with the ECB rates, monthly or daily returns, alignment with the factors and ordinary least squares (numpy). |
+| `risk/service.py` | The risk of a listing: its daily closes (`adj_close`) read by `asset_listing_id` over the last years before the last close, the risk-free rate of each day from `macro/risk_free_rates.py` in the currency of the listing, and the metrics of `risk/metrics.py`; without rate, a warning and no Sharpe or Sortino. |
 | `risk/metrics.py` | Risk metrics of the daily closes of a listing, without input or output (numpy): simple returns, annualized return and volatility, maximum drawdown with its peak, trough and recovery, historical and Gaussian VaR and CVaR, Calmar, and Sharpe and Sortino on the risk-free rate of the day of each return. Losses are negative ratios; a figure that cannot be measured is `None`. |
 | `factors/cost_of_equity.py` | Cost of equity from the Fama/French factors for the valuation: betas of the listing and long-run premia of the factors of its region. |
 | `scripts/load_factors.py` | Command line download of the factor files into the database. |
@@ -316,6 +318,7 @@ Detailed domain designs live in `docs/` (loaded on demand so this file stays foc
 | `schemas/macro.py` | Pydantic v2 schemas for the macro-economic rates and for the Eurostat indicators (latest values, series, refresh). |
 | `schemas/sec.py` | Pydantic v2 schemas of the SEC routes: statements as filed, the check against Yahoo, the refresh. |
 | `schemas/esef.py` | Pydantic v2 schemas of the ESEF routes: statements as filed with the link of their filing, the check against Yahoo, the filings of the index and their reading, the refresh. |
+| `schemas/risk.py` | Pydantic v2 schema of the risk route: the metrics as ratios, the drawdown with its dates, the risk-free rate used or why there is none. |
 | `schemas/factors.py` | Pydantic v2 schemas of the factor routes: datasets, what is stored of a file, series of factor returns. |
 | `monitoring/__init__.py` | Monitoring package exposing `ValidationLayer` and `CanaryMonitor`. |
 | `monitoring/models.py` | Pydantic-independent business models for canary results and statuses. |
@@ -331,6 +334,7 @@ Detailed domain designs live in `docs/` (loaded on demand so this file stays foc
 | `routers/cot.py` | HTTP routes of the Commitments of Traders reports of the CFTC: the markets stored, the positions of every type of trader in a market, the signals of one type of trader (net position, share of the open interest, change, COT index), the latest positioning of several markets, the most extreme first, refresh. |
 | `routers/sec.py` | HTTP routes of the annual statements filed with the SEC: statements, check against Yahoo, refresh; the instrument of the ticker, then its verified CIK. |
 | `routers/esef.py` | HTTP routes of the ESEF filings of European listed companies: statements, check against Yahoo, filings, refresh; the instrument of the ticker, then its verified LEI. |
+| `routers/risk.py` | HTTP route of the risk of a listing, its answer kept 6 hours in Redis under a key holding every parameter. |
 | `routers/factors.py` | HTTP routes of the factor returns: the datasets, the series of one dataset, the refresh of the files. |
 | `historical/providers.py` | yfinance and TradingView connectors for retrieving historical bars, and the choice between them (`fetch`): yfinance with the verified symbol, TradingView only for a line quoted in the currency of the listing. |
 | `historical/normalization.py` | Pure OHLCV validation, deduplication, and normalization rules. |
@@ -423,6 +427,7 @@ Every route of the application is listed here, and `tests/test_docs_consistency.
 | GET | `/factors/{dataset}` | Factor returns of one dataset (`frequency`, `start`, `end`), as ratios in US dollars; a file missing or older than `FACTORS_REFRESH_DAYS` is downloaded first |
 | POST | `/factors/refresh` | Download files of the library (`dataset`, `frequency`, `force`) |
 | GET | `/factors/exposure/{ticker}` | Exposure of a listing to the Fama/French factors (`model` ff3, ff5 or carhart; `frequency`, `window`, `end`, `region`): betas, alpha, R², on returns in US dollars |
+| GET | `/risk/{ticker}` | Risk of a listing over its last `years` of daily closes (1 to 10, 3 by default): annualized return and volatility, maximum drawdown, historical and Gaussian VaR and CVaR at `confidence` (0.95 by default), Calmar, Sharpe and Sortino on the 3-month rate of its currency, and the rate used or why there is none (`currency`, `exchange`, `isin` choose the listing; `force_refresh` measures again) |
 
 OpenBB Workspace routes (`routers/openbb.py`). Each one calls the route function of the Fonrex route it adapts, with the same parameters, and reshapes the answer (see [Integrations](docs/monitoring-and-integrations.md#integrations)):
 
@@ -490,7 +495,7 @@ What is cached, and for how long:
 Invalidation:
 
 - An ingestion drops the `history`, `eod`, `technical` and `dcf` entries of the ticker.
-- `POST /cache/clear` and `POST /cache/clear/{ticker}` delete `eod:*` entries only; `GET /cache/stats` counts the same entries. The other caches expire on their own, or are bypassed per request (`nocache` on `/fundamental`, `refresh` on `/fundamental/deep` and the specialised routes, `force_refresh` on `/news/{ticker}` and `/dcf/*`).
+- `POST /cache/clear` and `POST /cache/clear/{ticker}` delete `eod:*` entries only; `GET /cache/stats` counts the same entries. The other caches expire on their own, or are bypassed per request (`nocache` on `/fundamental`, `refresh` on `/fundamental/deep` and the specialised routes, `force_refresh` on `/news/{ticker}`, `/dcf/*` and `/risk/{ticker}`).
 
 Application logs go to the standard output (`logging.basicConfig(level=INFO)`), read with `docker compose logs`.
 

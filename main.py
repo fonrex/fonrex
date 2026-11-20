@@ -52,12 +52,15 @@ from macro.ecb_service import ECBService
 from macro.eurostat_service import EurostatService
 from macro.fred_service import FREDService
 from macro.fx_rates import EcbExchangeRates
+from macro.risk_free_rates import RiskFreeRateRepository
+from macro.short_rates import ShortRates
 from macro.treasury_curves import TreasuryCurves
 from monitoring.canary_monitor import CanaryMonitor
 from monitoring.validation_layer import ValidationLayer
 from news.news_service import NewsService
 from realtime.connection_manager import ConnectionManager
 from realtime.worker import RealtimePriceWorker
+from risk.service import RiskService
 from routers.admin import router as admin_router
 from routers.assets import router as assets_router
 from routers.cot import router as cot_router
@@ -70,6 +73,7 @@ from routers.monitoring import router as monitoring_router
 from routers.news import router as news_router
 from routers.openbb import router as openbb_router
 from routers.realtime import router as realtime_router
+from routers.risk import router as risk_router
 from routers.sec import router as sec_router
 from routers.specialized import router as specialized_router
 from routers.technical import router as technical_router
@@ -173,6 +177,7 @@ app.include_router(realtime_router)
 app.include_router(macro_router)
 app.include_router(cot_router)
 app.include_router(factors_router)
+app.include_router(risk_router)
 app.include_router(sec_router)
 app.include_router(esef_router)
 
@@ -288,6 +293,7 @@ SPECIALIZED_PROVIDER_SPECS = (
     ("justetf_provider", "JustETF", "financials.providers.justetf", "JustETFProvider"),
     ("openfigi_provider", "OpenFIGI", "financials.providers.openfigi", "OpenFIGIProvider"),
     ("treasury_provider", "Treasury", "financials.providers.treasury", "TreasuryProvider"),
+    ("oecd_provider", "OECD", "financials.providers.oecd", "OECDProvider"),
     ("cftc_provider", "CFTC", "financials.providers.cftc", "CftcProvider"),
     ("esef_provider", "ESEF", "financials.providers.esef", "EsefProvider"),
     (
@@ -360,6 +366,8 @@ def configure_application_state(application: FastAPI):
         "esef_check",
         "factor_library",
         "factor_exposure",
+        "short_rates",
+        "risk_service",
         "validation_layer",
         "usage_recorder",
     ):
@@ -576,6 +584,26 @@ async def startup_event(application: FastAPI):
         logger.warning("⚠️ FactorLibrary not started: %s", exc)
 
     try:
+        oecd_provider = getattr(state, "oecd_provider", None)
+        if async_resources and oecd_provider is not None and state.treasury_curves is not None:
+            state.short_rates = ShortRates(
+                async_resources.session_factory, oecd_provider.short_rates
+            )
+            state.risk_service = RiskService(
+                async_resources.session_factory,
+                RiskFreeRateRepository(state.treasury_curves, state.short_rates),
+            )
+            logger.info("📉 Risk metrics started")
+        else:
+            logger.warning(
+                "⚠️ DATABASE_URL not set, or OECD or Treasury unavailable — risk metrics disabled"
+            )
+    except Exception as exc:
+        state.short_rates = None
+        state.risk_service = None
+        logger.warning("⚠️ Risk metrics not started: %s", exc)
+
+    try:
         state.dcf_service = DCFService(
             state.db_service,
             state.redis_client,
@@ -699,6 +727,8 @@ async def shutdown_event(application: FastAPI):
         "esef_check",
         "factor_library",
         "factor_exposure",
+        "short_rates",
+        "risk_service",
         "usage_recorder",
     ):
         setattr(state, state_name, None)

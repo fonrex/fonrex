@@ -1,0 +1,110 @@
+"""The 3-month rates of the OECD kept month by month (``macro/short_rates.py``).
+
+The months a reading asks for and the command line script are tested here;
+storing and reading the rates, and the script from the answer of the OECD to the
+tables, are tested on PostgreSQL (``tests/test_timescale_integration.py``).
+"""
+
+from datetime import date, datetime, timedelta, timezone
+
+import pytest
+
+from macro.short_rates import (
+    FAILED,
+    FETCHED,
+    FIRST_PERIOD,
+    REVISED_MONTHS,
+    RatesLoad,
+    ShortRates,
+    StoredArea,
+    months_before,
+)
+
+NOW = datetime(2026, 11, 20, 21, 0, tzinfo=timezone.utc)
+
+
+def service(**kwargs) -> ShortRates:
+    return ShortRates(None, None, now=lambda: NOW, **kwargs)  # type: ignore[arg-type]
+
+
+class TestMonths:
+    @pytest.mark.parametrize(
+        ("day", "months", "expected"),
+        [
+            (date(2026, 11, 20), 0, date(2026, 11, 1)),
+            (date(2026, 11, 20), 10, date(2026, 1, 1)),
+            (date(2026, 11, 20), 11, date(2025, 12, 1)),
+            (date(2026, 1, 31), 1, date(2025, 12, 1)),
+            (date(2026, 11, 20), 24, date(2024, 11, 1)),
+        ],
+    )
+    def test_months_before(self, day, months, expected):
+        assert months_before(day, months) == expected
+
+    def test_the_first_reading_takes_the_whole_history(self):
+        assert service().first_month(None) == FIRST_PERIOD == date(1990, 1, 1)
+
+    def test_the_next_ones_ask_again_for_the_last_months(self):
+        assert REVISED_MONTHS == 24
+        assert service().first_month(NOW - timedelta(days=3)) == date(2024, 11, 1)
+
+    def test_never_before_the_first_month(self):
+        early = ShortRates(None, None, now=lambda: datetime(1991, 3, 1))  # type: ignore[arg-type]
+        assert early.first_month(datetime(1991, 2, 1)) == FIRST_PERIOD
+
+
+class TestRefreshDelay:
+    def test_a_day_by_default(self, monkeypatch):
+        monkeypatch.delenv("OECD_REFRESH_HOURS", raising=False)
+        assert service().refresh_after == timedelta(hours=24)
+
+    def test_chosen_in_the_environment(self, monkeypatch):
+        monkeypatch.setenv("OECD_REFRESH_HOURS", "6")
+        assert service().refresh_after == timedelta(hours=6)
+
+
+class TestScript:
+    def test_arguments_by_default(self):
+        from scripts import load_short_rates
+
+        arguments = load_short_rates.parse_arguments([])
+        assert (arguments.start, arguments.force) == (None, False)
+
+    def test_a_first_month_and_force(self):
+        from scripts import load_short_rates
+
+        arguments = load_short_rates.parse_arguments(["--start", "2020-03", "--force"])
+        assert (arguments.start, arguments.force) == (date(2020, 3, 1), True)
+
+    @pytest.mark.parametrize(
+        "argv", [["--start", "2020"], ["--start", "2020-13"], ["--start", "1989-12"]]
+    )
+    def test_a_month_refused(self, argv, capsys):
+        from scripts import load_short_rates
+
+        with pytest.raises(SystemExit):
+            load_short_rates.parse_arguments(argv)
+        assert "--start" in capsys.readouterr().err
+
+    def test_the_lines_printed(self):
+        from scripts import load_short_rates
+
+        load = RatesLoad(FETCHED, NOW, date(1990, 1, 1), received=1234, areas=["CHE", "EA20"])
+        areas = [
+            StoredArea("CHE", date(1990, 1, 1), date(2026, 10, 1), NOW),
+            StoredArea("XYZ", None, None, NOW),
+        ]
+        assert load_short_rates.describe(load, areas) == [
+            "fetched  1234 rates of 2 areas from 1990-01",
+            "  CHE    1990-01 → 2026-10",
+            "  XYZ    nothing stored",
+        ]
+        failed = RatesLoad(FAILED, NOW, date(2024, 11, 1), reason="the OECD did not answer")
+        assert load_short_rates.describe(failed, []) == ["failed   (the OECD did not answer)"]
+
+    async def test_without_database(self, monkeypatch, capsys):
+        from scripts import load_short_rates
+
+        monkeypatch.setattr(load_short_rates.AsyncDatabaseResources, "create", lambda: None)
+        assert await load_short_rates.main([]) == 2
+        assert "DATABASE_URL" in capsys.readouterr().err

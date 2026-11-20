@@ -898,7 +898,7 @@ class MacroRateCache(Base):
 
 
 class MacroObservation(Base):
-    """One value of a macro-economic series for one period (Eurostat indicators).
+    """One value of a macro-economic series for one period (Eurostat indicators, OECD rates).
 
     A period is dated by its first day: ``2026-09`` is 1 September 2026 and
     ``2026-Q2`` is 1 April 2026. A rate is a ratio (``0.038`` for 3.8 %); an index
@@ -907,8 +907,8 @@ class MacroObservation(Base):
     """
 
     __tablename__ = "macro_observations"
-    source = Column(String(10), primary_key=True)  # "eurostat"
-    indicator = Column(String(30), primary_key=True)  # "hicp", "unemployment", ...
+    source = Column(String(10), primary_key=True)  # "eurostat", "oecd"
+    indicator = Column(String(30), primary_key=True)  # "hicp", "unemployment", "rate_3m"...
     geo = Column(String(10), primary_key=True)  # "EA21", "FR", ...
     period = Column(Date, primary_key=True)
     frequency = Column(String(10), nullable=False)  # "monthly" | "quarterly"

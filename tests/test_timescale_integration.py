@@ -16,6 +16,7 @@ A temporary database is created next to the one named in the URL and dropped at
 the end; the database of the URL itself is never touched.
 """
 
+import asyncio
 import json
 import os
 import subprocess
@@ -2081,6 +2082,200 @@ class TestTreasuryScriptOnPostgres:
         # 2025 was read after its end: only 2026 could be read again, and it is up to date.
         assert fake_network.calls("daily-treasury-rates.csv") == 4
         assert "fresh" in second_output.splitlines()[0]
+
+
+class TestShortRatesOnPostgres:
+    """The 3-month rates of the OECD in ``macro_observations`` and ``macro_series_loads``."""
+
+    FIXTURE = Path(__file__).parent / "fixtures" / "oecd" / "ir3tib_monthly.csv"
+    NOW = datetime(2026, 11, 20, 21, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def answer(cls):
+        from financials.providers.oecd import parse_short_rates_csv
+
+        return parse_short_rates_csv(cls.FIXTURE.read_bytes().decode())
+
+    @staticmethod
+    def clean(engine):
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM macro_observations WHERE source = 'oecd'"))
+            connection.execute(text("DELETE FROM macro_series_loads WHERE source = 'oecd'"))
+
+    @pytest.fixture
+    async def rates(self, database_url, engine):
+        from macro.short_rates import ShortRates
+
+        self.clean(engine)
+        clock = {"now": self.NOW}
+        reader = AsyncMock(return_value=self.answer())
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        service = ShortRates(async_sessionmaker(async_engine), reader, now=lambda: clock["now"])
+        yield service, reader, clock
+        await async_engine.dispose()
+        self.clean(engine)
+
+    async def test_the_first_reading_takes_the_whole_history(self, rates, engine):
+        service, reader, _ = rates
+
+        load = await service.refresh()
+
+        reader.assert_awaited_once_with(date(1990, 1, 1))
+        assert (load.status, load.received, load.fetched_at) == ("fetched", 30, self.NOW)
+        assert load.areas == ["CHE", "DNK", "EA20", "GBR", "JPN", "NOR", "POL", "SWE"]
+        with engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT frequency, value, unit, status FROM macro_observations "
+                    "WHERE source = 'oecd' AND indicator = 'rate_3m' AND geo = 'EA20' "
+                    "AND period = DATE '2026-10-01'"
+                )
+            ).one()
+        assert (row.frequency, str(row.value), row.unit, row.status) == (
+            "monthly",
+            "0.02634682",
+            "ratio",
+            "A",
+        )
+
+    async def test_what_each_area_holds(self, rates):
+        service, _, _ = rates
+        await service.refresh()
+
+        areas = {area.area: area for area in await service.stored_areas()}
+
+        assert (areas["GBR"].first_period, areas["GBR"].last_period) == (
+            date(2025, 12, 1),
+            date(2026, 2, 1),
+        )
+        assert areas["JPN"].last_period == date(2026, 9, 1)
+        assert areas["CHE"].fetched_at == self.NOW
+        # A negative rate, kept with the 8 decimals of the column.
+        assert await service.series("CHE", start=date(2026, 7, 1), end=date(2026, 8, 1)) == [
+            (date(2026, 7, 1), Decimal("-0.00044891")),
+            (date(2026, 8, 1), Decimal("-0.00044524")),
+        ]
+        assert await service.series("XYZ") == []
+
+    async def test_up_to_date_then_the_last_months_again(self, rates, engine):
+        from financials.providers.oecd import ShortRate
+
+        service, reader, clock = rates
+        await service.refresh()
+        clock["now"] = self.NOW + timedelta(hours=23)
+        assert (await service.refresh()).status == "fresh"
+        assert reader.await_count == 1
+
+        # A day later: October of the euro area revised, November new; the United
+        # Kingdom is no longer published.
+        clock["now"] = self.NOW + timedelta(hours=25)
+        reader.return_value = [
+            ShortRate("EA20", date(2026, 10, 1), Decimal("0.0264"), "A"),
+            ShortRate("EA20", date(2026, 11, 1), Decimal("0.0261"), "A"),
+        ]
+        load = await service.refresh()
+
+        assert reader.await_args.args == (date(2024, 11, 1),)
+        assert (load.status, load.areas) == ("fetched", ["EA20"])
+        assert (await service.series("EA20", start=date(2026, 10, 1)))[-2:] == [
+            (date(2026, 10, 1), Decimal("0.02640000")),
+            (date(2026, 11, 1), Decimal("0.02610000")),
+        ]
+        areas = {area.area: area for area in await service.stored_areas()}
+        assert (areas["EA20"].last_period, areas["EA20"].fetched_at) == (
+            date(2026, 11, 1),
+            self.NOW + timedelta(hours=25),
+        )
+        # The United Kingdom keeps its months, and the reading that gave them.
+        assert (areas["GBR"].last_period, areas["GBR"].fetched_at) == (date(2026, 2, 1), self.NOW)
+
+    async def test_force_and_a_chosen_first_month(self, rates):
+        service, reader, _ = rates
+        await service.refresh()
+
+        load = await service.refresh(force=True, start=date(2026, 7, 1))
+
+        assert reader.await_args.args == (date(2026, 7, 1),)
+        assert load.status == "fetched"
+
+    @pytest.mark.parametrize(
+        ("outcome", "reason"),
+        [
+            (None, "the OECD did not answer (refused, over its limit, or no rate)"),
+            ([], "the OECD gave no rate from 2024-11"),
+            ("unreadable", "OECDError: line 2: '2026-Q3' is not a month YYYY-MM"),
+            (TimeoutError(), "TimeoutError"),
+            (RuntimeError("connection reset"), "RuntimeError: connection reset"),
+        ],
+    )
+    async def test_a_failure_keeps_the_rates_stored(self, rates, outcome, reason):
+        from financials.providers.oecd import OECDError
+
+        service, reader, clock = rates
+        await service.refresh()
+        clock["now"] = self.NOW + timedelta(days=2)
+        if outcome == "unreadable":
+            reader.side_effect = OECDError("line 2: '2026-Q3' is not a month YYYY-MM")
+        elif isinstance(outcome, Exception):
+            reader.side_effect = outcome
+        else:
+            reader.return_value = outcome
+
+        load = await service.refresh()
+
+        assert (load.status, load.reason, load.fetched_at) == ("failed", reason, self.NOW)
+        assert len(await service.series("EA20")) == 4
+        # A failed reading is not a reading: the next request asks again.
+        reader.side_effect, reader.return_value = None, self.answer()
+        assert (await service.refresh()).status == "fetched"
+
+    async def test_two_requests_at_once_ask_the_oecd_once(self, rates):
+        service, reader, _ = rates
+
+        first, second = await asyncio.gather(service.refresh(), service.refresh())
+
+        assert sorted([first.status, second.status]) == ["fetched", "fresh"]
+        assert reader.await_count == 1
+
+
+class TestShortRatesScriptOnPostgres:
+    """``scripts/load_short_rates.py`` from the answer of the OECD to the tables."""
+
+    async def test_every_area_read_then_up_to_date(
+        self, database_url, engine, fake_network, monkeypatch, capsys
+    ):
+        import httpx
+
+        from scripts import load_short_rates
+
+        answer = (Path(__file__).parent / "fixtures" / "oecd" / "ir3tib_monthly.csv").read_bytes()
+        fake_network.get(
+            "DSD_STES@DF_FINMARK,4.0/.M.IR3TIB.", httpx.Response(200, text=answer.decode())
+        )
+        monkeypatch.delenv("ASYNC_DATABASE_URL", raising=False)
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        TestShortRatesOnPostgres.clean(engine)
+
+        try:
+            first = await load_short_rates.main([])
+            first_output = capsys.readouterr().out
+            second = await load_short_rates.main([])
+            second_output = capsys.readouterr().out
+        finally:
+            TestShortRatesOnPostgres.clean(engine)
+
+        assert (first, second) == (0, 0)
+        assert first_output.splitlines()[:3] == [
+            "fetched  30 rates of 8 areas from 1990-01",
+            "  CHE    2026-07 → 2026-10",
+            "  DNK    2026-07 → 2026-10",
+        ]
+        assert "  GBR    2025-12 → 2026-02" in first_output.splitlines()
+        assert "startPeriod=1990-01" in fake_network.urls()[0]
+        assert fake_network.calls("IR3TIB") == 1
+        assert second_output.splitlines()[0].startswith("fresh")
 
 
 class TestCotTablesOnPostgres:

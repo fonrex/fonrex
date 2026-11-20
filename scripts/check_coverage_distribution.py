@@ -43,6 +43,8 @@ MODULE_THRESHOLDS = {
     "technical/indicator_service.py": 70.0,
     "use_cases/fundamentals.py": 75.0,
     "use_cases/specialized.py": 90.0,
+    # Risk metrics: pure calculations, every branch tested.
+    "risk/metrics.py": 100.0,
     # Cross-cutting helpers: settings read from the environment, usage log.
     "settings.py": 95.0,
     "usage_recorder.py": 95.0,

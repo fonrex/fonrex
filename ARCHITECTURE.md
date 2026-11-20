@@ -302,6 +302,7 @@ Detailed domain designs live in `docs/` (loaded on demand so this file stays foc
 | `factors/french_library.py` | Catalogue of the Kenneth French Data Library datasets (US, Europe, developed markets; 3 factors, 5 factors, momentum; monthly and daily), download of a zipped file and parsing of its CSV into ratios. |
 | `factors/store.py` | Factor returns stored in `factor_returns` (asynchronous session): a file is stored whole, replacing the previous one, and not downloaded again before `FACTORS_REFRESH_DAYS`. |
 | `factors/exposure.py` | Factor exposure of a listing: daily closes of the listing (`adj_close`), converted in US dollars with the ECB rates, monthly or daily returns, alignment with the factors and ordinary least squares (numpy). |
+| `risk/metrics.py` | Risk metrics of the daily closes of a listing, without input or output (numpy): simple returns, annualized return and volatility, maximum drawdown with its peak, trough and recovery, historical and Gaussian VaR and CVaR, Calmar, and Sharpe and Sortino on the risk-free rate of the day of each return. Losses are negative ratios; a figure that cannot be measured is `None`. |
 | `factors/cost_of_equity.py` | Cost of equity from the Fama/French factors for the valuation: betas of the listing and long-run premia of the factors of its region. |
 | `scripts/load_factors.py` | Command line download of the factor files into the database. |
 | `scripts/load_fx_rates.py` | Command line download of the ECB reference rates of the euro into the database. |

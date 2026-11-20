@@ -19,7 +19,7 @@ NC := \033[0m
 # targets below can authenticate (e.g. `FONREX_API_KEY=frx_live_... make example-quote`).
 AUTH_HEADER := $(if $(FONREX_API_KEY),-H "X-API-KEY: $(FONREX_API_KEY)",)
 
-TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py monitoring/ports.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py concurrency.py use_cases/errors.py
+TYPED_BOUNDARIES := use_cases/ports.py use_cases/fundamentals.py monitoring/ports.py cache/adapters.py cache/technical.py technical/contracts.py technical/catalog.py technical/calculation_engine.py technical/indicator_service.py database/technical.py realtime/connection_manager.py financials/enrichment/adapters.py schemas/technical.py schemas/realtime.py concurrency.py use_cases/errors.py risk/metrics.py
 .DEFAULT_GOAL := help
 
 help: ## Display this help message

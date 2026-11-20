@@ -89,6 +89,7 @@ you could not verify.
 
 - **Clock-in.** Before touching code: read `PROGRESS.md` and run `make fast` to confirm a green baseline (use `make ci` / `make check` for the full gate).
 - **Scope & atomicity.** One logical change per session/commit; never mix unrelated refactoring with a feature. Explain *why* in commit messages, not just *what*.
+- **Branches.** Work in several steps that is of no use before its last step (an engine, its data, then its route) stays on **one branch**: one commit per step, each passing `make ci`, and one pull request once the work is usable, read commit by commit. Do not stack a branch per step on the previous one. Unrelated changes, including a fix found on the way, get their own branch. `PROGRESS.md` names the branch, the steps done and the next one.
 - **Context anxiety.** If running low on context or blocked on a failure, do **not** rush, skip verification, or lower thresholds — update `PROGRESS.md` with the exact state and stop cleanly.
 - **Clock-out.** Confirm `make ci` exits `0` (and verify `make test-db` ran when SQL or migrations changed), update `PROGRESS.md` if multi-session work continues, and leave no debug artifacts (`make clean`).
 

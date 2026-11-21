@@ -378,6 +378,8 @@ async def get_openbb_fundamentals(
         provider=provider,
         fmt="eodhd",
         nocache=nocache,
+        target_yield=None,
+        dividend_tax=0.0,
         database=database,
         redis_client=redis_client,
         providers=providers,

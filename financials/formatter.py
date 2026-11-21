@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from financials.buy_zone import SECTION as BUY_ZONE
+from financials.buy_zone import dividend_buy_zone
 from financials.numbers import find_number, parse_number
 from monitoring.units import percent_fields
 
@@ -111,6 +113,10 @@ SPLITS_DIVIDENDS = {
     "LastSplitFactor": Field(yahoo="lastSplitFactor"),
     "LastSplitDate": Field(yahoo="lastSplitDate"),
 }
+
+# The price the dividend buy zone is read against: Yahoo first, then the last price
+# displayed by the scraped providers that publish the trailing figures.
+BUY_ZONE_PRICE = {"Price": Field(yahoo="currentPrice", scraped="price")}
 
 ANALYST_RATINGS = {
     # Barrons and Marketwatch display the consensus of the analysts as a label.
@@ -308,6 +314,7 @@ class FinancialsFormatter:
             str(highlights["dividend_ex_date"]) if highlights.get("dividend_ex_date") else None,
         )
         splits_dividends["NumberDividendsByYear"] = 0
+        buy_zone = FinancialsFormatter._build_buy_zone(choose, splits_dividends)
 
         # Build the Premium answer
         rendered = {
@@ -317,6 +324,7 @@ class FinancialsFormatter:
             "SharesStats": choose.section("SharesStats", SHARES_STATS, highlights),
             "Technicals": choose.section("Technicals", TECHNICALS, highlights),
             "SplitsDividends": splits_dividends,
+            BUY_ZONE: buy_zone,
             "AnalystRatings": choose.section(
                 "AnalystRatings", ANALYST_RATINGS, _as_dict(results.get("analyst_ratings"))
             ),
@@ -340,6 +348,29 @@ class FinancialsFormatter:
             rendered["ETF_Data"] = FinancialsFormatter._build_etf_data(results)
 
         return rendered
+
+    @staticmethod
+    def _build_buy_zone(choose: _Chooser, splits_dividends: Dict[str, Any]) -> Dict[str, Any]:
+        """The dividend buy zone without a target yield: a request applies its own.
+
+        The dividend, its yield and the payout ratio are the ones of
+        ``SplitsDividends``, and keep their sources there.
+        """
+        price = choose.section(BUY_ZONE, BUY_ZONE_PRICE, {})["Price"]
+        dividend_sources = choose.sources.get("SplitsDividends", {})
+        for key, origin in (
+            ("DividendShare", "ForwardAnnualDividendRate"),
+            ("GrossYield", "ForwardAnnualDividendYield"),
+            ("PayoutRatio", "PayoutRatio"),
+        ):
+            if origin in dividend_sources:
+                choose.sources.setdefault(BUY_ZONE, {})[key] = dividend_sources[origin]
+        return dividend_buy_zone(
+            price=price,
+            dividend=splits_dividends.get("ForwardAnnualDividendRate"),
+            gross_yield=splits_dividends.get("ForwardAnnualDividendYield"),
+            payout_ratio=splits_dividends.get("PayoutRatio"),
+        )
 
     @staticmethod
     def _build_competitors(results: Dict) -> Dict:

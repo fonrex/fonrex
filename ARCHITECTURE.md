@@ -270,6 +270,7 @@ Detailed domain designs live in `docs/` (loaded on demand so this file stays foc
 | `financials/router.py` | Legacy `/stocks` routes. |
 | `financials/service.py` | Separate aggregator for `/stocks/{ticker}/financials`. |
 | `financials/formatter.py` | Builds the fundamentals document in the EODHD-compatible layout (`FinancialsFormatter.to_eodhd`): picks each value from Yahoo, the stored figures or a like-for-like scraped field, and records its origin in the `Sources` section. |
+| `financials/buy_zone.py` | The dividend buy zone of `/fundamental` (`DividendBuyZone`): net yield against the target yield of the request, and the highest buy price. |
 | `financials/exchange.py` | Structured management and mapping of financial exchange codes for GuruFocus, Yahoo Finance, and Google Finance. |
 | `cache/service.py` | Synchronous Redis abstraction, TTL per category, JSON serialization. An entry that is not JSON is a miss: nothing read from Redis is unpickled. |
 | `cache/adapters.py` | Best-effort asynchronous JSON cache handed to the fundamentals use case: Redis failures are absorbed, programming errors are not. |

@@ -2,9 +2,10 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from cache.adapters import ResilientAsyncJsonCache
+from financials.buy_zone import apply_buy_zone
 from financials.enrichment.adapters import (
     YFinanceAssetProfileEnricher,
     YFinanceDeepFundamentalsEnricher,
@@ -44,6 +45,18 @@ async def get_all_information(
     provider: Optional[str] = None,
     fmt: str = "eodhd",
     nocache: bool = False,
+    target_yield: Optional[float] = Query(
+        None,
+        gt=0,
+        le=1,
+        description="Net dividend yield of the buy zone, as a ratio (0.065 for 6.5 %)",
+    ),
+    dividend_tax: float = Query(
+        0.0,
+        ge=0,
+        lt=1,
+        description="Tax on dividends, as a ratio (0.3 for 30 %): net yield = gross × (1 − tax)",
+    ),
     database=Depends(get_optional_database_service),
     redis_client=Depends(get_redis_client),
     providers=Depends(get_provider_registry),
@@ -75,6 +88,10 @@ async def get_all_information(
 
     request.state.provider_used = result.provider_used
     request.state.cache_hit = result.cache_hit
+    # The cached document holds the buy zone without a target: the target and the
+    # tax of this request are applied after the cache, so they need no cache key.
+    if fmt == "eodhd" and isinstance(result.data, dict):
+        return apply_buy_zone(result.data, target_yield, dividend_tax)
     return result.data
 
 

@@ -23,8 +23,8 @@ from schemas.historical import IngestResult
 logger = logging.getLogger(__name__)
 
 # First segment of the cache keys holding answers computed from stored prices:
-# /ticker/{symbol}/history, /eod/{ticker}, /technical/{ticker}, /dcf/{ticker}.
-PRICE_CACHE_PREFIXES = ("history", "eod", "technical", "dcf")
+# /ticker/{symbol}/history, /eod/{ticker}, /technical/{ticker}, /dcf/{ticker}, /risk/{ticker}.
+PRICE_CACHE_PREFIXES = ("history", "eod", "technical", "dcf", "risk")
 
 
 class HistoricalIngestionService:

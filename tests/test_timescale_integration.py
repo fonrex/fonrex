@@ -2239,6 +2239,33 @@ class TestShortRatesOnPostgres:
         assert sorted([first.status, second.status]) == ["fetched", "fresh"]
         assert reader.await_count == 1
 
+    async def test_a_history_longer_than_one_statement(self, rates, engine):
+        """asyncpg takes 32,767 parameters a statement, 3,640 rows of 9 columns: the
+        whole history (about 45 areas × 430 months) failed on its first INSERT."""
+        from financials.providers.oecd import ShortRate
+        from macro.short_rates import months_before
+
+        service, reader, _ = rates
+        reader.return_value = [
+            ShortRate(f"T{area:02d}", months_before(date(2026, 10, 1), month), Decimal("0.02"), "A")
+            for area in range(45)
+            for month in range(100)
+        ]
+
+        load = await service.refresh()
+
+        assert (load.status, load.received, len(load.areas)) == ("fetched", 4500, 45)
+        with engine.connect() as connection:
+            stored = connection.execute(
+                text("SELECT count(*) FROM macro_observations WHERE source = 'oecd'")
+            ).scalar_one()
+        assert stored == 4500
+        areas = {area.area: area for area in await service.stored_areas()}
+        assert (areas["T44"].first_period, areas["T44"].last_period) == (
+            date(2018, 7, 1),
+            date(2026, 10, 1),
+        )
+
 
 class TestShortRatesScriptOnPostgres:
     """``scripts/load_short_rates.py`` from the answer of the OECD to the tables."""

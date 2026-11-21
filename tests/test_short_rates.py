@@ -6,10 +6,15 @@ tables, are tested on PostgreSQL (``tests/test_timescale_integration.py``).
 """
 
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql.dml import Insert
 
+from financials.providers.oecd import ShortRate
 from macro.short_rates import (
+    _MAX_PARAMETERS,
     FAILED,
     FETCHED,
     FIRST_PERIOD,
@@ -51,6 +56,50 @@ class TestMonths:
     def test_never_before_the_first_month(self):
         early = ShortRates(None, None, now=lambda: datetime(1991, 3, 1))  # type: ignore[arg-type]
         assert early.first_month(datetime(1991, 2, 1)) == FIRST_PERIOD
+
+
+class RecordingSession:
+    """A session that keeps the statements it is given and stores nothing."""
+
+    def __init__(self):
+        self.statements = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    def begin(self):
+        return self
+
+    async def execute(self, statement):
+        self.statements.append(statement)
+        return []
+
+    async def merge(self, instance):
+        return instance
+
+
+class TestStore:
+    async def test_the_whole_history_in_statements_asyncpg_accepts(self):
+        """asyncpg refuses a statement of more than 32,767 parameters: the first reading,
+        about 45 areas × 430 months, failed on its first INSERT."""
+        session = RecordingSession()
+        rates = ShortRates(lambda: session, None, now=lambda: NOW)  # type: ignore[arg-type]
+        history = [
+            ShortRate(f"A{area:02d}", months_before(date(2026, 10, 1), month), Decimal("0.02"), "A")
+            for area in range(45)
+            for month in range(430)
+        ]
+
+        assert await rates._store(history) == NOW
+
+        inserts = [s for s in session.statements if isinstance(s, Insert)]
+        parameters = [len(s.compile(dialect=postgresql.dialect()).params) for s in inserts]
+        assert len(inserts) > 1
+        assert max(parameters) <= _MAX_PARAMETERS
+        assert sum(parameters) == 9 * len(history)
 
 
 class TestRefreshDelay:

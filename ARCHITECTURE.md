@@ -486,6 +486,7 @@ What is cached, and for how long:
 | `GET /technical/screen` | `technical:screen:…` | 900 s (15 min) | `routers/technical.py` |
 | `GET /news/{ticker}` | `news:{ticker}:{limit}:{language}` | 1 800 s (30 min) | `NEWS_CACHE_TTL` |
 | `GET /dcf/*` | `dcf:{TICKER}:…` | 21 600 s (6 h) | `DCF_CACHE_TTL` |
+| `GET /risk/{ticker}` | `risk:{TICKER}:{years}y:{confidence}:{currency}:{exchange}:{isin}` | 21 600 s (6 h) | `RISK_CACHE_TTL` |
 | FRED series | `macro:fred:{series}` | 21 600 s (6 h) | `MACRO_RATES_CACHE_TTL` |
 | Last realtime quote | `quote:{ticker}` | 60 s | `REALTIME_QUOTE_TTL` |
 | Provider health summary | `provider:health:summary` | 3 600 s (1 h) | `monitoring/canary_monitor.py` |
@@ -494,7 +495,8 @@ What is cached, and for how long:
 
 Invalidation:
 
-- An ingestion drops the `history`, `eod`, `technical` and `dcf` entries of the ticker.
+- An ingestion drops the `history`, `eod`, `technical`, `dcf` and `risk` entries of the ticker.
+- `GET /risk/{ticker}` does not keep an answer without the risk-free rate of a currency that has a source (OECD or Treasury not answering, rates not loaded yet): the next request measures again.
 - `POST /cache/clear` and `POST /cache/clear/{ticker}` delete `eod:*` entries only; `GET /cache/stats` counts the same entries. The other caches expire on their own, or are bypassed per request (`nocache` on `/fundamental`, `refresh` on `/fundamental/deep` and the specialised routes, `force_refresh` on `/news/{ticker}`, `/dcf/*` and `/risk/{ticker}`).
 
 Application logs go to the standard output (`logging.basicConfig(level=INFO)`), read with `docker compose logs`.

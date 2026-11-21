@@ -43,6 +43,15 @@ def risk_cache_key(
     return f"risk:{ticker.upper()}:{years}y:{confidence:g}:{listing}"
 
 
+def worth_caching(result: RiskResult) -> bool:
+    """An answer without the rate of a currency that has a source is not kept: the
+    source may answer again (timeout, quota, rates not loaded yet), and the cached
+    answer would hide Sharpe and Sortino for ``RISK_CACHE_TTL``. A currency without
+    any source gives the same answer every time: it is kept."""
+    rates = result.risk_free
+    return rates.rates is not None or rates.source is None
+
+
 def response_of(result: RiskResult) -> RiskResponse:
     metrics, rates = result.metrics, result.risk_free
     drawdown = metrics.max_drawdown
@@ -124,6 +133,6 @@ async def get_risk_of_listing(
     except RiskError as error:
         raise HTTPException(status_code=error.status, detail=str(error)) from error
     response = response_of(result)
-    if cache is not None:
+    if cache is not None and worth_caching(result):
         await cache.setex(key, RISK_CACHE_TTL, response.model_dump_json())
     return response

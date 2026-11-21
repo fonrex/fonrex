@@ -168,9 +168,11 @@ class TestHistoricalIngestion(unittest.TestCase):
             "eod:AAPL:5d:currency-:exchange-:fmt-json:order-a",
             "technical:AAPL:1D:rsi:14",
             "dcf:AAPL:fcf:default",
+            "risk:AAPL:3y:0.95:::",
         ]
         kept = [
             "history:TSLA:1D:None:None::",
+            "risk:TSLA:3y:0.95:::",
             "eod:AAPLX:5d",  # another ticker starting with the same letters
             "fundamental:AAPL:None:None:eodhd",  # not computed from prices
         ]

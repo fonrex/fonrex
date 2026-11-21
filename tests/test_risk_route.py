@@ -28,14 +28,14 @@ def closes_of(count: int, last: date = LAST) -> dict[date, float]:
 
 
 class FakeRates:
-    def __init__(self, rate=0.03, reason=None):
-        self.rate, self.reason, self.asked = rate, reason, []
+    def __init__(self, rate=0.03, reason=None, source="OECD, 3-month interbank rate (GBR)"):
+        self.rate, self.reason, self.source, self.asked = rate, reason, source, []
 
     async def rates(self, currency, days, *, refresh=True):
         days = list(days)
         self.asked.append((currency, days))
         if self.reason:
-            return RiskFreeRates("GBP", "OECD, 3-month interbank rate (GBR)", None, self.reason)
+            return RiskFreeRates("GBP", self.source, None, self.reason)
         return RiskFreeRates(
             "EUR",
             "OECD, 3-month interbank rate (EA20)",
@@ -172,6 +172,28 @@ class TestRoute:
         assert client.get("/risk/AI").json() == first
         again = client.get("/risk/AI?force_refresh=true").json()
         assert again["risk_free_rate"]["mean"] == pytest.approx(0.05)
+
+    def test_an_answer_without_the_rate_of_its_source_is_not_kept(self, client):
+        """The OECD over its quota gives no rate: the next request must read it again,
+        not serve the answer without Sharpe and Sortino for 6 hours."""
+        failed = FakeRates(reason="no OECD, 3-month interbank rate (GBR) for 2026-06-01")
+        app.state.risk_service = service(closes_of(1500), failed)
+
+        degraded = client.get("/risk/AI").json()
+        assert degraded["sharpe_ratio"] is None
+        assert app.state.redis_client.entries == {}
+
+        app.state.risk_service = service(closes_of(1500), FakeRates(0.03))
+        assert client.get("/risk/AI").json()["sharpe_ratio"] is not None
+        assert len(app.state.redis_client.entries) == 1
+
+    def test_a_currency_without_source_is_kept(self, client):
+        """No source at all gives the same answer every time."""
+        none = FakeRates(reason="no 3-month rate source for HKD", source=None)
+        app.state.risk_service = service(closes_of(1500), none, currency="HKD")
+
+        assert client.get("/risk/AI").json()["sharpe_ratio"] is None
+        assert len(app.state.redis_client.entries) == 1
 
     @pytest.mark.parametrize("other", ["years=5", "confidence=0.99", "currency=USD"])
     def test_two_requests_differing_by_one_parameter_are_not_served_one_answer(self, client, other):

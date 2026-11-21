@@ -209,7 +209,7 @@ Received candles undergo quality filters:
 To quickly insert thousands of rows without saturating memory, normalized candles are split into blocks (`batch_size` default to 1000) and inserted via a Native PostgreSQL instruction `INSERT ... ON CONFLICT (asset_listing_id, resolution, time) DO UPDATE`. With `force_refresh`, or when the whole series was fetched again (step 2b), the stored bars of the same listing and resolution inside the fetched range are deleted first, in the same transaction: the range ends up holding exactly the fetched bars (no leftover from an earlier adjustment basis or a wrongly dated row). 
 
 #### 7. Redis Cache Invalidation
-Every cached answer computed from the prices of the ticker is dropped via asynchronous scan and delete operations (`SCAN` + `DEL`): the `history:`, `eod:`, `technical:` and `dcf:` keys of that ticker, in both forms a key may take (`XETR:SPFF` and `XETR_SPFF`). The screener results (`technical:screen:*`) are not tied to a ticker and expire on their own.
+Every cached answer computed from the prices of the ticker is dropped via asynchronous scan and delete operations (`SCAN` + `DEL`): the `history:`, `eod:`, `technical:`, `dcf:` and `risk:` keys of that ticker, in both forms a key may take (`XETR:SPFF` and `XETR_SPFF`). The screener results (`technical:screen:*`) are not tied to a ticker and expire on their own.
 
 #### 8. Ingestion Logging (`_log_ingest`)
 A detailed execution log is stored in the `ingest_log` table (job status, source used, number of rows added, date range, execution duration in ms, and optional error message).

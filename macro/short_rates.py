@@ -49,7 +49,10 @@ FREQUENCY = "monthly"
 FIRST_PERIOD = date(1990, 1, 1)
 REVISED_MONTHS = 24
 _PRECISION = Decimal("0.00000001")  # macro_observations.value is NUMERIC(18, 8)
-_CHUNK = 5000
+# Rows of one INSERT: 9 columns a row, 27,000 parameters, under the 32,767 asyncpg
+# accepts in one statement (the whole history is about 45 areas × 430 months).
+_MAX_PARAMETERS = 32_767
+_CHUNK = 3000
 
 FETCHED = "fetched"
 FRESH = "fresh"

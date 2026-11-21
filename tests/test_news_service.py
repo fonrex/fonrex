@@ -130,6 +130,209 @@ class TestYFinanceNewsProvider:
         items = await provider.fetch()
         assert items == []
 
+    @pytest.mark.asyncio
+    async def test_flat_article_without_link_is_skipped(self):
+        """Old flat shape without `link` → no item with an empty URL."""
+        from news.providers.yfinance_news import YFinanceNewsProvider
+
+        no_link = [{**SAMPLE_YF_NEWS[0]}]
+        no_link[0].pop("link")
+
+        provider = YFinanceNewsProvider()
+        with patch.object(provider, "_fetch_sync", return_value=no_link + SAMPLE_YF_NEWS):
+            items = await provider.fetch(ticker="AIR.PA")
+
+        assert [item.url for item in items] == ["https://reuters.com/article/abc123"]
+
+
+def _yf_content_article(**overrides):
+    """Article as yfinance >= 1.8.0 returns it (Yahoo GraphQL news)."""
+    content = {
+        "id": "f2a1c3d4",
+        "contentType": "STORY",
+        "title": "Insulet raises its full-year outlook",
+        "description": "",
+        "summary": "Insulet beat estimates and raised guidance.",
+        "pubDate": "2026-11-12T13:35:01Z",
+        "displayTime": "2026-11-12T13:40:00Z",
+        "thumbnail": {
+            "originalUrl": "https://s.yimg.com/original.jpg",
+            "resolutions": [
+                {"url": "https://s.yimg.com/original.jpg", "tag": "original"},
+                {"url": "https://s.yimg.com/170x128.jpg", "tag": "170x128"},
+            ],
+        },
+        "provider": {"displayName": "Reuters", "url": "https://www.reuters.com/"},
+        "canonicalUrl": {"url": "https://finance.yahoo.com/news/insulet-raises-outlook.html"},
+        "clickThroughUrl": {"url": "https://finance.yahoo.com/m/abc/insulet-raises-outlook.html"},
+        "finance": {
+            "premiumFinance": {"isPremiumNews": False},
+            "stockTickers": [{"symbol": "PODD"}, {"symbol": "DXCM"}],
+        },
+    }
+    content.update(overrides)
+    return {"id": content["id"], "content": content}
+
+
+class TestYFinanceNewsContentShape:
+    """Articles of yfinance >= 1.8.0: {"id": ..., "content": {...}}."""
+
+    @staticmethod
+    async def _fetch(articles, **kwargs):
+        from news.providers.yfinance_news import YFinanceNewsProvider
+
+        provider = YFinanceNewsProvider()
+        with patch.object(provider, "_fetch_sync", return_value=articles):
+            return await provider.fetch(ticker="PODD", **kwargs)
+
+    @pytest.mark.asyncio
+    async def test_content_article_is_mapped(self):
+        items = await self._fetch([_yf_content_article()])
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.title == "Insulet raises its full-year outlook"
+        assert item.url == "https://finance.yahoo.com/news/insulet-raises-outlook.html"
+        assert item.summary == "Insulet beat estimates and raised guidance."
+        assert item.source == "Reuters"
+        assert item.published_at == datetime(2026, 11, 12, 13, 35, 1, tzinfo=timezone.utc)
+        assert item.image_url == "https://s.yimg.com/original.jpg"
+        assert item.related_tickers == ["PODD", "DXCM"]
+        assert item.provider == "yfinance"
+        assert item.language == "en"
+
+    @pytest.mark.asyncio
+    async def test_pub_date_with_offset_is_converted_to_utc(self):
+        items = await self._fetch([_yf_content_article(pubDate="2026-11-12T15:35:01+02:00")])
+
+        assert items[0].published_at == datetime(2026, 11, 12, 13, 35, 1, tzinfo=timezone.utc)
+        assert items[0].published_at.utcoffset() == timedelta(0)
+
+    @pytest.mark.asyncio
+    async def test_naive_pub_date_is_read_as_utc(self):
+        items = await self._fetch([_yf_content_article(pubDate="2026-11-12T13:35:01")])
+
+        assert items[0].published_at == datetime(2026, 11, 12, 13, 35, 1, tzinfo=timezone.utc)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("pub_date", [None, "", "yesterday"])
+    async def test_missing_or_invalid_pub_date_gives_none(self, pub_date):
+        items = await self._fetch([_yf_content_article(pubDate=pub_date)])
+
+        assert len(items) == 1
+        assert items[0].published_at is None
+
+    @pytest.mark.asyncio
+    async def test_none_provider_canonical_url_and_thumbnail(self):
+        """provider, canonicalUrl and thumbnail are None → clickThroughUrl, no source, no image."""
+        article = _yf_content_article(
+            provider=None, canonicalUrl=None, thumbnail=None, finance=None
+        )
+
+        items = await self._fetch([article])
+
+        assert len(items) == 1
+        assert items[0].url == "https://finance.yahoo.com/m/abc/insulet-raises-outlook.html"
+        assert items[0].source is None
+        assert items[0].image_url is None
+        assert items[0].related_tickers == []
+
+    @pytest.mark.asyncio
+    async def test_click_through_url_used_when_canonical_url_has_no_url(self):
+        items = await self._fetch([_yf_content_article(canonicalUrl={"url": None})])
+
+        assert items[0].url == "https://finance.yahoo.com/m/abc/insulet-raises-outlook.html"
+
+    @pytest.mark.asyncio
+    async def test_article_without_any_url_is_skipped(self):
+        """No canonicalUrl nor clickThroughUrl → skipped, the others are kept."""
+        no_url = _yf_content_article(id="no-url", canonicalUrl=None, clickThroughUrl=None)
+
+        items = await self._fetch([no_url, _yf_content_article()])
+
+        assert [item.url for item in items] == [
+            "https://finance.yahoo.com/news/insulet-raises-outlook.html"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_video_article_is_kept(self):
+        """contentType VIDEO is news about the ticker with a page: kept like a story."""
+        video = _yf_content_article(
+            contentType="VIDEO",
+            title="Insulet CEO on the quarter",
+            canonicalUrl={"url": "https://finance.yahoo.com/video/insulet-ceo.html"},
+        )
+
+        items = await self._fetch([video])
+
+        assert len(items) == 1
+        assert items[0].title == "Insulet CEO on the quarter"
+        assert items[0].url == "https://finance.yahoo.com/video/insulet-ceo.html"
+
+    @pytest.mark.asyncio
+    async def test_description_used_when_summary_is_empty(self):
+        items = await self._fetch(
+            [_yf_content_article(summary=None, description="Short description.")]
+        )
+
+        assert items[0].summary == "Short description."
+
+    @pytest.mark.asyncio
+    async def test_both_shapes_in_one_answer(self):
+        items = await self._fetch([_yf_content_article(), *SAMPLE_YF_NEWS])
+
+        assert [item.url for item in items] == [
+            "https://finance.yahoo.com/news/insulet-raises-outlook.html",
+            "https://reuters.com/article/abc123",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_limit_is_passed_to_get_news(self):
+        """fetch(limit=N) asks yfinance for N articles, not its default 10."""
+        from news.providers.yfinance_news import YFinanceNewsProvider
+
+        ticker = MagicMock()
+        ticker.get_news.return_value = [_yf_content_article()]
+        with patch("news.providers.yfinance_news.yf.Ticker", return_value=ticker) as ticker_cls:
+            items = await YFinanceNewsProvider().fetch(ticker="PODD", limit=40)
+
+        ticker_cls.assert_called_once_with("PODD")
+        ticker.get_news.assert_called_once_with(count=40)
+        assert len(items) == 1
+
+    @pytest.mark.asyncio
+    async def test_get_news_returning_none_gives_empty_list(self):
+        from news.providers.yfinance_news import YFinanceNewsProvider
+
+        ticker = MagicMock()
+        ticker.get_news.return_value = None
+        with patch("news.providers.yfinance_news.yf.Ticker", return_value=ticker):
+            assert await YFinanceNewsProvider().fetch(ticker="PODD", limit=5) == []
+
+    @pytest.mark.asyncio
+    async def test_service_keeps_distinct_content_articles(self):
+        """Mapped articles keep their URL, so deduplication no longer collapses them into one."""
+        from news.news_service import NewsService
+        from news.providers.yfinance_news import YFinanceNewsProvider
+
+        first = _yf_content_article()
+        second = _yf_content_article(
+            id="b2",
+            title="Insulet names a new chief financial officer",
+            canonicalUrl={"url": "https://finance.yahoo.com/news/insulet-new-cfo.html"},
+        )
+
+        provider = YFinanceNewsProvider()
+        with patch.object(provider, "_fetch_sync", return_value=[first, second]):
+            items = await provider.fetch(ticker="PODD")
+
+        service = NewsService(db_session=MagicMock(), redis_client=None)
+        deduped = service._deduplicate(items)
+        assert {item.url for item in deduped} == {
+            "https://finance.yahoo.com/news/insulet-raises-outlook.html",
+            "https://finance.yahoo.com/news/insulet-new-cfo.html",
+        }
+
 
 # ── GoogleFinanceNewsProvider ──────────────────────────────────────────────────
 

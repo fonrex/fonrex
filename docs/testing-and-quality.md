@@ -85,7 +85,7 @@ Test coverage, by theme:
 
 **News, indicators, valuation, realtime, monitoring**
 
-- `tests/test_news_service.py`: the YFinance, Google Finance and ZoneBourse news providers (fetch, parsing, silent exceptions), URL+UTM+trailing slash deduplication and title similarity (`difflib`), Redis cache (hit/miss), resilience (one provider crashes → others continue), PostgreSQL upsert, language filter, and URL normalization.
+- `tests/test_news_service.py`: the YFinance (`content` shape of yfinance 1.8 and old flat shape, missing fields, `limit` passed to `get_news`), Google Finance and ZoneBourse news providers (fetch, parsing, silent exceptions), URL+UTM+trailing slash deduplication and title similarity (`difflib`), Redis cache (hit/miss), resilience (one provider crashes → others continue), PostgreSQL upsert, language filter, and URL normalization.
 - `tests/test_investing_provider.py`, `tests/test_marketwatch_provider.py`, `tests/test_boursorama_provider.py`, `tests/test_msn_provider.py`: the **news** providers of these sites (address, page and date parsing, Cloudflare detection), not their fundamentals.
 - `tests/test_technical_indicators.py`: RSI, SMA, EMA, MACD, Bollinger Bands on known price patterns, number of empty leading points, error handling (unknown indicator, too few bars), Redis cache, VWAP, and screener.
 - `tests/test_dcf_service.py`: WACC calculation (CAPM, cost of debt, 5%-20% bounds), FCF, EPS, and DDM projection and discount models with their fallbacks, safeguards against division by zero or negative denominators (when growth exceeds WACC), and sensitivity matrices shape, on statements given one row per year. The weighted consensus has no assertion of its own.

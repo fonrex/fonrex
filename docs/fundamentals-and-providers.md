@@ -174,7 +174,7 @@ The `NewsService` loads the active mappings of the instrument and hands each pro
 
 | Provider | Source | Method | Language |
 | --- | --- | --- | --- |
-| `YFinanceNewsProvider` | Yahoo Finance | Native JSON `ticker.news` via `run_sync()`; asked with the ticker as typed | `en` |
+| `YFinanceNewsProvider` | Yahoo Finance | Native JSON `Ticker.get_news(count=limit)` via `run_sync()` (`content` shape of yfinance 1.8, old flat shape as fallback; articles without a URL are skipped); asked with the ticker as typed | `en` |
 | `GoogleFinanceNewsProvider` | Google Finance | HTML embedded JSON + BS4 fallback, relative dates | deduced from the ticker suffix |
 | `ZoneBourseNewsProvider` | ZoneBourse | HTML BeautifulSoup, FR dates | `fr` |
 | `BoursoramaNewsProvider` | Boursorama | HTML BeautifulSoup, `<time datetime>` ISO | `fr` |

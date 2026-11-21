@@ -285,7 +285,7 @@ Detailed domain designs live in `docs/` (loaded on demand so this file stays foc
 | `cache/technical.py` | Redis adapter for technical result serialization and caching. |
 | `technical/errors.py` | Transport-independent business errors for invalid indicators, incompatible resolutions, and missing or insufficient data. |
 | `news/news_service.py` | Main news orchestrator: parallel fetch of the news providers, URL + title similarity deduplication (`difflib`), upsert `ON CONFLICT` in `news_articles`, Redis 30 min cache, language filter, global feed from DB. |
-| `news/providers/yfinance_news.py` | News via yfinance `ticker.news` (native JSON, epoch → UTC datetime, `run_sync()`). |
+| `news/providers/yfinance_news.py` | News via yfinance `Ticker.get_news(count=limit)` (native JSON, `content` shape with ISO `pubDate` → UTC datetime, old flat shape as fallback, `run_sync()`). |
 | `news/providers/google_finance_news.py` | Google Finance news: JSON embedded in HTML + BeautifulSoup fallback, exchange resolution (`.PA` → `EPA`, `.DE` → `ETR`, etc.), relative dates. |
 | `news/providers/zonebourse_news.py` | ZoneBourse news (FR): HTML BeautifulSoup, French dates, `fr` language. |
 | `news/providers/boursorama_news.py` | Boursorama news (FR): HTML BeautifulSoup, `<time datetime>` ISO, `fr` language. |

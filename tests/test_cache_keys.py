@@ -332,7 +332,11 @@ def test_risk_answers_are_cached_per_window_confidence_and_listing():
         risk_cache_key("AI", 3, 0.95, "USD", None, None),
         risk_cache_key("AI", 3, 0.95, None, "XNYS", None),
         risk_cache_key("AI", 3, 0.95, None, None, "FR0000120073"),
+        # Confidences equal to 6 significant digits (``:g`` wrote both "0.95").
+        risk_cache_key("AI", 3, 0.9500001, None, None, None),
+        risk_cache_key("AI", 3, 0.9500002, None, None, None),
     ]
     assert len(set(keys)) == len(keys)
+    assert keys[0] == "risk:AI:3y:0.95:::"
     # The same request written in another case shares its entry.
     assert risk_cache_key("ai", 3, 0.95, "usd", None, None) == keys[3]

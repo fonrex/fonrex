@@ -2227,9 +2227,15 @@ class TestShortRatesOnPostgres:
 
         assert (load.status, load.reason, load.fetched_at) == ("failed", reason, self.NOW)
         assert len(await service.series("EA20")) == 4
-        # A failed reading is not a reading: the next request asks again.
+        # A failed reading is not a reading, but the OECD is not asked again before
+        # OECD_RETRY_MINUTES (15): the requests in between use the stored rates.
         reader.side_effect, reader.return_value = None, self.answer()
+        clock["now"] += timedelta(minutes=14)
+        assert (await service.refresh()).status == "failed"
+        assert reader.await_count == 2
+        clock["now"] += timedelta(minutes=1)
         assert (await service.refresh()).status == "fetched"
+        assert reader.await_count == 3
 
     async def test_two_requests_at_once_ask_the_oecd_once(self, rates):
         service, reader, _ = rates
@@ -2441,7 +2447,11 @@ class TestRiskOnPostgres:
         assert result.metrics.historical_var > -0.2
         assert result.risk_free.source == "OECD, 3-month interbank rate (EA20)"
         assert result.metrics.mean_risk_free_rate == pytest.approx(0.02)
-        assert result.warnings == []
+        # The last close has no adj_close: the window is measured on the traded closes.
+        assert result.warnings == [
+            "1 of 120 daily closes have no adjusted close: every return is measured on the "
+            "traded closes, dividends not included"
+        ]
         oecd.assert_not_awaited()
         assert missing == (None, {})
 

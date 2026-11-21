@@ -18,8 +18,11 @@ A reading asks for every country at once:
 
 When the OECD does not answer (refused, over its limit), the stored rates stay
 and the reading says ``failed`` with the reason. An answer that cannot be read is
-not stored at all. A country the OECD no longer publishes keeps its last months:
-the caller decides how long a rate may be carried over.
+not stored at all. After a failure the OECD is not asked again for
+``OECD_RETRY_MINUTES`` minutes (15 by default), except with ``force``: every
+request needing a rate would otherwise download again, one after the other
+behind the lock, and spend the quota. A country the OECD no longer publishes
+keeps its last months: the caller decides how long a rate may be carried over.
 """
 
 from __future__ import annotations
@@ -111,6 +114,11 @@ class ShortRates:
         self.refresh_after = timedelta(
             hours=env_int("OECD_REFRESH_HOURS", 24, minimum=1, maximum=24 * 30)
         )
+        self.retry_after = timedelta(
+            minutes=env_int("OECD_RETRY_MINUTES", 15, minimum=1, maximum=24 * 60)
+        )
+        # The last failed reading of this process, and its reason.
+        self._failure: tuple[datetime, str] | None = None
         # One reading at a time: two requests needing the rates ask the OECD once.
         self._lock = asyncio.Lock()
 
@@ -140,6 +148,15 @@ class ShortRates:
                 and _utc(self.now()) - _utc(last) < self.refresh_after
             ):
                 return RatesLoad(FRESH, last)
+            if not force and self._failure is not None:
+                failed_at, reason = self._failure
+                if _utc(self.now()) - failed_at < self.retry_after:
+                    return RatesLoad(
+                        FAILED,
+                        last,
+                        reason=f"{reason} (at {failed_at:%Y-%m-%d %H:%M} UTC; asked again "
+                        f"{int(self.retry_after.total_seconds() // 60)} minutes after)",
+                    )
             first = start or self.first_month(last)
             result = RatesLoad(FAILED, last, first)
             try:
@@ -160,7 +177,10 @@ class ShortRates:
                     result.received = len(rates)
                     result.areas = sorted({rate.area for rate in rates})
             if result.reason:
+                self._failure = (_utc(self.now()), result.reason)
                 logger.warning("OECD 3-month rates not read: %s", result.reason)
+            else:
+                self._failure = None
             return result
 
     async def _store(self, rates: list[ShortRate]) -> datetime:

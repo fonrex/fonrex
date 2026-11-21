@@ -7,6 +7,7 @@ tables, are tested on PostgreSQL (``tests/test_timescale_integration.py``).
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.dialects import postgresql
@@ -110,6 +111,74 @@ class TestRefreshDelay:
     def test_chosen_in_the_environment(self, monkeypatch):
         monkeypatch.setenv("OECD_REFRESH_HOURS", "6")
         assert service().refresh_after == timedelta(hours=6)
+
+
+class TestRetryAfterAFailure:
+    """A failed reading is not asked again at once: every request needing a rate would
+    download again, one after the other behind the lock, and spend the quota of the
+    OECD (about 60 downloads an hour)."""
+
+    @staticmethod
+    def rates(clock, reader):
+        rates = ShortRates(None, reader, now=lambda: clock["now"])  # type: ignore[arg-type]
+        rates.last_reading = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        rates._store = AsyncMock(side_effect=lambda _rates: clock["now"])  # type: ignore[method-assign]
+        return rates
+
+    def test_fifteen_minutes_by_default(self, monkeypatch):
+        monkeypatch.delenv("OECD_RETRY_MINUTES", raising=False)
+        assert service().retry_after == timedelta(minutes=15)
+
+    def test_chosen_in_the_environment(self, monkeypatch):
+        monkeypatch.setenv("OECD_RETRY_MINUTES", "5")
+        assert service().retry_after == timedelta(minutes=5)
+
+    async def test_not_asked_again_before_the_delay(self, monkeypatch):
+        monkeypatch.delenv("OECD_RETRY_MINUTES", raising=False)
+        clock, reader = {"now": NOW}, AsyncMock(return_value=None)
+        rates = self.rates(clock, reader)
+
+        first = await rates.refresh()
+        clock["now"] = NOW + timedelta(minutes=14)
+        second = await rates.refresh()
+
+        assert reader.await_count == 1
+        assert (first.status, second.status) == (FAILED, FAILED)
+        assert second.reason == (
+            "the OECD did not answer (refused, over its limit, or no rate) "
+            "(at 2026-11-20 21:00 UTC; asked again 15 minutes after)"
+        )
+
+        ok = [ShortRate("EA20", date(2026, 10, 1), Decimal("0.02"), "A")]
+        reader.return_value = ok
+        clock["now"] = NOW + timedelta(minutes=15)
+        assert (await rates.refresh()).status == FETCHED
+        assert reader.await_count == 2
+
+    async def test_force_asks_at_once(self, monkeypatch):
+        monkeypatch.delenv("OECD_RETRY_MINUTES", raising=False)
+        clock, reader = {"now": NOW}, AsyncMock(side_effect=TimeoutError())
+        rates = self.rates(clock, reader)
+
+        await rates.refresh()
+        await rates.refresh(force=True)
+
+        assert reader.await_count == 2
+
+    async def test_a_success_forgets_the_failure(self, monkeypatch):
+        monkeypatch.delenv("OECD_RETRY_MINUTES", raising=False)
+        clock, reader = {"now": NOW}, AsyncMock(return_value=None)
+        rates = self.rates(clock, reader)
+        await rates.refresh()
+
+        reader.return_value = [ShortRate("EA20", date(2026, 10, 1), Decimal("0.02"), "A")]
+        assert (await rates.refresh(force=True)).status == FETCHED
+        # Read again a day later, the OECD refusing is a new failure, not the old one.
+        clock["now"] = NOW + timedelta(days=1)
+        reader.return_value = None
+        assert (await rates.refresh()).reason == (
+            "the OECD did not answer (refused, over its limit, or no rate)"
+        )
 
 
 class TestScript:

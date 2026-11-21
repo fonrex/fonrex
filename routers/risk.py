@@ -19,9 +19,16 @@ RISK_CACHE_TTL = 6 * 3600
 
 
 def get_risk_service(request: Request) -> RiskService:
+    # The service is built even when the database is down or not at the Alembic head
+    # (rule 24): it must not read a schema the API refused.
+    if getattr(request.app.state, "db_available", True) is False:
+        raise HTTPException(status_code=503, detail="Database schema unavailable or outdated")
     service = getattr(request.app.state, "risk_service", None)
     if service is None:
-        raise HTTPException(status_code=503, detail="Risk metrics unavailable (no database)")
+        raise HTTPException(
+            status_code=503,
+            detail="Risk metrics unavailable (no database, or OECD or Treasury not started)",
+        )
     return service
 
 
@@ -38,9 +45,10 @@ def risk_cache_key(
     exchange: Optional[str],
     isin: Optional[str],
 ) -> str:
-    """Every parameter that changes the answer (rule 19)."""
+    """Every parameter that changes the answer (rule 19). The confidence is written in
+    full (``0.95``, ``0.9500001``): two confidences never share an answer."""
     listing = ":".join((value or "").upper() for value in (currency, exchange, isin))
-    return f"risk:{ticker.upper()}:{years}y:{confidence:g}:{listing}"
+    return f"risk:{ticker.upper()}:{years}y:{confidence!r}:{listing}"
 
 
 def worth_caching(result: RiskResult) -> bool:

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from macro.risk_free_rates import RiskFreeRates
 from main import app
 from risk.metrics import MIN_RETURNS, simple_returns
-from risk.service import RiskError, RiskService, window
+from risk.service import RiskError, RiskService, closes_on_one_basis, window
 
 LAST = date(2026, 11, 20)
 
@@ -45,8 +45,14 @@ class FakeRates:
         )
 
 
-def service(closes, rates=None, listing=True, currency="EUR") -> RiskService:
+def bars_of(closes, adjusted=True):
+    """Daily bars ``(adj_close, close)``; without ``adjusted``, no adj_close at all."""
+    return {day: (price if adjusted else None, price) for day, price in closes.items()}
+
+
+def service(closes, rates=None, listing=True, currency="EUR", bars=None) -> RiskService:
     risk = RiskService(None, rates or FakeRates())  # type: ignore[arg-type]
+    bars = bars if bars is not None else bars_of(closes)
 
     async def listing_of(ticker, currency_, exchange, isin):
         if not listing:
@@ -57,7 +63,7 @@ def service(closes, rates=None, listing=True, currency="EUR") -> RiskService:
             "currency": currency,
             "exchange": "XPAR",
         }
-        return identity, closes
+        return identity, bars
 
     risk._listing = listing_of  # type: ignore[method-assign]
     return risk
@@ -70,6 +76,54 @@ class TestWindow:
         assert max(kept) == LAST
         assert min(kept) == LAST - timedelta(days=1096)  # 3 × 365.25 days, rounded
         assert window({}, 3) == {}
+
+
+class TestOneBasis:
+    """Every close of a window on one basis: an adjusted close of 95 followed by a
+    traded close of 100 would make a return of 5.26 % that never happened."""
+
+    def test_the_adjusted_closes_when_every_day_has_one(self):
+        bars = {date(2026, 11, 19): (95.0, 100.0), date(2026, 11, 20): (96.0, 101.0)}
+        assert closes_on_one_basis(bars) == (
+            {date(2026, 11, 19): 95.0, date(2026, 11, 20): 96.0},
+            None,
+        )
+
+    def test_the_traded_closes_when_one_day_lacks_it(self):
+        bars = {date(2026, 11, 19): (95.0, 100.0), date(2026, 11, 20): (None, 101.0)}
+        closes, warning = closes_on_one_basis(bars)
+        assert closes == {date(2026, 11, 19): 100.0, date(2026, 11, 20): 101.0}
+        assert warning == (
+            "1 of 2 daily closes have no adjusted close: every return is measured on the "
+            "traded closes, dividends not included"
+        )
+
+    def test_a_day_with_no_traded_close_is_left_out_of_that_basis(self):
+        bars = {date(2026, 11, 18): (94.0, None), date(2026, 11, 19): (None, 100.0)}
+        assert closes_on_one_basis(bars)[0] == {date(2026, 11, 19): 100.0}
+
+    async def test_only_the_window_decides(self):
+        """Old bars without adj_close, before the window, change nothing."""
+        closes = closes_of(1500)
+        bars = bars_of(closes)
+        for day in sorted(closes)[:100]:
+            bars[day] = (None, closes[day] * 1.1)
+
+        result = await service(closes, bars=bars).measure("AI", years=2)
+
+        assert result.warnings == []
+
+    async def test_a_mixed_window_is_measured_on_the_traded_closes(self):
+        closes = closes_of(800)
+        traded = {day: price * 1.05 for day, price in closes.items()}
+        bars = {day: (closes[day], traded[day]) for day in closes}
+        bars[LAST] = (None, traded[LAST])
+
+        result = await service(closes, bars=bars).measure("AI", years=2)
+
+        measured = await service(traded, bars=bars_of(traded)).measure("AI", years=2)
+        assert result.metrics.annualized_return == pytest.approx(measured.metrics.annualized_return)
+        assert result.warnings[0].startswith("1 of 731 daily closes have no adjusted close")
 
 
 class TestMeasure:
@@ -131,12 +185,14 @@ class AsyncStore:
 
 @pytest.fixture
 def client():
-    names = ("risk_service", "redis_client")
+    names = ("risk_service", "redis_client", "db_available")
     originals = {name: getattr(app.state, name, None) for name in names}
     with TestClient(app) as test_client:
         started = {name: getattr(app.state, name, None) for name in names}
         app.state.risk_service = service(closes_of(1500))
         app.state.redis_client = AsyncStore()
+        # The startup finds no database: the route is tested with one available.
+        app.state.db_available = True
         yield test_client
         # The shutdown closes the Redis client it started, not the fake one.
         for name, value in started.items():
@@ -226,6 +282,25 @@ class TestRoute:
             "No listing found for ACME",
         )
 
-    def test_without_database(self, client):
+    def test_without_risk_service(self, client):
         app.state.risk_service = None
-        assert client.get("/risk/AI").status_code == 503
+        response = client.get("/risk/AI")
+        assert (response.status_code, response.json()["detail"]) == (
+            503,
+            "Risk metrics unavailable (no database, or OECD or Treasury not started)",
+        )
+
+    def test_a_database_down_or_not_at_the_head_is_not_read(self, client):
+        """The service exists even when the startup refused the database (rule 24)."""
+        app.state.db_available = False
+        response = client.get("/risk/AI")
+        assert (response.status_code, response.json()["detail"]) == (
+            503,
+            "Database schema unavailable or outdated",
+        )
+
+    def test_two_confidences_equal_to_six_digits_are_two_answers(self, client):
+        first = client.get("/risk/AI?confidence=0.9500001").json()
+        second = client.get("/risk/AI?confidence=0.9500002").json()
+        assert (first["confidence"], second["confidence"]) == (0.9500001, 0.9500002)
+        assert len(app.state.redis_client.entries) == 2

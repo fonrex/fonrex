@@ -1,14 +1,14 @@
 #!/usr/bin/env python
-"""Download the short-term interest rates of the OECD and of the Bank of England into the database.
+"""Download the interest rates of the OECD and of the Bank of England into the database.
 
     python scripts/load_short_rates.py                  # whole history the first time, then the last 24 months
     python scripts/load_short_rates.py --start 2020-01  # from a month
     python scripts/load_short_rates.py --force          # even when read less than *_REFRESH_HOURS ago
-    python scripts/load_short_rates.py --source boe     # one source only (oecd, boe)
+    python scripts/load_short_rates.py --source boe     # one source only (oecd, oecd_10y, boe)
 
-The OECD gives the 3-month rate of every country in one request, from 1990 the
-first time; it allows about 60 downloads an hour: a refusal keeps the rates
-stored. The Bank of England gives the monthly SONIA, the rate of the pound, from
+The OECD gives the 3-month rate of every country in one request, and the 10-year
+rate in another, from 1990 the first time; it allows about 60 downloads an hour:
+a refusal keeps the rates stored. The Bank of England gives the monthly SONIA, the rate of the pound, from
 1997. The exit code is 1 when the rates of a source could not be read.
 """
 
@@ -29,6 +29,7 @@ from financials.providers.oecd import OECDProvider
 from macro.short_rates import (
     FAILED,
     FIRST_PERIOD,
+    OECD_LONG_SERIES,
     OECD_SERIES,
     SONIA_SERIES,
     RateSeries,
@@ -44,6 +45,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Each source: its title in the output, its series, and the reader of its rates.
 SOURCES = {
     "oecd": ("OECD, 3-month rates", OECD_SERIES, lambda: OECDProvider().short_rates),
+    "oecd_10y": ("OECD, 10-year rates", OECD_LONG_SERIES, lambda: OECDProvider().long_rates),
     "boe": ("Bank of England, SONIA", SONIA_SERIES, lambda: BankOfEnglandProvider().sonia_monthly),
 }
 

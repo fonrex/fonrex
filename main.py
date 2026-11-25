@@ -53,7 +53,7 @@ from macro.eurostat_service import EurostatService
 from macro.fred_service import FREDService
 from macro.fx_rates import EcbExchangeRates
 from macro.risk_free_rates import RiskFreeRateRepository
-from macro.short_rates import SONIA_SERIES, ShortRates
+from macro.short_rates import OECD_LONG_SERIES, SONIA_SERIES, ShortRates
 from macro.treasury_curves import TreasuryCurves
 from monitoring.canary_monitor import CanaryMonitor
 from monitoring.validation_layer import ValidationLayer
@@ -369,6 +369,7 @@ def configure_application_state(application: FastAPI):
         "factor_exposure",
         "short_rates",
         "sonia_rates",
+        "long_rates",
         "risk_service",
         "validation_layer",
         "usage_recorder",
@@ -618,6 +619,22 @@ async def startup_event(application: FastAPI):
         logger.warning("⚠️ Risk metrics not started: %s", exc)
 
     try:
+        # The 10-year rates of the OECD, for the discount rate of a valuation.
+        oecd_provider = getattr(state, "oecd_provider", None)
+        state.long_rates = (
+            ShortRates(
+                async_resources.session_factory,
+                oecd_provider.long_rates,
+                series=OECD_LONG_SERIES,
+            )
+            if async_resources and oecd_provider is not None
+            else None
+        )
+    except Exception as exc:
+        state.long_rates = None
+        logger.warning("⚠️ OECD 10-year rates not started: %s", exc)
+
+    try:
         state.dcf_service = DCFService(
             state.db_service,
             state.redis_client,
@@ -743,6 +760,7 @@ async def shutdown_event(application: FastAPI):
         "factor_exposure",
         "short_rates",
         "sonia_rates",
+        "long_rates",
         "risk_service",
         "usage_recorder",
     ):

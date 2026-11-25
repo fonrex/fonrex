@@ -1,4 +1,4 @@
-"""The short-term interest rates of the OECD and of the Bank of England, kept month by month.
+"""The interest rates of the OECD and of the Bank of England, kept month by month.
 
 The OECD publishes the 3-month interbank rate of its members and of a few other
 countries (``financials/providers/oecd.py``): one request returns every country.
@@ -29,6 +29,12 @@ The same storage keeps the monthly mean of SONIA, the overnight rate of the poun
 Kingdom in early 2026: ``SONIA_SERIES`` (source ``boe``, indicator ``rate_on``,
 ``geo`` ``GBR``), read on the same rules with ``BOE_REFRESH_HOURS`` and
 ``BOE_RETRY_MINUTES``.
+
+It also keeps the 10-year government bond yield of every area of the OECD, for the
+discount rate of a valuation: ``OECD_LONG_SERIES`` (source ``oecd``, indicator
+``rate_10y``, the same ``geo`` as ``rate_3m``), read in a request of its own with
+the settings of the OECD (the same publisher and the same quota). The 10-year
+rate of the United Kingdom goes on: the pound needs no other source for it.
 """
 
 from __future__ import annotations
@@ -69,6 +75,10 @@ class RateSeries:
 
 # The 3-month interbank rate of every area of the OECD.
 OECD_SERIES = RateSeries(SOURCE, INDICATOR, "the OECD", "OECD_REFRESH_HOURS", "OECD_RETRY_MINUTES")
+# The 10-year government bond yield of every area of the OECD: same publisher, same settings.
+OECD_LONG_SERIES = RateSeries(
+    SOURCE, "rate_10y", "the OECD", "OECD_REFRESH_HOURS", "OECD_RETRY_MINUTES"
+)
 # The monthly mean of SONIA, the overnight rate of the pound (area GBR).
 SONIA_SERIES = RateSeries(
     "boe", "rate_on", "the Bank of England", "BOE_REFRESH_HOURS", "BOE_RETRY_MINUTES"

@@ -1,4 +1,5 @@
-"""The 3-month rates of the OECD kept month by month (``macro/short_rates.py``).
+"""The rates of the OECD (3-month and 10-year) and the SONIA kept month by month
+(``macro/short_rates.py``).
 
 The months a reading asks for and the command line script are tested here;
 storing and reading the rates, and the script from the answer of the OECD to the
@@ -20,6 +21,7 @@ from macro.short_rates import (
     FETCHED,
     FIRST_PERIOD,
     FRESH,
+    OECD_LONG_SERIES,
     OECD_SERIES,
     REVISED_MONTHS,
     SONIA_SERIES,
@@ -124,6 +126,34 @@ class TestSeries:
             timedelta(hours=12),
             timedelta(minutes=30),
         )
+
+    def test_the_10_year_rates_of_the_oecd(self, monkeypatch):
+        # The same publisher and the same quota: the settings of the OECD.
+        monkeypatch.setenv("OECD_REFRESH_HOURS", "6")
+        monkeypatch.setenv("OECD_RETRY_MINUTES", "30")
+        rates = service(series=OECD_LONG_SERIES)
+        assert (rates.source, rates.rate_series.indicator) == ("oecd", "rate_10y")
+        assert (rates.refresh_after, rates.retry_after) == (
+            timedelta(hours=6),
+            timedelta(minutes=30),
+        )
+
+    async def test_the_10_year_statements_use_their_indicator(self):
+        session = RecordingSession()
+        rates = ShortRates(lambda: session, None, now=lambda: NOW, series=OECD_LONG_SERIES)  # type: ignore[arg-type]
+
+        await rates._store([ShortRate("GBR", date(2026, 10, 1), Decimal("0.053393"))])
+        assert await rates.series("GBR") == []
+
+        insert, *selects = session.statements
+        params = insert.compile(dialect=postgresql.dialect()).params
+        assert (params["source_m0"], params["indicator_m0"], params["geo_m0"]) == (
+            "oecd",
+            "rate_10y",
+            "GBR",
+        )
+        for select in selects:
+            assert "rate_10y" in select.compile(dialect=postgresql.dialect()).params.values()
 
     async def test_the_reasons_name_the_source(self):
         rates = ShortRates(  # type: ignore[arg-type]
@@ -288,6 +318,7 @@ class TestScript:
 
         assert load_short_rates.parse_arguments([]).source is None
         assert load_short_rates.parse_arguments(["--source", "boe"]).source == "boe"
+        assert load_short_rates.parse_arguments(["--source", "oecd_10y"]).source == "oecd_10y"
         with pytest.raises(SystemExit):
             load_short_rates.parse_arguments(["--source", "ecb"])
 
@@ -303,7 +334,10 @@ class TestScript:
                 Resources.closed = True
 
         async def read(resources, series, reader, arguments):
-            return loads[series.source], []
+            (name,) = [
+                name for name, source in load_short_rates.SOURCES.items() if source[1] == series
+            ]
+            return loads[name], []
 
         monkeypatch.setattr(load_short_rates.AsyncDatabaseResources, "create", Resources)
         monkeypatch.setattr(load_short_rates, "read", read)
@@ -312,6 +346,7 @@ class TestScript:
     async def test_every_source_and_a_failure(self, monkeypatch, capsys):
         loads = {
             "oecd": RatesLoad(FRESH, NOW),
+            "oecd_10y": RatesLoad(FRESH, NOW),
             "boe": RatesLoad(FAILED, NOW, reason="the Bank of England did not answer"),
         }
         script, resources = self.script(monkeypatch, loads)
@@ -319,6 +354,8 @@ class TestScript:
         assert await script.main([]) == 1
         assert capsys.readouterr().out.splitlines() == [
             "OECD, 3-month rates",
+            "fresh   ",
+            "OECD, 10-year rates",
             "fresh   ",
             "Bank of England, SONIA",
             "failed   (the Bank of England did not answer)",
@@ -331,15 +368,25 @@ class TestScript:
         assert await script.main(["--source", "oecd"]) == 0
         assert capsys.readouterr().out.splitlines() == ["OECD, 3-month rates", "fresh   "]
 
+    async def test_the_10_year_rates_only(self, monkeypatch, capsys):
+        script, _ = self.script(monkeypatch, {"oecd_10y": RatesLoad(FRESH, NOW)})
+
+        assert await script.main(["--source", "oecd_10y"]) == 0
+        assert capsys.readouterr().out.splitlines() == ["OECD, 10-year rates", "fresh   "]
+
     async def test_the_readers_of_the_sources(self):
         from financials.providers.boe import BankOfEnglandProvider
         from financials.providers.oecd import OECDProvider
         from scripts import load_short_rates
 
         oecd = load_short_rates.SOURCES["oecd"]
+        oecd_10y = load_short_rates.SOURCES["oecd_10y"]
         boe = load_short_rates.SOURCES["boe"]
-        assert (oecd[1], boe[1]) == (OECD_SERIES, SONIA_SERIES)
+        assert (oecd[1], oecd_10y[1], boe[1]) == (OECD_SERIES, OECD_LONG_SERIES, SONIA_SERIES)
         assert oecd[2]().__self__.__class__ is OECDProvider
+        assert oecd[2]().__name__ == "short_rates"
+        assert oecd_10y[2]().__self__.__class__ is OECDProvider
+        assert oecd_10y[2]().__name__ == "long_rates"
         assert boe[2]().__self__.__class__ is BankOfEnglandProvider
 
     async def test_without_database(self, monkeypatch, capsys):

@@ -194,7 +194,11 @@ class TestReferenceValues:
             "sharpe_ratio": metrics.sharpe_ratio,
             "sortino_ratio": metrics.sortino_ratio,
         }
-        assert measured == pytest.approx(self.FINANCETOOLKIT, rel=1e-9)
+        # Within 1e-15 in absolute terms, as the issue asks: the figures differ by a few
+        # units of the last place at most (the order of the sums), never by a convention.
+        # Not a relative bound: on a figure near zero (a drawdown of -0.038) one unit of
+        # the last place is already a relative gap above 1e-15.
+        assert measured == pytest.approx(self.FINANCETOOLKIT, rel=0, abs=1e-15)
 
 
 class TestMeasure:

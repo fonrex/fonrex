@@ -29,3 +29,8 @@ What the whole answer from 2025-06 showed (45 areas):
   and `COL` to 2026-09; `IDN` stops in 2025-12 and **`GBR` in 2026-02**;
 - the Swiss rate is negative (`-0.0415` for 2026-10);
 - a period without any value answers HTTP 404 with the body `NoRecordsFound`.
+
+Compared with other sources (2026-11-25): across the end of the LIBOR (2021) the
+OECD chains each series itself. `EA20` is the monthly mean of the 3-month Euribor
+(`2.51` for 2026-08, as Eurostat gives it), and `CHE` follows the SARON (`-0.0415`
+for 2026-10, SARON fixings near `-0.04`), with no break.

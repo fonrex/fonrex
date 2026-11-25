@@ -11,7 +11,12 @@ listing, as an annual ratio:
   (``macro/short_rates.py``), of the area of the currency (``EUR`` is the euro area
   ``EA20``, ``CHF`` is ``CHE``...); a day takes the rate of its month. The OECD
   publishes a month about six weeks after its end, so a month not published yet
-  takes the last month stored, at most ``MAX_MONTHS_CARRIED`` months earlier;
+  takes the last month stored, at most ``MAX_MONTHS_CARRIED`` months earlier.
+  The OECD chains the series itself across the end of the LIBOR (2021): checked in
+  November 2026, ``EA20`` is the monthly mean of the 3-month Euribor (2.51 % in
+  August 2026, as Eurostat gives it), so the ECB is not read for this rate, and
+  ``CHE`` follows the SARON since the CHF LIBOR stopped (-0.0415 % in October 2026,
+  SARON fixings near -0.04 %), with no break in the series;
 * a currency of minor unit is read as its major one (``GBX``, the pence of London,
   as ``GBP``): a constant unit does not change a return;
 * a currency without source, or a day without rate within those bounds, gives no

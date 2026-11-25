@@ -144,3 +144,24 @@ def test_compute_wacc_without_a_source_uses_the_configured_rate(dcf_service, mon
     # DCF_RISK_FREE_RATE, not a rate written in the code.
     assert (res.risk_free_rate, res.risk_free_rate_source) == (Decimal("0.031"), "env_fallback")
     assert res.risk_free_rate_date is None
+
+
+def test_compute_wacc_keeps_a_rate_of_the_oecd_and_its_month(dcf_service):
+    """A 10-year rate of the OECD is a monthly rate: its source and its month are kept."""
+    from datetime import date
+
+    highlights = FundamentalsHighlights(beta=Decimal("1.0"), market_cap=Decimal("1000000"))
+    statements = [FinancialStatement(total_debt=Decimal("0"), total_equity=Decimal("100000"))]
+
+    res = dcf_service._compute_wacc(
+        highlights,
+        statements,
+        None,
+        rf_fred=Decimal("0.0051"),
+        rf_source="oecd_stale",
+        rf_date=date(2026, 10, 1),
+    )
+
+    assert res.risk_free_rate == Decimal("0.0051")
+    assert res.risk_free_rate_source == "oecd_stale"
+    assert res.risk_free_rate_date == date(2026, 10, 1)

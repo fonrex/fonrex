@@ -49,8 +49,21 @@ async def _read_cache(redis_client, key: str):
         return None
 
 
-async def _write_cache(redis_client, key: str, result) -> None:
+def _without_rate_of_its_source(service: DCFService, result: DCFResult) -> bool:
+    """A valuation on DCF_RISK_FREE_RATE although its currency has a source: the source
+    failed for a moment, so the valuation is not kept for a whole cache lifetime."""
+    return result.wacc.risk_free_rate_source == "env_fallback" and service.has_rate_source(
+        result.currency
+    )
+
+
+async def _write_cache(redis_client, key: str, result, service: DCFService | None = None) -> None:
     if redis_client is None:
+        return
+    if service is not None and _without_rate_of_its_source(service, result):
+        logger.info(
+            "DCF %s not cached: the source of the rate of %s gave none", key, result.currency
+        )
         return
     try:
         await redis_client.setex(key, DCF_CACHE_TTL, result.model_dump_json())
@@ -86,7 +99,7 @@ async def get_dcf_valuation(
 
     try:
         result = await service.compute_dcf(ticker, DCFRequest(models=["fcf"]))
-        await _write_cache(redis_client, cache_key, result)
+        await _write_cache(redis_client, cache_key, result, service)
         return result
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -137,7 +150,7 @@ async def compare_dcf_models(
                 warnings=["DDM not applicable: no dividend paid."],
             )
 
-        await _write_cache(redis_client, cache_key, result)
+        await _write_cache(redis_client, cache_key, result, service)
         return result
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

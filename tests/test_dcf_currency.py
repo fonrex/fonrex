@@ -17,6 +17,8 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from financials.enrichment.yfinance_enricher import YFinanceEnricher, _statements_currency
+from macro.long_rates import LongRateRepository
+from macro.short_rates import FAILED, FRESH, RatesLoad, StoredArea
 from models import Asset, AssetListing, Base, FinancialStatement, FundamentalsHighlights, PriceEOD
 from schemas.dcf import DCFRequest, WACCInput
 from schemas.macro import RiskFreeRate
@@ -25,6 +27,31 @@ from valuation.dcf_service import DCFService
 
 ECB_RATE = RiskFreeRate(Decimal("0.0352"), "ecb_live", date(2026, 10, 8))
 FRED_RATE = RiskFreeRate(Decimal("0.0412"), "fred_cached", date(2026, 10, 8))
+# The 10-year rates of the OECD stored (macro_observations, indicator rate_10y), as ratios.
+OECD_10Y = {
+    "CHE": [(date(2026, 10, 1), Decimal("0.0051"))],
+    "DEU": [(date(2026, 10, 1), Decimal("0.03415909"))],
+    "GBR": [(date(2026, 10, 1), Decimal("0.053393"))],
+    "USA": [(date(2026, 10, 1), Decimal("0.0513"))],
+}
+
+
+class FakeLongRates:
+    """The stored 10-year rates of the OECD, read again with the status given."""
+
+    def __init__(self, stored, status=FRESH, reason=None):
+        self.stored, self.status, self.reason = stored, status, reason
+
+    async def refresh(self):
+        return RatesLoad(self.status, reason=self.reason)
+
+    async def series(self, area, start=None, end=None):
+        return [(month, rate) for month, rate in self.stored.get(area, []) if start <= month <= end]
+
+    async def stored_areas(self):
+        return [
+            StoredArea(area, rates[0][0], rates[-1][0], None) for area, rates in self.stored.items()
+        ]
 
 
 class TestCurrencyRule:
@@ -77,6 +104,13 @@ def sources():
     return SimpleNamespace(service=service, ecb=ecb, fred=fred)
 
 
+@pytest.fixture
+def with_oecd(sources):
+    """The same sources, and the 10-year rates of the OECD."""
+    sources.service.long_rates = LongRateRepository(FakeLongRates(OECD_10Y))
+    return sources
+
+
 class TestRiskFreeRateByCurrency:
     async def test_euro_cash_flows_use_the_ecb_rate(self, sources):
         assert await sources.service._risk_free_rate("EUR") == ECB_RATE
@@ -99,12 +133,108 @@ class TestRiskFreeRateByCurrency:
         assert (rate.value, rate.source) == (Decimal("0.03"), "env_fallback")
         sources.fred.get_risk_free_rate.assert_not_awaited()
 
-    async def test_a_currency_without_source_uses_the_configured_rate(self, sources):
+    async def test_without_the_oecd_a_currency_without_source_uses_the_configured_rate(
+        self, sources
+    ):
         rate = await sources.service._risk_free_rate("GBP")
 
-        assert rate.source == "env_fallback"
+        assert (rate.source, rate.reason) == ("env_fallback", "no 10-year rate source for GBP")
         sources.fred.get_risk_free_rate.assert_not_awaited()
         sources.ecb.get_euro_risk_free_rate.assert_not_awaited()
+
+    async def test_the_pound_takes_the_10_year_rate_of_the_oecd(self, with_oecd):
+        rate = await with_oecd.service._risk_free_rate("GBP")
+
+        assert rate == RiskFreeRate(Decimal("0.053393"), "oecd_cached", date(2026, 10, 1))
+        with_oecd.fred.get_risk_free_rate.assert_not_awaited()
+
+    async def test_the_swiss_franc_takes_the_swiss_rate(self, with_oecd):
+        rate = await with_oecd.service._risk_free_rate("CHF")
+        assert (rate.value, rate.source) == (Decimal("0.0051"), "oecd_cached")
+
+    async def test_the_ecb_first_then_the_german_rate(self, with_oecd):
+        assert await with_oecd.service._risk_free_rate("EUR") == ECB_RATE
+        with_oecd.ecb.get_euro_risk_free_rate.return_value = None
+
+        rate = await with_oecd.service._risk_free_rate("EUR")
+
+        assert (rate.value, rate.source) == (Decimal("0.03415909"), "oecd_cached")
+        with_oecd.fred.get_risk_free_rate.assert_not_awaited()
+
+    @pytest.mark.parametrize("currency", ["USD", None])
+    async def test_fred_and_the_treasury_first_then_the_us_rate(self, with_oecd, currency):
+        with_oecd.fred.get_risk_free_rate.return_value = RiskFreeRate(
+            Decimal("0.04"), "env_fallback"
+        )
+
+        rate = await with_oecd.service._risk_free_rate(currency)
+
+        assert (rate.value, rate.source) == (Decimal("0.0513"), "oecd_cached")
+
+    async def test_a_currency_the_oecd_does_not_give(self, with_oecd, monkeypatch):
+        import valuation.dcf_service as module
+
+        monkeypatch.setattr(module, "DEFAULT_RISK_FREE_RATE", Decimal("0.03"))
+
+        rate = await with_oecd.service._risk_free_rate("HKD")
+
+        assert rate == RiskFreeRate(
+            Decimal("0.03"), "env_fallback", reason="no OECD 10-year rate for HKD"
+        )
+
+    async def test_a_failed_reading_uses_the_stored_rate(self, with_oecd):
+        with_oecd.service.long_rates = LongRateRepository(
+            FakeLongRates(OECD_10Y, FAILED, "the OECD did not answer")
+        )
+
+        rate = await with_oecd.service._risk_free_rate("CHF")
+
+        assert (rate.value, rate.source) == (Decimal("0.0051"), "oecd_stale")
+
+    async def test_a_failed_reading_without_rate_stored_says_why(self, with_oecd):
+        with_oecd.service.long_rates = LongRateRepository(
+            FakeLongRates({}, FAILED, "the OECD did not answer")
+        )
+        with_oecd.ecb.get_euro_risk_free_rate.return_value = None
+
+        rate = await with_oecd.service._risk_free_rate("EUR")
+
+        oldest = _months_before_today(3)
+        assert rate.source == "env_fallback"
+        assert rate.reason == (
+            f"the ECB gave no rate; no OECD 10-year rate of DEU since {oldest:%Y-%m} "
+            "(nothing stored); the last reading failed: the OECD did not answer"
+        )
+
+    @pytest.mark.parametrize(
+        ("currency", "oecd", "has_source"),
+        [
+            ("EUR", False, True),
+            ("USD", False, True),
+            (None, False, True),
+            ("GBP", False, False),
+            ("GBP", True, True),
+            ("CHF", True, True),
+            ("HKD", True, False),
+        ],
+    )
+    def test_which_currencies_have_a_source(self, sources, currency, oecd, has_source):
+        if oecd:
+            sources.service.long_rates = LongRateRepository(FakeLongRates({}))
+        assert sources.service.has_rate_source(currency) is has_source
+
+    def test_without_ecb_nor_fred_only_the_oecd(self):
+        service = DCFService(MagicMock(), long_rates=LongRateRepository(FakeLongRates({})))
+        assert service.has_rate_source("EUR") and service.has_rate_source(None)
+        assert not DCFService(MagicMock()).has_rate_source("EUR")
+
+
+def _months_before_today(months):
+    from datetime import datetime, timezone
+
+    from macro.short_rates import months_before
+
+    return months_before(datetime.now(timezone.utc).date(), months)
 
 
 # ── On stored data ────────────────────────────────────────────────────────────
@@ -232,16 +362,39 @@ class TestValuationCurrency:
 
         assert result.wacc.risk_free_rate_source == "env_fallback"
         assert result.wacc.risk_free_rate_currency is None
+        assert result.warnings == []
+
+    def test_the_configured_rate_says_why_it_is_used(self, monkeypatch):
+        import valuation.dcf_service as module
+
+        monkeypatch.setattr(module, "DEFAULT_RISK_FREE_RATE", Decimal("0.04"))
+        rf = RiskFreeRate(Decimal("0.04"), "env_fallback", reason="no OECD 10-year rate for HKD")
+
+        result = self._value(_company("EUR", "EUR", 80.0), rf=rf)
+
+        assert result.warnings == ["DCF_RISK_FREE_RATE (4.00 %) used: no OECD 10-year rate for HKD"]
+
+    def test_a_rate_of_the_oecd_names_the_currency(self):
+        rf = RiskFreeRate(Decimal("0.0051"), "oecd_cached", date(2026, 10, 1))
+        result = self._value(_company("CHF", "CHF", 80.0), rf=rf)
+
+        assert result.wacc.risk_free_rate == Decimal("0.0051")
+        assert result.wacc.risk_free_rate_source == "oecd_cached"
+        assert result.wacc.risk_free_rate_date == date(2026, 10, 1)
+        assert result.wacc.risk_free_rate_currency == "CHF"
+        assert result.warnings == []
 
     def test_a_rate_given_in_the_request_names_no_currency(self):
         request = DCFRequest(wacc_params=WACCInput(risk_free_rate=Decimal("0.03")))
         result = DCFService(_company("EUR", "EUR", 80.0).database)._compute_dcf_sync(
-            "ACME", request, ECB_RATE
+            "ACME", request, RiskFreeRate(Decimal("0.04"), "env_fallback", reason="no source")
         )
 
         assert result.wacc.risk_free_rate == Decimal("0.03")
         assert result.wacc.risk_free_rate_source == "client_override"
         assert result.wacc.risk_free_rate_currency is None
+        # The rate of the request is used: no warning about the configured one.
+        assert result.warnings == []
 
     async def test_compute_dcf_asks_the_source_of_the_currency_of_the_statements(self):
         company = _company("EUR", "USD", 95.0)

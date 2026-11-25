@@ -111,19 +111,26 @@ class WACCResult(BaseModel):
             "10-year rate, for cash flows in EUR); fred_live, fred_cached, fred_stale (US "
             "10-year Treasury rate read from FRED, for cash flows in USD); treasury_live, "
             "treasury_cached, treasury_stale (the same rate read from the Treasury yield "
-            "curve, when FRED gives none) — live: read now, cached: read "
-            "less than one cache lifetime ago, stale: older stored value, the source could "
-            "not be read; env_fallback (DCF_RISK_FREE_RATE: no source for the currency, or "
-            "nothing read)"
+            "curve, when FRED gives none); oecd_live, oecd_cached, oecd_stale (10-year "
+            "government bond yield of the OECD, monthly: the area of the currency of the cash "
+            "flows, Germany for EUR and the United States for USD when the ECB or FRED and "
+            "the Treasury give none) — live: read now, cached: read recently, stale: stored "
+            "value, the source could not be read; env_fallback (DCF_RISK_FREE_RATE: no "
+            "source for the currency, or nothing read; a warning of the answer says why)"
         ),
     )
     risk_free_rate_date: Optional[date] = Field(
-        None, description="Observation date of Rf, when it comes from a source"
+        None,
+        description=(
+            "Observation date of Rf, when it comes from a source (the first day of the "
+            "month for a monthly rate of the OECD)"
+        ),
     )
     risk_free_rate_currency: Optional[str] = Field(
         None,
         description=(
-            "Currency of the rate read from a source (EUR from the ECB, USD from FRED); "
+            "Currency of the rate read from a source (EUR from the ECB, USD from FRED, "
+            "the other currencies from the OECD); "
             "null for DCF_RISK_FREE_RATE or a rate set in the request"
         ),
     )

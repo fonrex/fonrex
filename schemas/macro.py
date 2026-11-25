@@ -51,8 +51,10 @@ class RiskFreeRate:
     """The risk-free rate a valuation uses, and where it comes from."""
 
     value: Decimal
-    source: str  # fred_live, fred_cached, fred_stale, treasury_live, ecb_live, ..., env_fallback
+    source: str  # fred_live, ..., treasury_live, ecb_live, oecd_live, ..., env_fallback
     observation_date: Optional[date] = None
+    # Why DCF_RISK_FREE_RATE is used: set on env_fallback only.
+    reason: Optional[str] = None
 
 
 class MacroRatesResponse(BaseModel):

@@ -499,6 +499,7 @@ Invalidation:
 
 - An ingestion drops the `history`, `eod`, `technical`, `dcf` and `risk` entries of the ticker.
 - `GET /risk/{ticker}` answers 503 when the startup refused the database (`db_available` false), and does not keep an answer without the risk-free rate of a currency that has a source (OECD, Bank of England or Treasury not answering, rates not loaded yet): the next request measures again.
+- `GET /dcf/{ticker}` and `GET /dcf/{ticker}/compare` do not keep a valuation made on `DCF_RISK_FREE_RATE` (`env_fallback`) when the currency of its statements has a source (ECB, FRED or Treasury, OECD not answering, 10-year rates not loaded yet): the next request values again. A currency without source (`HKD`...) is kept.
 - `POST /cache/clear` and `POST /cache/clear/{ticker}` delete `eod:*` entries only; `GET /cache/stats` counts the same entries. The other caches expire on their own, or are bypassed per request (`nocache` on `/fundamental`, `refresh` on `/fundamental/deep` and the specialised routes, `force_refresh` on `/news/{ticker}`, `/dcf/*` and `/risk/{ticker}`).
 
 Application logs go to the standard output (`logging.basicConfig(level=INFO)`), read with `docker compose logs`.

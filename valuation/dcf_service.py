@@ -16,6 +16,7 @@ from database.price_series import latest_daily_close_of_asset
 from database.ticker_suffix import listing_on, ticker_lookups
 from factors.cost_of_equity import FactorCostOfEquity, factor_cost_of_equity
 from financials.fiscal_years import FiscalYear, fiscal_years
+from macro.long_rates import LongRateRepository
 from models import (
     AnalystRatings,
     Asset,
@@ -61,6 +62,7 @@ class DCFService:
         fred_service=None,
         ecb_service=None,
         factor_exposure=None,
+        long_rates: Optional[LongRateRepository] = None,
     ):
         self.db_service = db_service
         self.redis = redis_client
@@ -68,6 +70,8 @@ class DCFService:
         self.ecb = ecb_service
         # Betas on the Fama/French factors, for a cost of equity asked as ff3, ff5 or carhart.
         self.factor_exposure = factor_exposure
+        # The 10-year rates of the OECD, for the currencies the ECB and FRED do not give.
+        self.long_rates = long_rates
 
     def _dec(self, val) -> Decimal:
         """Safely converts a value to Decimal, returning 0 if None."""
@@ -126,21 +130,45 @@ class DCFService:
             factor = await factor_cost_of_equity(self.factor_exposure, ticker, model)
         return await run_sync(self._compute_dcf_sync, ticker, request, rf, factor)
 
-    async def _risk_free_rate(self, currency: Optional[str]) -> RiskFreeRate:
-        """The risk-free rate of the currency of the cash flows.
+    def has_rate_source(self, currency: Optional[str]) -> bool:
+        """Whether a source gives the 10-year rate of ``currency`` (else DCF_RISK_FREE_RATE)."""
+        if currency == "EUR" and self.ecb:
+            return True
+        if currency in (None, "USD") and self.fred:
+            return True
+        return self.long_rates is not None and self.long_rates.has_source(currency or "USD")
 
-        EUR: the AAA 10-year rate of the ECB; USD: the 10-year Treasury rate of FRED,
-        or of the Treasury curve when FRED gives none.
-        Without a source for the currency (or when the source gives nothing),
-        ``DCF_RISK_FREE_RATE``: a rate of another currency would be wrong.
+    async def _risk_free_rate(self, currency: Optional[str]) -> RiskFreeRate:
+        """The 10-year risk-free rate of the currency of the cash flows.
+
+        EUR: the AAA 10-year rate of the ECB, else the German 10-year rate of the OECD;
+        USD (and an unknown currency): the 10-year Treasury rate of FRED, or of the
+        Treasury curve when FRED gives none, else the US 10-year rate of the OECD;
+        other currencies: the 10-year rate of the OECD of the area of the currency
+        (``macro/long_rates.py``). Without any, ``DCF_RISK_FREE_RATE`` with the reason:
+        a rate of another currency would be wrong.
         """
+        reasons: List[str] = []
         if currency == "EUR" and self.ecb:
             rate = await self.ecb.get_euro_risk_free_rate()
             if rate is not None:
                 return rate
+            reasons.append("the ECB gave no rate")
         elif currency in (None, "USD") and self.fred:
-            return await self.fred.get_risk_free_rate()
-        return RiskFreeRate(value=DEFAULT_RISK_FREE_RATE, source="env_fallback")
+            rate = await self.fred.get_risk_free_rate()
+            if rate.source != "env_fallback":
+                return rate
+            reasons.append("FRED and the Treasury gave no rate")
+        if self.long_rates is not None:
+            long = await self.long_rates.latest(
+                currency or "USD", today=datetime.now(timezone.utc).date()
+            )
+            if long.value is not None and long.source is not None:
+                return RiskFreeRate(long.value, long.source, long.observation_date)
+            reasons.append(long.reason or "no OECD 10-year rate")
+        elif not reasons:
+            reasons.append(f"no 10-year rate source for {currency or 'an unknown currency'}")
+        return RiskFreeRate(DEFAULT_RISK_FREE_RATE, "env_fallback", reason="; ".join(reasons))
 
     def _currency_of(self, ticker: str) -> Optional[str]:
         """Currency of the valuation of a ticker; ``None`` when the ticker is unknown."""
@@ -275,9 +303,15 @@ class DCFService:
             # configured rate and a rate given in the request name none.
             rf_source = wacc_res.risk_free_rate_source or ""
             wacc_res.risk_free_rate_currency = (
-                currency.currency if rf_source.startswith(("fred_", "treasury_", "ecb_")) else None
+                currency.currency
+                if rf_source.startswith(("fred_", "treasury_", "ecb_", "oecd_"))
+                else None
             )
             result_warnings = [currency.warning] if currency.warning else []
+            if rf_source == "env_fallback" and rf is not None and rf.reason:
+                result_warnings.append(
+                    f"DCF_RISK_FREE_RATE ({DEFAULT_RISK_FREE_RATE * 100:.2f} %) used: {rf.reason}"
+                )
             if factor is not None:
                 wacc_res, factor_warnings = self._with_factor_cost_of_equity(
                     wacc_res, factor, request.wacc_params

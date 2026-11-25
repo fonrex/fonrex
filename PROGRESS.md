@@ -3,7 +3,7 @@
 ## Current State
 
 - **Verification**: `make fast` (rapid static & guard loop) and `make ci` (full quality gate after any harness or code change)
-- **Active focus**: Risk metrics, follow-ups of phase 1 (see Active / Multi-Session Work below)
+- **Active focus**: DCF risk-free rate by currency, phase 2 of issue #70 (see Active / Multi-Session Work below)
 
 ## Active / Multi-Session Work
 
@@ -19,7 +19,13 @@
   2. Done: the series of the OECD across the end of the LIBOR, checked on 2026-11-25: `EA20` is the monthly mean of the 3-month Euribor (so the ECB is not read), `CHE` follows the SARON with no break.
   3. Done: GBP from the monthly SONIA of the Bank of England (`financials/providers/boe.py`, series `IUMASOIA`, since 1997), kept by `ShortRates` with `SONIA_SERIES` (source `boe`, indicator `rate_on`, `geo` `GBR`; `BOE_REFRESH_HOURS`, `BOE_RETRY_MINUTES`); `scripts/load_short_rates.py` reads both sources (`--source` for one).
   4. Done: the `fonrex_risk` OpenBB widget (`GET /openbb/risk/{ticker}`, in the Factors tab of the EU Markets app) and the `FONREX_RISK` formula of the Sheets connector.
-  Later: the pages of the documentation site (EN/FR/ZH) for `/risk`, its widget, its formula and the new settings (separate repository); phase 2 of issue #70 (10-year rates of the OECD for the DCF).
+  Later: the pages of the documentation site (EN/FR/ZH) for `/risk`, its widget, its formula and the new settings (separate repository).
+- **DCF risk-free rate by currency, phase 2 of issue #70**: branch `feat/dcf-long-rates`, one commit per step, one pull request after step 4. Decisions (to write on the issue): D1 EUR from the ECB, then the OECD `DEU` (not `EA20`, a mean of the whole euro area); D2 USD from FRED, then the Treasury curve, then the OECD `USA`; D3 one request a measure at the OECD; D4 a monthly rate at most 3 months old; D5 a DCF on `DCF_RISK_FREE_RATE` is not cached when its currency has a source.
+  1. Done: the OECD 10-year yields (`IRLT`) read by `OECDProvider.long_rates` (fixture `tests/fixtures/oecd/irlt_monthly.csv`, captured on 2026-11-25: 44 areas, `GBR` goes on, no `ISL` nor `IDN`).
+  2. Done: stored in `macro_observations` (source `oecd`, indicator `rate_10y`) by `ShortRates` with `OECD_LONG_SERIES`; `scripts/load_short_rates.py --source oecd_10y`.
+  3. Done: `macro/long_rates.py` (`LongRateRepository`): the latest 10-year rate of a currency, `oecd_live` / `oecd_cached` / `oecd_stale`, or no rate with the reason.
+  4. Done: the DCF discounts with the 10-year rate of its currency (`valuation/dcf_service.py`), `DCF_RISK_FREE_RATE` only without source, with a warning saying why; the routes `/dcf` do not cache such a valuation when the currency has a source. Phase 2 complete: open the pull request of the branch, tick 2.1 and 2.2 on issue #70.
+  Later: phase 3 of issue #70 (the missing lines of the financial statements); the pages of the documentation site (EN/FR/ZH) for the DCF rate sources, the new source codes and the warning (separate repository).
 - **Module quality & coverage**: See the health summary in [docs/testing-and-quality.md](docs/testing-and-quality.md#module-quality-and-health-scores) and exact per-module floors in `scripts/check_coverage_distribution.py`.
 
 ## Next Steps

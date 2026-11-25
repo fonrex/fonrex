@@ -52,6 +52,7 @@ from macro.ecb_service import ECBService
 from macro.eurostat_service import EurostatService
 from macro.fred_service import FREDService
 from macro.fx_rates import EcbExchangeRates
+from macro.long_rates import LongRateRepository
 from macro.risk_free_rates import RiskFreeRateRepository
 from macro.short_rates import OECD_LONG_SERIES, SONIA_SERIES, ShortRates
 from macro.treasury_curves import TreasuryCurves
@@ -641,6 +642,9 @@ async def startup_event(application: FastAPI):
             state.fred_service,
             state.ecb_service,
             factor_exposure=state.factor_exposure,
+            long_rates=(
+                LongRateRepository(state.long_rates) if state.long_rates is not None else None
+            ),
         )
         logger.info("📈 DCFService started")
     except Exception as exc:

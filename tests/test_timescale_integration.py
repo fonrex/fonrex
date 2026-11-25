@@ -2324,6 +2324,62 @@ class TestShortRatesOnPostgres:
         assert counts == {"rate_3m": 30, "rate_10y": 31}
 
 
+class TestDiscountRateOfTheOecdOnPostgres:
+    """The risk-free rate of a DCF in francs, from the 10-year rates of the OECD stored."""
+
+    NOW = datetime(2026, 11, 25, 21, 0, tzinfo=timezone.utc)
+
+    async def test_a_swiss_valuation_takes_the_stored_swiss_rate(self, database_url, engine):
+        from financials.providers.oecd import LONG_RATE, parse_rates_csv
+        from macro.long_rates import LongRateRepository
+        from macro.short_rates import OECD_LONG_SERIES, ShortRates
+        from valuation.dcf_service import DCFService
+
+        class OnTheDayOfTheFixture(LongRateRepository):
+            """The fixture ends in 2026-10: the day is fixed, not the day of the run."""
+
+            async def latest(self, currency, *, today):
+                day = TestDiscountRateOfTheOecdOnPostgres.NOW.date()
+                return await super().latest(currency, today=day)
+
+        answer = parse_rates_csv(
+            (TestShortRatesOnPostgres.FIXTURE.parent / "irlt_monthly.csv").read_bytes().decode(),
+            LONG_RATE,
+        )
+        reader = AsyncMock(return_value=answer)
+        TestShortRatesOnPostgres.clean(engine)
+        async_engine = create_async_engine(
+            database_url.replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool
+        )
+        long_rates = ShortRates(
+            async_sessionmaker(async_engine),
+            reader,
+            now=lambda: self.NOW,
+            series=OECD_LONG_SERIES,
+        )
+        service = DCFService(MagicMock(), long_rates=OnTheDayOfTheFixture(long_rates))
+        try:
+            first = await service._risk_free_rate("CHF")
+            again = await service._risk_free_rate("CHF")
+            pound = await service._risk_free_rate("GBX")
+            dollar = await service._risk_free_rate("USD")
+        finally:
+            await async_engine.dispose()
+            TestShortRatesOnPostgres.clean(engine)
+
+        # One reading of the OECD, then the stored rates.
+        assert reader.await_count == 1
+        assert (first.value, first.source, first.observation_date) == (
+            Decimal("0.00510000"),
+            "oecd_live",
+            date(2026, 10, 1),
+        )
+        assert (again.source, again.value) == ("oecd_cached", first.value)
+        assert (pound.source, pound.value) == ("oecd_cached", Decimal("0.05339300"))
+        # No FRED in this service: the dollar takes the US rate of the OECD.
+        assert (dollar.source, dollar.value) == ("oecd_cached", Decimal("0.05130000"))
+
+
 class TestShortRatesScriptOnPostgres:
     """``scripts/load_short_rates.py`` from the answers of the OECD and of the Bank of
     England to the tables."""

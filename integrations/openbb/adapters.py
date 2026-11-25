@@ -187,11 +187,18 @@ def format_risk_table(risk_obj: Any) -> List[Dict[str, Any]]:
     confidence = _to_num(data.get("confidence"))
     level = f"{confidence:.1%}" if isinstance(confidence, (int, float)) else "?"
     no_rate = rates.get("reason") or "no risk-free rate"
+    has_rate = rates.get("mean") is not None
 
     def row(metric: str, value: Any, detail: Any = None) -> Dict[str, Any]:
         return {"Metric": metric, "Value": value, "Detail": detail}
 
-    if rates.get("mean") is not None:
+    def ratio_detail(key: str, undefined: str) -> Optional[str]:
+        """Why a ratio is empty: no rate, or, with a rate, a zero denominator."""
+        if data.get(key) is not None:
+            return None
+        return undefined if has_rate else no_rate
+
+    if has_rate:
         source = rates.get("source") or ""
         span = f"{rates.get('first_observation')} → {rates.get('last_observation')}"
         rate_detail = f"{source}, {span}" if source else span
@@ -239,12 +246,12 @@ def format_risk_table(risk_obj: Any) -> List[Dict[str, Any]]:
         row(
             "Sharpe ratio",
             _rounded(data.get("sharpe_ratio"), 2),
-            None if data.get("sharpe_ratio") is not None else no_rate,
+            ratio_detail("sharpe_ratio", "Not defined: the excess returns never vary"),
         ),
         row(
             "Sortino ratio",
             _rounded(data.get("sortino_ratio"), 2),
-            None if data.get("sortino_ratio") is not None else no_rate,
+            ratio_detail("sortino_ratio", "Not defined: no return below the risk-free rate"),
         ),
         row(
             f"Risk-free rate ({rates.get('currency') or '?'}, mean)",

@@ -540,6 +540,25 @@ def test_format_risk_table_without_rate_nor_drawdown_and_with_warnings():
     }
 
 
+def test_format_risk_table_ratios_undefined_with_a_rate():
+    """With a rate, an empty Sharpe or Sortino is a zero denominator, not a missing rate
+    (``risk/metrics.py``): the rate row shows the rate used, the ratios say why."""
+    by_metric = {
+        row["Metric"]: row
+        for row in format_risk_table(_risk(sharpe_ratio=None, sortino_ratio=None))
+    }
+
+    assert by_metric["Sharpe ratio"] == {
+        "Metric": "Sharpe ratio",
+        "Value": None,
+        "Detail": "Not defined: the excess returns never vary",
+    }
+    assert by_metric["Sortino ratio"]["Detail"] == (
+        "Not defined: no return below the risk-free rate"
+    )
+    assert by_metric["Risk-free rate (GBP, mean)"]["Value"] == "4.51%"
+
+
 def test_format_risk_table_recovered_and_a_rate_without_source_name():
     drawdown = {
         "value": -0.1,

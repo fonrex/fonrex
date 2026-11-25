@@ -56,8 +56,8 @@ setup: ## Initial setup (create logs, instance, backup dirs)
 
 clean: ## Clean cache files, __pycache__, and coverage artifacts
 	@echo -e "$(YELLOW)🧹 Cleaning cache files and __pycache__...$(NC)"
-	find . \( -path './.venv' -o -path './venv' -o -path './node_modules' \) -prune -o -name "*.pyc" -delete
-	find . \( -path './.venv' -o -path './venv' -o -path './node_modules' \) -prune -o -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+	find . \( -path './.venv' -o -path './venv' -o -path './node_modules' \) -prune -o -name "*.pyc" -exec rm -f {} +
+	find . \( -path './.venv' -o -path './venv' -o -path './node_modules' \) -prune -o -name "__pycache__" -type d -prune -exec rm -rf {} +
 	rm -rf .pytest_cache .ruff_cache .coverage coverage.xml coverage.json
 	@echo -e "$(GREEN)✅ Cleanup completed$(NC)"
 

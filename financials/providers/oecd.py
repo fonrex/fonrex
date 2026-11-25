@@ -1,24 +1,27 @@
-"""OECDProvider — the 3-month interest rates of the OECD, every country at once.
+"""OECDProvider — the 3-month and 10-year interest rates of the OECD, every country at once.
 
 Source: the SDMX API of the OECD (https://sdmx.oecd.org, official, free, no key).
 The monthly financial indicators of the Short-Term Economic Statistics
 (dataflow ``OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0``) give, for each country or
-area, the 3-month interbank rate (measure ``IR3TIB``, in percent a year): one
-request returns every country, the reference area left empty in the key::
+area, the 3-month interbank rate (measure ``IR3TIB``) and the 10-year government
+bond yield (measure ``IRLT``), in percent a year. One request returns every
+country for one measure, the reference area left empty in the key::
 
     https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/
         .M.IR3TIB.PA._Z._Z._Z._Z.N?startPeriod=2026-01&dimensionAtObservation=AllDimensions
 
-with ``Accept: application/vnd.sdmx.data+csv``: one row per country and month
-(``REF_AREA`` such as ``CHE``, ``GBR`` or ``EA20`` for the euro area,
-``TIME_PERIOD`` ``2026-10``, ``OBS_VALUE`` ``-0.0415``). A period without any
-value answers HTTP 404 with ``NoRecordsFound``.
+(``.M.IRLT.PA...`` for the 10-year yields) with ``Accept:
+application/vnd.sdmx.data+csv``: one row per country and month (``REF_AREA``
+such as ``CHE``, ``GBR`` or ``EA20`` for the euro area, ``TIME_PERIOD``
+``2026-10``, ``OBS_VALUE`` ``-0.0415``). A period without any value answers
+HTTP 404 with ``NoRecordsFound``.
 
-The OECD allows about 60 downloads an hour from one address, and answers 429
-beyond: the provider asks once, without retrying, and the caller keeps the rates
-it has. The rates are kept as ratios (``2.63`` becomes ``0.0263``); a row that
-is not a monthly 3-month rate in percent is refused, never ignored, so that a
-change of the dataflow is seen.
+The two measures are asked in two requests, so that the failure or the delay of
+one does not stop the other. The OECD allows about 60 downloads an hour from
+one address, and answers 429 beyond: the provider asks once, without retrying,
+and the caller keeps the rates it has. The rates are kept as ratios (``2.63``
+becomes ``0.0263``); a row that is not a monthly rate of the measure asked, in
+percent, is refused, never ignored, so that a change of the dataflow is seen.
 """
 
 from __future__ import annotations
@@ -36,15 +39,19 @@ logger = logging.getLogger(__name__)
 
 OECD_API_URL = "https://sdmx.oecd.org/public/rest/data"
 DATAFLOW = "OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0"
-MEASURE = "IR3TIB"
-# Every reference area, monthly, the 3-month interbank rate in percent a year.
-SERIES_KEY = f".M.{MEASURE}.PA._Z._Z._Z._Z.N"
+SHORT_RATE = "IR3TIB"
+LONG_RATE = "IRLT"
+# What each measure is, as written in the errors.
+_MEASURES = {SHORT_RATE: "3-month rate", LONG_RATE: "10-year rate"}
 CSV_MEDIA_TYPE = "application/vnd.sdmx.data+csv; charset=utf-8"
-SOURCE = "OECD, Short-Term Economic Statistics, 3-month interbank rate (https://sdmx.oecd.org)"
+SOURCE = (
+    "OECD, Short-Term Economic Statistics, 3-month interbank rate and "
+    "10-year government bond yield (https://sdmx.oecd.org)"
+)
 
 # The columns read; the others (TIME_HORIZ, DECIMALS, BASE_PER...) are not used.
 _COLUMNS = ("REF_AREA", "FREQ", "MEASURE", "UNIT_MEASURE", "TIME_PERIOD", "OBS_VALUE")
-# A 3-month rate is a percent of a few units; beyond this the answer is not read.
+# A rate is a percent of a few units, a few tens at most; beyond this the answer is not read.
 _LARGEST_PERCENT = Decimal(100)
 _HUNDRED = Decimal(100)
 
@@ -55,7 +62,8 @@ class OECDError(ValueError):
 
 @dataclass(frozen=True)
 class ShortRate:
-    """The 3-month rate of a country for a month, as a ratio; the month is dated by its first day."""
+    """A rate of a country for a month (3-month or 10-year, as asked), as a ratio; the month is
+    dated by its first day."""
 
     area: str
     period: date
@@ -63,8 +71,19 @@ class ShortRate:
     status: str | None = None
 
 
+def _measure(measure: str) -> str:
+    if measure not in _MEASURES:
+        raise ValueError(f"{measure!r} is not a rate of the OECD: {', '.join(_MEASURES)}")
+    return measure
+
+
+def rates_url(measure: str) -> str:
+    """Every reference area, monthly, the rate of ``measure`` in percent a year."""
+    return f"{OECD_API_URL}/{DATAFLOW}/.M.{_measure(measure)}.PA._Z._Z._Z._Z.N"
+
+
 def short_rates_url() -> str:
-    return f"{OECD_API_URL}/{DATAFLOW}/{SERIES_KEY}"
+    return rates_url(SHORT_RATE)
 
 
 def _period(cell: str, line: int) -> date:
@@ -88,8 +107,9 @@ def _rate(cell: str, line: int) -> Decimal | None:
     return percent / _HUNDRED
 
 
-def parse_short_rates_csv(text: str) -> list[ShortRate]:
-    """Read an SDMX-CSV answer of the OECD: the rates, by country then month."""
+def parse_rates_csv(text: str, measure: str) -> list[ShortRate]:
+    """Read an SDMX-CSV answer of the OECD for ``measure``: the rates, by country then month."""
+    _measure(measure)
     rows = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
     header = [cell.strip() for cell in rows[0]] if rows else []
     missing = [column for column in _COLUMNS if column not in header]
@@ -103,8 +123,8 @@ def parse_short_rates_csv(text: str) -> list[ShortRate]:
         if len(row) != len(header):
             raise OECDError(f"line {line}: {len(row)} cells for {len(header)} columns")
         kind = (row[at["FREQ"]], row[at["MEASURE"]], row[at["UNIT_MEASURE"]])
-        if kind != ("M", MEASURE, "PA"):
-            raise OECDError(f"line {line}: {'/'.join(kind)} is not a monthly 3-month rate")
+        if kind != ("M", measure, "PA"):
+            raise OECDError(f"line {line}: {'/'.join(kind)} is not a monthly {_MEASURES[measure]}")
         if "UNIT_MULT" in at and row[at["UNIT_MULT"]].strip() not in ("", "0"):
             raise OECDError(f"line {line}: unit multiplier {row[at['UNIT_MULT']]!r}")
         area = row[at["REF_AREA"]].strip()
@@ -121,8 +141,12 @@ def parse_short_rates_csv(text: str) -> list[ShortRate]:
     return [rates[key] for key in sorted(rates)]
 
 
+def parse_short_rates_csv(text: str) -> list[ShortRate]:
+    return parse_rates_csv(text, SHORT_RATE)
+
+
 class OECDProvider(BaseFinancialProvider):
-    """The 3-month rates of every country the OECD publishes, in one request."""
+    """The 3-month and 10-year rates of every country the OECD publishes, one request a measure."""
 
     name = "OECD"
     timeout = 60.0
@@ -130,13 +154,21 @@ class OECDProvider(BaseFinancialProvider):
     max_retries = 1
 
     async def short_rates(self, start: date) -> list[ShortRate] | None:
-        """The rates of every country from the month of ``start``; ``None`` when the OECD
-        did not answer (refused, over its limit, or no value for the period).
+        """The 3-month rates of every country from the month of ``start``."""
+        return await self._rates(SHORT_RATE, start)
+
+    async def long_rates(self, start: date) -> list[ShortRate] | None:
+        """The 10-year government bond yields of every country from the month of ``start``."""
+        return await self._rates(LONG_RATE, start)
+
+    async def _rates(self, measure: str, start: date) -> list[ShortRate] | None:
+        """The rates of ``measure``; ``None`` when the OECD did not answer (refused, over its
+        limit, or no value for the period).
 
         An answer that cannot be read raises ``OECDError``: nothing of it is used.
         """
         text = await self._get(
-            short_rates_url(),
+            rates_url(measure),
             headers={"Accept": CSV_MEDIA_TYPE},
             params={
                 "startPeriod": f"{start:%Y-%m}",
@@ -145,4 +177,4 @@ class OECDProvider(BaseFinancialProvider):
         )
         if text is None:
             return None
-        return parse_short_rates_csv(text)
+        return parse_rates_csv(text, measure)

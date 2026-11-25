@@ -1,6 +1,7 @@
-# OECD 3-month interest rates
+# OECD 3-month and 10-year interest rates
 
-A reduced real answer of the OECD, captured on 2026-11-20. Tests read this file: no
+Reduced real answers of the OECD: the 3-month rates captured on 2026-11-20, the
+10-year rates on 2026-11-25. Tests read this file: no
 test reaches the OECD.
 
 The OECD publishes its Short-Term Economic Statistics through a free SDMX API
@@ -34,3 +35,29 @@ Compared with other sources (2026-11-25): across the end of the LIBOR (2021) the
 OECD chains each series itself. `EA20` is the monthly mean of the 3-month Euribor
 (`2.51` for 2026-08, as Eurostat gives it), and `CHE` follows the SARON (`-0.0415`
 for 2026-10, SARON fixings near `-0.04`), with no break.
+
+## 10-year rates
+
+The 10-year government bond yield (`IRLT`) is in the same dataflow:
+
+```
+https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/.M.IRLT.PA._Z._Z._Z._Z.N?startPeriod=2026-07&dimensionAtObservation=AllDimensions
+Accept: application/vnd.sdmx.data+csv; charset=utf-8
+```
+
+| File | What it shows |
+|---|---|
+| `irlt_monthly.csv` | 8 areas of the 44 of the answer: `EA20`, `DEU`, `GBR`, `CHE`, `USA`, `JPN`, `CHN`, `SWE`; every month of the answer, 2026-07 to 2026-10 (2026-09 for `CHN`) |
+
+Reduced the same way: the header and the lines of these areas, byte for byte and in
+the order of the answer.
+
+What the whole answer from 2026-07 showed (44 areas, 175 rows):
+
+- every row is `FREQ` `M`, `MEASURE` `IRLT`, `UNIT_MEASURE` `PA`, `UNIT_MULT` `0`,
+  `OBS_STATUS` `A`; no empty value;
+- every area runs to 2026-10 but `CHN`, to 2026-09;
+- **`GBR` goes on**, unlike its 3-month rate (`5.3393` for 2026-10);
+- `ISL` and `IDN` are not in the answer: the OECD gives them no 10-year rate;
+- `EA20` is the mean of the whole euro area (`4.173788` for 2026-10), not an AAA
+  yield: `DEU` gives `3.415909`.

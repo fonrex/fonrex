@@ -53,7 +53,7 @@ from macro.eurostat_service import EurostatService
 from macro.fred_service import FREDService
 from macro.fx_rates import EcbExchangeRates
 from macro.risk_free_rates import RiskFreeRateRepository
-from macro.short_rates import ShortRates
+from macro.short_rates import SONIA_SERIES, ShortRates
 from macro.treasury_curves import TreasuryCurves
 from monitoring.canary_monitor import CanaryMonitor
 from monitoring.validation_layer import ValidationLayer
@@ -294,6 +294,7 @@ SPECIALIZED_PROVIDER_SPECS = (
     ("openfigi_provider", "OpenFIGI", "financials.providers.openfigi", "OpenFIGIProvider"),
     ("treasury_provider", "Treasury", "financials.providers.treasury", "TreasuryProvider"),
     ("oecd_provider", "OECD", "financials.providers.oecd", "OECDProvider"),
+    ("boe_provider", "BankOfEngland", "financials.providers.boe", "BankOfEnglandProvider"),
     ("cftc_provider", "CFTC", "financials.providers.cftc", "CftcProvider"),
     ("esef_provider", "ESEF", "financials.providers.esef", "EsefProvider"),
     (
@@ -367,6 +368,7 @@ def configure_application_state(application: FastAPI):
         "factor_library",
         "factor_exposure",
         "short_rates",
+        "sonia_rates",
         "risk_service",
         "validation_layer",
         "usage_recorder",
@@ -589,9 +591,20 @@ async def startup_event(application: FastAPI):
             state.short_rates = ShortRates(
                 async_resources.session_factory, oecd_provider.short_rates
             )
+            # The pound: the monthly SONIA of the Bank of England (without it, no GBP rate).
+            boe_provider = getattr(state, "boe_provider", None)
+            state.sonia_rates = (
+                ShortRates(
+                    async_resources.session_factory,
+                    boe_provider.sonia_monthly,
+                    series=SONIA_SERIES,
+                )
+                if boe_provider is not None
+                else None
+            )
             state.risk_service = RiskService(
                 async_resources.session_factory,
-                RiskFreeRateRepository(state.treasury_curves, state.short_rates),
+                RiskFreeRateRepository(state.treasury_curves, state.short_rates, state.sonia_rates),
             )
             logger.info("📉 Risk metrics started")
         else:
@@ -600,6 +613,7 @@ async def startup_event(application: FastAPI):
             )
     except Exception as exc:
         state.short_rates = None
+        state.sonia_rates = None
         state.risk_service = None
         logger.warning("⚠️ Risk metrics not started: %s", exc)
 
@@ -728,6 +742,7 @@ async def shutdown_event(application: FastAPI):
         "factor_library",
         "factor_exposure",
         "short_rates",
+        "sonia_rates",
         "risk_service",
         "usage_recorder",
     ):

@@ -117,9 +117,9 @@ async def get_risk_of_listing(
     """Risk and risk-adjusted performance of a listing over its last years of daily closes.
 
     Volatility, maximum drawdown, historical and Gaussian value at risk and expected
-    shortfall, Calmar, and Sharpe and Sortino on the 3-month rate of the currency of
-    the listing (US Treasury for USD, OECD otherwise). Every figure is a ratio;
-    losses are negative.
+    shortfall, Calmar, and Sharpe and Sortino on the short-term rate of the currency
+    of the listing (US Treasury for USD, SONIA of the Bank of England for GBP, OECD
+    otherwise). Every figure is a ratio; losses are negative.
     """
     key = risk_cache_key(ticker, years, confidence, currency, exchange, isin)
     if cache is not None and not force_refresh:

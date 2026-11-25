@@ -2099,8 +2099,8 @@ class TestShortRatesOnPostgres:
     @staticmethod
     def clean(engine):
         with engine.begin() as connection:
-            connection.execute(text("DELETE FROM macro_observations WHERE source = 'oecd'"))
-            connection.execute(text("DELETE FROM macro_series_loads WHERE source = 'oecd'"))
+            for table in ("macro_observations", "macro_series_loads"):
+                connection.execute(text(f"DELETE FROM {table} WHERE source IN ('oecd', 'boe')"))
 
     @pytest.fixture
     async def rates(self, database_url, engine):
@@ -2274,7 +2274,8 @@ class TestShortRatesOnPostgres:
 
 
 class TestShortRatesScriptOnPostgres:
-    """``scripts/load_short_rates.py`` from the answer of the OECD to the tables."""
+    """``scripts/load_short_rates.py`` from the answers of the OECD and of the Bank of
+    England to the tables."""
 
     async def test_every_area_read_then_up_to_date(
         self, database_url, engine, fake_network, monkeypatch, capsys
@@ -2283,10 +2284,13 @@ class TestShortRatesScriptOnPostgres:
 
         from scripts import load_short_rates
 
-        answer = (Path(__file__).parent / "fixtures" / "oecd" / "ir3tib_monthly.csv").read_bytes()
+        fixtures = Path(__file__).parent / "fixtures"
+        answer = (fixtures / "oecd" / "ir3tib_monthly.csv").read_bytes()
         fake_network.get(
             "DSD_STES@DF_FINMARK,4.0/.M.IR3TIB.", httpx.Response(200, text=answer.decode())
         )
+        sonia = (fixtures / "boe" / "sonia_monthly.csv").read_bytes()
+        fake_network.get("_iadb-fromshowcolumns.asp", httpx.Response(200, text=sonia.decode()))
         monkeypatch.delenv("ASYNC_DATABASE_URL", raising=False)
         monkeypatch.setenv("DATABASE_URL", database_url)
         TestShortRatesOnPostgres.clean(engine)
@@ -2300,19 +2304,31 @@ class TestShortRatesScriptOnPostgres:
             TestShortRatesOnPostgres.clean(engine)
 
         assert (first, second) == (0, 0)
-        assert first_output.splitlines()[:3] == [
+        lines = first_output.splitlines()
+        assert lines[:4] == [
+            "OECD, 3-month rates",
             "fetched  30 rates of 8 areas from 1990-01",
             "  CHE    2026-07 → 2026-10",
             "  DNK    2026-07 → 2026-10",
         ]
-        assert "  GBR    2025-12 → 2026-02" in first_output.splitlines()
+        assert "  GBR    2025-12 → 2026-02" in lines
+        # The SONIA is stored under the same area, apart from the OECD rates (source boe).
+        assert lines[-3:] == [
+            "Bank of England, SONIA",
+            "fetched  358 rates of 1 areas from 1990-01",
+            "  GBR    1997-01 → 2026-10",
+        ]
         assert "startPeriod=1990-01" in fake_network.urls()[0]
+        assert "Datefrom=01%2FJan%2F1990" in fake_network.urls()[1]
         assert fake_network.calls("IR3TIB") == 1
-        assert second_output.splitlines()[0].startswith("fresh")
+        assert fake_network.calls("_iadb-fromshowcolumns.asp") == 1
+        second_lines = second_output.splitlines()
+        assert (second_lines[1], second_lines[-2]) == ("fresh   ", "fresh   ")
 
 
 class TestRiskFreeRatesOnPostgres:
-    """The daily risk-free rates read from the Treasury curve and the OECD rates stored."""
+    """The daily risk-free rates read from the Treasury curve, the OECD rates and the
+    SONIA of the Bank of England stored."""
 
     NOW = datetime(2026, 11, 20, 21, 0, tzinfo=timezone.utc)
 
@@ -2321,14 +2337,15 @@ class TestRiskFreeRatesOnPostgres:
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM yield_curve_points"))
             connection.execute(text("DELETE FROM yield_curve_loads"))
-            connection.execute(text("DELETE FROM macro_observations WHERE source = 'oecd'"))
-            connection.execute(text("DELETE FROM macro_series_loads WHERE source = 'oecd'"))
+            for table in ("macro_observations", "macro_series_loads"):
+                connection.execute(text(f"DELETE FROM {table} WHERE source IN ('oecd', 'boe')"))
 
-    async def test_dollar_and_euro_rates_of_the_same_days(self, database_url, engine):
+    async def test_dollar_euro_and_pound_rates_of_the_same_days(self, database_url, engine):
+        from financials.providers.boe import parse_sonia_csv
         from financials.providers.oecd import parse_short_rates_csv
         from financials.providers.treasury import CurveFile, parse_curve_csv
-        from macro.risk_free_rates import RiskFreeRateRepository
-        from macro.short_rates import ShortRates
+        from macro.risk_free_rates import SONIA_SOURCE, RiskFreeRateRepository
+        from macro.short_rates import SONIA_SERIES, ShortRates
         from macro.treasury_curves import TreasuryCurves
 
         fixtures = Path(__file__).parent / "fixtures"
@@ -2338,6 +2355,7 @@ class TestRiskFreeRatesOnPostgres:
         oecd = parse_short_rates_csv(
             (fixtures / "oecd" / "ir3tib_monthly.csv").read_bytes().decode()
         )
+        sonia = parse_sonia_csv((fixtures / "boe" / "sonia_monthly.csv").read_bytes().decode())
 
         async def read_year(curve, year):
             if (curve, year) == ("nominal", 2026):
@@ -2351,13 +2369,22 @@ class TestRiskFreeRatesOnPostgres:
         sessions = async_sessionmaker(async_engine)
         treasury = TreasuryCurves(sessions, AsyncMock(side_effect=read_year), now=lambda: self.NOW)
         short_rates = ShortRates(sessions, AsyncMock(return_value=oecd), now=lambda: self.NOW)
-        repository = RiskFreeRateRepository(treasury, short_rates)
+        sonia_rates = ShortRates(
+            sessions, AsyncMock(return_value=sonia), now=lambda: self.NOW, series=SONIA_SERIES
+        )
+        repository = RiskFreeRateRepository(treasury, short_rates, sonia_rates)
         last_day = nominal_2026.days[-1].day
         days = [last_day - timedelta(days=2), last_day]
         try:
             dollar = await repository.rates("USD", days)
             euro = await repository.rates("EUR", [date(2026, 10, 30), date(2026, 11, 20)])
-            pound = await repository.rates("GBp", [date(2026, 10, 30)])
+            pound = await repository.rates("GBp", [date(2026, 10, 30), date(2026, 11, 20)])
+            # The OECD rate of the United Kingdom is stored too, under the same area:
+            # the source keeps the two series apart.
+            oecd_gbr = await short_rates.series("GBR")
+            without_sonia = await RiskFreeRateRepository(treasury, short_rates).rates(
+                "GBP", [date(2026, 10, 30)]
+            )
         finally:
             await async_engine.dispose()
             self.clean(engine)
@@ -2368,8 +2395,18 @@ class TestRiskFreeRatesOnPostgres:
         assert set(dollar.rates) == set(days)
         assert euro.rates == {date(2026, 10, 30): 0.02634682, date(2026, 11, 20): 0.02634682}
         assert euro.last_observation == date(2026, 10, 1)
-        assert pound.rates is None
-        assert pound.reason.startswith("no OECD, 3-month interbank rate (GBR) for 2026-10-30")
+        assert (pound.currency, pound.source, pound.reason) == ("GBP", SONIA_SOURCE, None)
+        assert pound.rates == {date(2026, 10, 30): 0.037333, date(2026, 11, 20): 0.037333}
+        assert (pound.first_observation, pound.last_observation) == (
+            date(2026, 10, 1),
+            date(2026, 10, 1),
+        )
+        assert oecd_gbr[-1] == (date(2026, 2, 1), Decimal("0.03620000"))
+        assert (without_sonia.source, without_sonia.rates, without_sonia.reason) == (
+            None,
+            None,
+            "no short-term rate source for GBP",
+        )
 
 
 class TestRiskOnPostgres:

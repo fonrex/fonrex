@@ -245,7 +245,7 @@ class TestRoute:
 
     def test_a_currency_without_source_is_kept(self, client):
         """No source at all gives the same answer every time."""
-        none = FakeRates(reason="no 3-month rate source for HKD", source=None)
+        none = FakeRates(reason="no short-term rate source for HKD", source=None)
         app.state.risk_service = service(closes_of(1500), none, currency="HKD")
 
         assert client.get("/risk/AI").json()["sharpe_ratio"] is None

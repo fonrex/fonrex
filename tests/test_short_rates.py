@@ -19,7 +19,10 @@ from macro.short_rates import (
     FAILED,
     FETCHED,
     FIRST_PERIOD,
+    FRESH,
+    OECD_SERIES,
     REVISED_MONTHS,
+    SONIA_SERIES,
     RatesLoad,
     ShortRates,
     StoredArea,
@@ -101,6 +104,66 @@ class TestStore:
         assert len(inserts) > 1
         assert max(parameters) <= _MAX_PARAMETERS
         assert sum(parameters) == 9 * len(history)
+
+
+class TestSeries:
+    """The OECD by default; the monthly SONIA of the Bank of England in the same storage."""
+
+    def test_the_oecd_by_default(self):
+        rates = service()
+        assert rates.rate_series == OECD_SERIES
+        assert (rates.source, rates.rate_series.indicator) == ("oecd", "rate_3m")
+
+    def test_the_sonia_of_the_bank_of_england(self, monkeypatch):
+        monkeypatch.setenv("BOE_REFRESH_HOURS", "12")
+        monkeypatch.setenv("BOE_RETRY_MINUTES", "30")
+        monkeypatch.setenv("OECD_REFRESH_HOURS", "6")
+        rates = service(series=SONIA_SERIES)
+        assert (rates.source, rates.rate_series.indicator) == ("boe", "rate_on")
+        assert (rates.refresh_after, rates.retry_after) == (
+            timedelta(hours=12),
+            timedelta(minutes=30),
+        )
+
+    async def test_the_reasons_name_the_source(self):
+        rates = ShortRates(  # type: ignore[arg-type]
+            None, AsyncMock(return_value=None), now=lambda: NOW, series=SONIA_SERIES
+        )
+        rates.last_reading = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+        load = await rates.refresh()
+
+        assert load.reason == (
+            "the Bank of England did not answer (refused, over its limit, or no rate)"
+        )
+
+    async def test_the_statements_use_the_series(self):
+        session = RecordingSession()
+        rates = ShortRates(lambda: session, None, now=lambda: NOW, series=SONIA_SERIES)  # type: ignore[arg-type]
+
+        await rates._store([ShortRate("GBR", date(2026, 10, 1), Decimal("0.037333"))])
+
+        (insert,) = [s for s in session.statements if isinstance(s, Insert)]
+        params = insert.compile(dialect=postgresql.dialect()).params
+        assert (params["source_m0"], params["indicator_m0"], params["geo_m0"]) == (
+            "boe",
+            "rate_on",
+            "GBR",
+        )
+
+    async def test_the_rates_are_read_from_the_series(self):
+        """The series of a ShortRates is not its method ``series()``: an attribute of that
+        name hid the method, and only the tests on PostgreSQL called it."""
+        session = RecordingSession()
+        rates = ShortRates(lambda: session, None, now=lambda: NOW, series=SONIA_SERIES)  # type: ignore[arg-type]
+
+        assert await rates.series("GBR", date(2026, 6, 1), date(2026, 11, 1)) == []
+
+        (select,) = session.statements
+        params = select.compile(dialect=postgresql.dialect()).params
+        assert {"boe", "rate_on", "GBR", date(2026, 6, 1), date(2026, 11, 1)} <= set(
+            params.values()
+        )
 
 
 class TestRefreshDelay:
@@ -219,6 +282,65 @@ class TestScript:
         ]
         failed = RatesLoad(FAILED, NOW, date(2024, 11, 1), reason="the OECD did not answer")
         assert load_short_rates.describe(failed, []) == ["failed   (the OECD did not answer)"]
+
+    def test_one_source(self):
+        from scripts import load_short_rates
+
+        assert load_short_rates.parse_arguments([]).source is None
+        assert load_short_rates.parse_arguments(["--source", "boe"]).source == "boe"
+        with pytest.raises(SystemExit):
+            load_short_rates.parse_arguments(["--source", "ecb"])
+
+    @staticmethod
+    def script(monkeypatch, loads):
+        from scripts import load_short_rates
+
+        class Resources:
+            session_factory = None
+            closed = False
+
+            async def close(self):
+                Resources.closed = True
+
+        async def read(resources, series, reader, arguments):
+            return loads[series.source], []
+
+        monkeypatch.setattr(load_short_rates.AsyncDatabaseResources, "create", Resources)
+        monkeypatch.setattr(load_short_rates, "read", read)
+        return load_short_rates, Resources
+
+    async def test_every_source_and_a_failure(self, monkeypatch, capsys):
+        loads = {
+            "oecd": RatesLoad(FRESH, NOW),
+            "boe": RatesLoad(FAILED, NOW, reason="the Bank of England did not answer"),
+        }
+        script, resources = self.script(monkeypatch, loads)
+
+        assert await script.main([]) == 1
+        assert capsys.readouterr().out.splitlines() == [
+            "OECD, 3-month rates",
+            "fresh   ",
+            "Bank of England, SONIA",
+            "failed   (the Bank of England did not answer)",
+        ]
+        assert resources.closed
+
+    async def test_one_source_read(self, monkeypatch, capsys):
+        script, _ = self.script(monkeypatch, {"oecd": RatesLoad(FRESH, NOW)})
+
+        assert await script.main(["--source", "oecd"]) == 0
+        assert capsys.readouterr().out.splitlines() == ["OECD, 3-month rates", "fresh   "]
+
+    async def test_the_readers_of_the_sources(self):
+        from financials.providers.boe import BankOfEnglandProvider
+        from financials.providers.oecd import OECDProvider
+        from scripts import load_short_rates
+
+        oecd = load_short_rates.SOURCES["oecd"]
+        boe = load_short_rates.SOURCES["boe"]
+        assert (oecd[1], boe[1]) == (OECD_SERIES, SONIA_SERIES)
+        assert oecd[2]().__self__.__class__ is OECDProvider
+        assert boe[2]().__self__.__class__ is BankOfEnglandProvider
 
     async def test_without_database(self, monkeypatch, capsys):
         from scripts import load_short_rates

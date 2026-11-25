@@ -91,19 +91,19 @@ documentation to an LLM, use [llms.txt](https://fonrex.io/llms.txt).
 | 📈 **Prices** | Ten years of daily history by default, per listing; traded prices adjusted for splits and an `adj_close` adjusted for dividends; weekly and monthly bars; realtime ticks over WebSocket |
 | 🧾 **Fundamentals** | Statements, highlights, earnings, analyst ratings, ESG scores, ETF details and holdings, insider transactions (SEC) |
 | 💶 **Valuation** | FCF, EPS and dividend DCF models, model comparison, WACC × growth sensitivity matrix, cost of equity from the CAPM or the Fama/French factors |
-| 🧮 **Factors and rates** | Kenneth French factor returns (US, Europe, developed markets), factor exposure of a listing, FRED and ECB rates, US Treasury yield curves (nominal and real, daily since 1990), OECD 3-month rates of every country (monthly since 1990), ECB exchange rates, Eurostat indicators by country (inflation, unemployment, GDP growth, economic sentiment), CFTC Commitments of Traders (positioning of the speculators in the futures markets, weekly since 1986) |
+| 🧮 **Factors and rates** | Kenneth French factor returns (US, Europe, developed markets), factor exposure of a listing, FRED and ECB rates, US Treasury yield curves (nominal and real, daily since 1990), OECD 3-month rates of every country (monthly since 1990), the SONIA of the Bank of England (monthly since 1997), ECB exchange rates, Eurostat indicators by country (inflation, unemployment, GDP growth, economic sentiment), CFTC Commitments of Traders (positioning of the speculators in the futures markets, weekly since 1986) |
 | 📊 **Technical analysis** | Indicators computed on your stored prices, multi-indicator reads, a screener |
 | 📰 **News** | Deduplicated articles from several sources, per ticker and as a global feed |
 | 🛡️ **Data quality** | Range checks, cross-source consensus, a daily canary run and alerts on every provider |
 
-### Fundamentals (22 providers)
+### Fundamentals (23 providers)
 
 | Group | Providers |
 |---|---|
 | **Europe** | ZoneBourse, Boursorama, BourseDirect, Fortuneo, InvestirLesEchos |
 | **Global** | Yahoo Finance, Google Finance, MSN, MorningStar, Investing.com |
 | **US** | Barron's, WSJ, MarketWatch, Gurufocus |
-| **Specialised** | JustETF (UCITS ETFs), SEC Edgar (insider transactions), OpenFIGI, index constituents, US Treasury (yield curves), OECD (3-month rates), CFTC (Commitments of Traders), ESEF (annual reports of European listed companies) |
+| **Specialised** | JustETF (UCITS ETFs), SEC Edgar (insider transactions), OpenFIGI, index constituents, US Treasury (yield curves), OECD (3-month rates), Bank of England (SONIA), CFTC (Commitments of Traders), ESEF (annual reports of European listed companies) |
 
 `GET /fundamental` returns one document in a layout compatible with the EODHD fundamentals format,
 so that tools written for that format can read it. Each figure is taken from Yahoo
@@ -131,8 +131,8 @@ with the risk-free rate of their currency. With `wacc_params.cost_of_equity_mode
 long-run premia of the Fama/French factors of its region. `GET /factors/exposure/{ticker}`
 gives those betas on their own, with their t-stats and the R². `GET /risk/{ticker}` measures
 the risk of a listing on its stored daily prices: volatility, maximum drawdown, value at risk,
-Calmar, and Sharpe and Sortino on the 3-month rate of its currency (US Treasury for the dollar,
-OECD for 25 other currencies).
+Calmar, and Sharpe and Sortino on a short-term rate of its currency (US Treasury for the dollar,
+the SONIA of the Bank of England for the pound, OECD for 24 other currencies).
 
 ### News (7 providers)
 
@@ -190,7 +190,7 @@ is in the [documentation](https://fonrex.io/docs/intro).
 ┌──────▼──────┐  ┌──────▼───────┐  ┌───────▼───────────────┐
 │   Redis 7   │  │  TimescaleDB │  │   Public sources      │
 │  cache and  │  │  PostgreSQL  │  │  Yahoo / TradingView  │
-│  pub/sub    │  │  your data   │  │  22 providers         │
+│  pub/sub    │  │  your data   │  │  23 providers         │
 └─────────────┘  └──────────────┘  └───────────────────────┘
 ```
 

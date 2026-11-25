@@ -13,6 +13,7 @@ from macro.risk_free_rates import (
     MAX_DAILY_GAP,
     MAX_MONTHS_CARRIED,
     OECD_AREA_OF_CURRENCY,
+    SONIA_SOURCE,
     TREASURY_SOURCE,
     RiskFreeRateRepository,
     RiskFreeRates,
@@ -52,10 +53,14 @@ class FakeShortRates:
         return [(month, rate) for month, rate in self.stored.get(area, []) if start <= month <= end]
 
 
-def repository(treasury=(), oecd=None, treasury_reason=None, oecd_reason=None):
+def repository(
+    treasury=(), oecd=None, treasury_reason=None, oecd_reason=None, sonia=(), sonia_reason=None
+):
+    """The repository on fake sources; ``repo.sonia`` holds the monthly SONIA (area GBR)."""
     fake_treasury = FakeTreasury(list(treasury), treasury_reason)
     fake_oecd = FakeShortRates(oecd or {}, oecd_reason)
-    return RiskFreeRateRepository(fake_treasury, fake_oecd), fake_treasury, fake_oecd
+    fake_sonia = FakeShortRates({"GBR": list(sonia)}, sonia_reason)
+    return RiskFreeRateRepository(fake_treasury, fake_oecd, fake_sonia), fake_treasury, fake_oecd
 
 
 class TestCurrencies:
@@ -76,16 +81,23 @@ class TestCurrencies:
         assert major_currency(currency) == major
 
     def test_the_sources(self):
-        assert RiskFreeRateRepository.source_of("USD") == TREASURY_SOURCE
-        assert RiskFreeRateRepository.source_of("EUR") == "OECD, 3-month interbank rate (EA20)"
-        assert RiskFreeRateRepository.source_of("GBp") == "OECD, 3-month interbank rate (GBR)"
-        assert RiskFreeRateRepository.source_of("HKD") is None
-        assert RiskFreeRateRepository.source_of(None) is None
+        repo, _, _ = repository()
+        assert repo.source_of("USD") == TREASURY_SOURCE
+        assert repo.source_of("EUR") == "OECD, 3-month interbank rate (EA20)"
+        assert repo.source_of("GBp") == SONIA_SOURCE == "Bank of England, SONIA, monthly mean"
+        assert repo.source_of("HKD") is None
+        assert repo.source_of(None) is None
 
-    def test_the_european_currencies_of_the_factors_all_have_an_area(self):
+    def test_without_the_bank_of_england_the_pound_has_no_source(self):
+        repo = RiskFreeRateRepository(FakeTreasury([]), FakeShortRates({}))  # type: ignore[arg-type]
+        assert repo.source_of("GBP") is None
+
+    def test_the_european_currencies_of_the_factors_all_have_a_source(self):
         from factors.exposure import EUROPEAN_CURRENCIES
 
-        assert EUROPEAN_CURRENCIES <= set(OECD_AREA_OF_CURRENCY)
+        # The pound from the Bank of England: the OECD stopped the United Kingdom in 2026.
+        assert "GBP" not in OECD_AREA_OF_CURRENCY
+        assert EUROPEAN_CURRENCIES - {"GBP"} <= set(OECD_AREA_OF_CURRENCY)
         # The areas are those of the answer of the OECD (tests/fixtures/oecd/README.md).
         assert OECD_AREA_OF_CURRENCY["EUR"] == "EA20"
         assert all(len(area) == 3 for code, area in OECD_AREA_OF_CURRENCY.items() if code != "EUR")
@@ -188,26 +200,60 @@ class TestRepository:
         assert oecd.asked == [("EA20", D(2026, 6, 1), D(2026, 11, 1))]
         assert treasury.ensured == []
 
-    async def test_pence_are_pounds(self):
-        repo, _, oecd = repository(oecd={"GBR": [(D(2026, 2, 1), Decimal("0.0362"))]})
-        rates = await repo.rates("GBp", [D(2026, 2, 27)])
-        assert (rates.currency, rates.rates) == ("GBP", {D(2026, 2, 27): 0.0362})
-        assert oecd.asked[0][0] == "GBR"
-
-    async def test_a_series_the_oecd_stopped(self):
-        # The United Kingdom stops in February 2026: no rate after May.
-        repo, _, _ = repository(
-            oecd={"GBR": [(D(2026, 1, 1), Decimal("0.0371")), (D(2026, 2, 1), Decimal("0.0362"))]}
+    async def test_pounds_from_the_sonia_of_the_bank_of_england(self):
+        sonia = [(D(2026, 9, 1), Decimal("0.037305")), (D(2026, 10, 1), Decimal("0.037333"))]
+        repo, treasury, oecd = repository(
+            oecd={"GBR": [(D(2026, 2, 1), Decimal("0.0362"))]}, sonia=sonia
         )
 
-        rates = await repo.rates("GBP", [D(2026, 5, 29), D(2026, 6, 1)])
+        rates = await repo.rates("GBp", [D(2026, 9, 30), D(2026, 11, 20)])
+
+        assert (rates.currency, rates.source, rates.reason) == ("GBP", SONIA_SOURCE, None)
+        assert rates.rates == {D(2026, 9, 30): 0.037305, D(2026, 11, 20): 0.037333}
+        assert (rates.first_observation, rates.last_observation) == (D(2026, 9, 1), D(2026, 10, 1))
+        assert repo.sonia.refreshed == 1
+        assert repo.sonia.asked == [("GBR", D(2026, 6, 1), D(2026, 11, 1))]
+        # The stopped 3-month rate of the OECD is never read for the pound.
+        assert (oecd.refreshed, oecd.asked, treasury.ensured) == (0, [], [])
+
+    async def test_a_series_the_oecd_stopped(self):
+        # Indonesia stops in December 2025: no rate after March 2026.
+        repo, _, _ = repository(
+            oecd={"IDN": [(D(2025, 11, 1), Decimal("0.0497")), (D(2025, 12, 1), Decimal("0.0491"))]}
+        )
+
+        rates = await repo.rates("IDR", [D(2026, 3, 31), D(2026, 4, 1)])
 
         assert rates.rates is None
         assert rates.reason == (
-            "no OECD, 3-month interbank rate (GBR) for 2026-06-01 (the rates read run from "
-            "2026-02-01 to 2026-02-01)"
+            "no OECD, 3-month interbank rate (IDN) for 2026-04-01 (the rates read run from "
+            "2025-12-01 to 2025-12-01)"
         )
         assert rates.mean is None
+
+    async def test_a_failed_reading_of_the_bank_of_england(self):
+        repo, _, _ = repository(sonia_reason="the Bank of England did not answer")
+
+        rates = await repo.rates("GBP", [D(2026, 10, 30)])
+
+        assert (rates.source, rates.rates) == (SONIA_SOURCE, None)
+        assert rates.reason == (
+            "no Bank of England, SONIA, monthly mean for 2026-10-30 (nothing stored); "
+            "the last reading failed: the Bank of England did not answer"
+        )
+
+    async def test_the_pound_without_the_bank_of_england(self):
+        oecd = FakeShortRates({"GBR": [(D(2026, 2, 1), Decimal("0.0362"))]})
+        repo = RiskFreeRateRepository(FakeTreasury([]), oecd)  # type: ignore[arg-type]
+
+        rates = await repo.rates("GBP", [D(2026, 2, 27)])
+
+        assert (rates.source, rates.rates, rates.reason) == (
+            None,
+            None,
+            "no short-term rate source for GBP",
+        )
+        assert oecd.refreshed == 0
 
     async def test_a_failed_reading_is_given_with_the_reason(self):
         repo, _, _ = repository(oecd={}, oecd_reason="the OECD did not answer")
@@ -238,9 +284,9 @@ class TestRepository:
         assert (rates.source, rates.rates, rates.reason) == (
             None,
             None,
-            f"no 3-month rate source for {label}",
+            f"no short-term rate source for {label}",
         )
-        assert (treasury.ensured, oecd.refreshed) == ([], 0)
+        assert (treasury.ensured, oecd.refreshed, repo.sonia.refreshed) == ([], 0, 0)
 
     async def test_without_reading_the_sources(self):
         repo, treasury, oecd = repository(oecd={"EA20": [(D(2026, 10, 1), Decimal("0.0263"))]})

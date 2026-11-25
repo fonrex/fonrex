@@ -1,13 +1,15 @@
 #!/usr/bin/env python
-"""Download the 3-month interest rates of the OECD into the database.
+"""Download the short-term interest rates of the OECD and of the Bank of England into the database.
 
     python scripts/load_short_rates.py                  # whole history the first time, then the last 24 months
     python scripts/load_short_rates.py --start 2020-01  # from a month
-    python scripts/load_short_rates.py --force          # even when read less than OECD_REFRESH_HOURS ago
+    python scripts/load_short_rates.py --force          # even when read less than *_REFRESH_HOURS ago
+    python scripts/load_short_rates.py --source boe     # one source only (oecd, boe)
 
-One request returns every country, from 1990 the first time. The OECD allows
-about 60 downloads an hour: a refusal keeps the rates stored. The exit code is 1
-when the rates could not be read.
+The OECD gives the 3-month rate of every country in one request, from 1990 the
+first time; it allows about 60 downloads an hour: a refusal keeps the rates
+stored. The Bank of England gives the monthly SONIA, the rate of the pound, from
+1997. The exit code is 1 when the rates of a source could not be read.
 """
 
 from __future__ import annotations
@@ -22,10 +24,28 @@ from datetime import date
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.lifecycle import AsyncDatabaseResources
+from financials.providers.boe import BankOfEnglandProvider
 from financials.providers.oecd import OECDProvider
-from macro.short_rates import FAILED, FIRST_PERIOD, RatesLoad, ShortRates, StoredArea
+from macro.short_rates import (
+    FAILED,
+    FIRST_PERIOD,
+    OECD_SERIES,
+    SONIA_SERIES,
+    RateSeries,
+    RatesLoad,
+    RatesReader,
+    ShortRates,
+    StoredArea,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+# Each source: its title in the output, its series, and the reader of its rates.
+SOURCES = {
+    "oecd": ("OECD, 3-month rates", OECD_SERIES, lambda: OECDProvider().short_rates),
+    "boe": ("Bank of England, SONIA", SONIA_SERIES, lambda: BankOfEnglandProvider().sonia_monthly),
+}
 
 
 def month(text: str) -> date:
@@ -45,6 +65,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "then the last 24 months)",
     )
     parser.add_argument("--force", action="store_true", help="read even when up to date")
+    parser.add_argument(
+        "--source",
+        choices=sorted(SOURCES),
+        help="read one source only (default: every source)",
+    )
     arguments = parser.parse_args(argv)
     if arguments.start is not None and arguments.start < FIRST_PERIOD:
         parser.error(f"--start is before {FIRST_PERIOD:%Y-%m}")
@@ -74,14 +99,29 @@ async def main(argv: list[str] | None = None) -> int:
     if resources is None:
         print("DATABASE_URL (or ASYNC_DATABASE_URL) is not set.", file=sys.stderr)
         return 2
+    names = [arguments.source] if arguments.source else list(SOURCES)
+    failed = False
     try:
-        rates = ShortRates(resources.session_factory, OECDProvider().short_rates)
-        load = await rates.refresh(force=arguments.force, start=arguments.start)
-        areas = await rates.stored_areas()
+        for name in names:
+            title, series, reader = SOURCES[name]
+            load, areas = await read(resources, series, reader(), arguments)
+            print("\n".join([title, *describe(load, areas)]))
+            failed = failed or load.status == FAILED
     finally:
         await resources.close()
-    print("\n".join(describe(load, areas)))
-    return 1 if load.status == FAILED else 0
+    return 1 if failed else 0
+
+
+async def read(
+    resources: AsyncDatabaseResources,
+    series: RateSeries,
+    reader: RatesReader,
+    arguments: argparse.Namespace,
+) -> tuple[RatesLoad, list[StoredArea]]:
+    """Read the rates of one source, then the months stored for each of its areas."""
+    rates = ShortRates(resources.session_factory, reader, series=series)
+    load = await rates.refresh(force=arguments.force, start=arguments.start)
+    return load, await rates.stored_areas()
 
 
 if __name__ == "__main__":

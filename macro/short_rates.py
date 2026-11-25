@@ -1,4 +1,4 @@
-"""The 3-month interest rates of the OECD, kept month by month.
+"""The short-term interest rates of the OECD and of the Bank of England, kept month by month.
 
 The OECD publishes the 3-month interbank rate of its members and of a few other
 countries (``financials/providers/oecd.py``): one request returns every country.
@@ -23,6 +23,12 @@ not stored at all. After a failure the OECD is not asked again for
 request needing a rate would otherwise download again, one after the other
 behind the lock, and spend the quota. A country the OECD no longer publishes
 keeps its last months: the caller decides how long a rate may be carried over.
+
+The same storage keeps the monthly mean of SONIA, the overnight rate of the pound
+(``financials/providers/boe.py``), since the OECD stopped its rate of the United
+Kingdom in early 2026: ``SONIA_SERIES`` (source ``boe``, indicator ``rate_on``,
+``geo`` ``GBR``), read on the same rules with ``BOE_REFRESH_HOURS`` and
+``BOE_RETRY_MINUTES``.
 """
 
 from __future__ import annotations
@@ -38,7 +44,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from financials.providers.oecd import OECDError, ShortRate
+from financials.providers.oecd import ShortRate
 from models import MacroObservation, MacroSeriesLoad
 from schemas.macro import RATE_UNIT
 from settings import env_int
@@ -48,6 +54,25 @@ logger = logging.getLogger(__name__)
 SOURCE = "oecd"
 INDICATOR = "rate_3m"
 FREQUENCY = "monthly"
+
+
+@dataclass(frozen=True)
+class RateSeries:
+    """Where a series of monthly rates is kept, and how often its source is read."""
+
+    source: str  # macro_observations.source
+    indicator: str  # macro_observations.indicator
+    publisher: str  # in the reasons: "the OECD did not answer"
+    refresh_setting: str  # hours before a new reading
+    retry_setting: str  # minutes before asking again after a failure
+
+
+# The 3-month interbank rate of every area of the OECD.
+OECD_SERIES = RateSeries(SOURCE, INDICATOR, "the OECD", "OECD_REFRESH_HOURS", "OECD_RETRY_MINUTES")
+# The monthly mean of SONIA, the overnight rate of the pound (area GBR).
+SONIA_SERIES = RateSeries(
+    "boe", "rate_on", "the Bank of England", "BOE_REFRESH_HOURS", "BOE_RETRY_MINUTES"
+)
 # The first month read: the Treasury curve, the US rate of the same use, starts in 1990.
 FIRST_PERIOD = date(1990, 1, 1)
 REVISED_MONTHS = 24
@@ -86,7 +111,7 @@ class StoredArea:
 
 @dataclass
 class RatesLoad:
-    """What a reading asked of the OECD, and what it received."""
+    """What a reading asked of the source, and what it received."""
 
     status: str = FRESH  # fetched: read now; fresh: read recently; failed
     fetched_at: datetime | None = None  # the last reading that succeeded
@@ -97,9 +122,8 @@ class RatesLoad:
 
 
 class ShortRates:
-    """The 3-month rates of the OECD, stored month by month and read again on demand."""
-
-    source = SOURCE
+    """Monthly rates of one source (the OECD by default), stored month by month and read
+    again on demand."""
 
     def __init__(
         self,
@@ -107,27 +131,34 @@ class ShortRates:
         read_rates: RatesReader,
         *,
         now: Callable[[], datetime] | None = None,
+        series: RateSeries = OECD_SERIES,
     ):
         self.session_factory = session_factory
         self.read_rates = read_rates
         self.now = now or (lambda: datetime.now(timezone.utc))
+        self.rate_series = series
         self.refresh_after = timedelta(
-            hours=env_int("OECD_REFRESH_HOURS", 24, minimum=1, maximum=24 * 30)
+            hours=env_int(series.refresh_setting, 24, minimum=1, maximum=24 * 30)
         )
         self.retry_after = timedelta(
-            minutes=env_int("OECD_RETRY_MINUTES", 15, minimum=1, maximum=24 * 60)
+            minutes=env_int(series.retry_setting, 15, minimum=1, maximum=24 * 60)
         )
         # The last failed reading of this process, and its reason.
         self._failure: tuple[datetime, str] | None = None
-        # One reading at a time: two requests needing the rates ask the OECD once.
+        # One reading at a time: two requests needing the rates ask the source once.
         self._lock = asyncio.Lock()
+
+    @property
+    def source(self) -> str:
+        return self.rate_series.source
 
     async def last_reading(self) -> datetime | None:
         """When the rates were last read, for any area."""
         async with self.session_factory() as session:
             return await session.scalar(
                 select(func.max(MacroSeriesLoad.fetched_at)).where(
-                    MacroSeriesLoad.source == SOURCE, MacroSeriesLoad.indicator == INDICATOR
+                    MacroSeriesLoad.source == self.rate_series.source,
+                    MacroSeriesLoad.indicator == self.rate_series.indicator,
                 )
             )
 
@@ -138,7 +169,7 @@ class ShortRates:
         return max(FIRST_PERIOD, months_before(_utc(self.now()).date(), REVISED_MONTHS))
 
     async def refresh(self, *, force: bool = False, start: date | None = None) -> RatesLoad:
-        """Read the rates of every country, unless they were read recently (always with
+        """Read the rates of every area, unless they were read recently (always with
         ``force``). ``start`` chooses the first month asked."""
         async with self._lock:
             last = await self.last_reading()
@@ -159,26 +190,27 @@ class ShortRates:
                     )
             first = start or self.first_month(last)
             result = RatesLoad(FAILED, last, first)
+            publisher = self.rate_series.publisher
             try:
                 rates = await self.read_rates(first)
-            except OECDError as error:
-                result.reason = f"OECDError: {error}"
-            except Exception as error:  # network, unexpected failure
+            except Exception as error:  # an answer not read (OECDError, BoEError), network
                 result.reason = (
                     f"{type(error).__name__}: {error}" if str(error) else type(error).__name__
                 )
             else:
                 if rates is None:
-                    result.reason = "the OECD did not answer (refused, over its limit, or no rate)"
+                    result.reason = (
+                        f"{publisher} did not answer (refused, over its limit, or no rate)"
+                    )
                 elif not rates:
-                    result.reason = f"the OECD gave no rate from {first:%Y-%m}"
+                    result.reason = f"{publisher} gave no rate from {first:%Y-%m}"
                 else:
                     result.status, result.fetched_at = FETCHED, await self._store(rates)
                     result.received = len(rates)
                     result.areas = sorted({rate.area for rate in rates})
             if result.reason:
                 self._failure = (_utc(self.now()), result.reason)
-                logger.warning("OECD 3-month rates not read: %s", result.reason)
+                logger.warning("Rates of %s not read: %s", publisher, result.reason)
             else:
                 self._failure = None
             return result
@@ -187,8 +219,8 @@ class ShortRates:
         fetched_at = _utc(self.now())
         rows = [
             {
-                "source": SOURCE,
-                "indicator": INDICATOR,
+                "source": self.rate_series.source,
+                "indicator": self.rate_series.indicator,
                 "geo": rate.area,
                 "period": rate.period,
                 "frequency": FREQUENCY,
@@ -221,8 +253,8 @@ class ShortRates:
                         func.max(MacroObservation.period),
                     )
                     .where(
-                        MacroObservation.source == SOURCE,
-                        MacroObservation.indicator == INDICATOR,
+                        MacroObservation.source == self.rate_series.source,
+                        MacroObservation.indicator == self.rate_series.indicator,
                         MacroObservation.geo.in_(areas),
                     )
                     .group_by(MacroObservation.geo)
@@ -230,8 +262,8 @@ class ShortRates:
                 for area, first_period, last_period in ranges:
                     await session.merge(
                         MacroSeriesLoad(
-                            source=SOURCE,
-                            indicator=INDICATOR,
+                            source=self.rate_series.source,
+                            indicator=self.rate_series.indicator,
                             geo=area,
                             fetched_at=fetched_at,
                             first_period=first_period,
@@ -245,7 +277,10 @@ class ShortRates:
         async with self.session_factory() as session:
             loads = await session.scalars(
                 select(MacroSeriesLoad)
-                .where(MacroSeriesLoad.source == SOURCE, MacroSeriesLoad.indicator == INDICATOR)
+                .where(
+                    MacroSeriesLoad.source == self.rate_series.source,
+                    MacroSeriesLoad.indicator == self.rate_series.indicator,
+                )
                 .order_by(MacroSeriesLoad.geo)
             )
             return [
@@ -258,8 +293,8 @@ class ShortRates:
     ) -> list[tuple[date, Decimal]]:
         """The stored rates of an area, as ratios, oldest month first."""
         statement = select(MacroObservation.period, MacroObservation.value).where(
-            MacroObservation.source == SOURCE,
-            MacroObservation.indicator == INDICATOR,
+            MacroObservation.source == self.rate_series.source,
+            MacroObservation.indicator == self.rate_series.indicator,
             MacroObservation.geo == area,
         )
         if start is not None:

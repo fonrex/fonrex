@@ -740,6 +740,53 @@
       }
     ]
   },
+  "fonrex_risk": {
+    "name": "Fonrex Risk",
+    "description": "Risk of a listing over its last years of daily closes: return and volatility, maximum drawdown with its dates, historical and Gaussian VaR and CVaR, Calmar, and Sharpe and Sortino on the short-term rate of its currency (US Treasury, SONIA of the Bank of England, OECD), with the rate used or why there is none",
+    "category": "Risk",
+    "type": "table",
+    "endpoint": "openbb/risk/{ticker}",
+    "gridData": {
+      "w": 12,
+      "h": 12
+    },
+    "source": [
+      "Fonrex"
+    ],
+    "params": [
+      {
+        "paramName": "ticker",
+        "value": "AAPL",
+        "label": "Ticker",
+        "type": "text",
+        "description": "Ticker of a listing with stored daily prices (e.g. AAPL, AIR.PA)"
+      },
+      {
+        "paramName": "years",
+        "value": "3",
+        "label": "Years",
+        "type": "text",
+        "description": "Years of daily closes measured, before the last close stored (1 to 10)"
+      },
+      {
+        "paramName": "confidence",
+        "value": "0.95",
+        "label": "Confidence",
+        "type": "text",
+        "description": "Confidence of the value at risk",
+        "options": [
+          {
+            "label": "95%",
+            "value": "0.95"
+          },
+          {
+            "label": "99%",
+            "value": "0.99"
+          }
+        ]
+      }
+    ]
+  },
   "fonrex_factor_exposure": {
     "name": "Fonrex Factor Exposure",
     "description": "Exposure of a listing to the Fama/French factors (Kenneth French Data Library): alpha, betas with t-stats, R², on returns in US dollars",

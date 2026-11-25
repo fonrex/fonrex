@@ -57,6 +57,7 @@ directly inside OpenBB.
 | `fonrex_cot_positioning` | Fonrex COT Positioning | Macro | chart | CFTC Commitments of Traders: net position of a type of trader in one futures market (parameter `market`, a CFTC contract market code, `13874A` by default; `report` tff, disaggregated or legacy; `category`, the speculators of the report when empty) and its COT index, 0 to 100 over `window` weeks (156 by default), on a right axis; last 3 years by default (parameter `start`). Source: CFTC
 | `fonrex_cot_extremes` | Fonrex COT Extremes | Macro | table | CFTC Commitments of Traders: latest report of the key markets of a report (or of the codes of `market`, separated by commas), the COT index farthest from 50 first: net position, its share of the open interest, its weekly change, the report date and its estimated day of publication, and “Top of window” (index 90 or more) or “Bottom of window” (10 or less): where the net position stands in its window, not whether it is long or short (a net short position can be at the top of its window). Source: CFTC
 | `fonrex_factor_exposure` | Fonrex Factor Exposure | Factors | table | Fama/French exposure of a listing (model ff3, ff5 or carhart; monthly or daily): annualised alpha, betas with standard errors and t-stats, R², residual volatility, periods and warnings. Returns are in US dollars (other currencies converted with the ECB reference rates) |
+| `fonrex_risk` | Fonrex Risk | Risk | table | Risk of a listing over its last `years` of daily closes (3 by default, 1 to 10): annualised return and volatility, maximum drawdown with its peak, trough and recovery, historical and Gaussian VaR and CVaR at `confidence` (95 % or 99 %), Calmar, and Sharpe and Sortino on the short-term rate of its currency (US Treasury for the dollar, SONIA of the Bank of England for the pound, OECD for 24 other currencies); the mean rate used and its source, or why there is none, and the warnings |
 | `fonrex_factor_returns` | Fonrex Factor Returns | Factors | chart | Cumulative returns of the factors of a dataset (US, Europe or developed markets; 3 factors, 5 factors or momentum), in US dollars, last 10 years by default (parameter `start`). Source: Kenneth R. French Data Library |
 
 ## Pre-assembled Apps
@@ -68,7 +69,7 @@ A comprehensive dashboard for analyzing a single ticker:
 - **Technical** tab: Full technical chart with indicators
 - **News** tab: Latest news from 7 providers
 - **Watchlist** tab: Batch quotes
-- **Factors** tab: Fama/French 5-factor exposure of the ticker + European factor returns
+- **Factors** tab: Fama/French 5-factor exposure of the ticker + European factor returns + risk of the ticker (3 years, VaR at 95 %)
 
 ### Fonrex — Screener & Macro
 An idea-generation dashboard:

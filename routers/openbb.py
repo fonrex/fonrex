@@ -36,6 +36,7 @@ from integrations.openbb.adapters import (
     format_macro_indicators_metric,
     format_macro_rates_metric,
     format_quote_metric,
+    format_risk_table,
     format_sec_check_table,
     format_technical_chart_overlay,
     format_technical_multi_chart,
@@ -89,6 +90,7 @@ from routers.realtime import (
     get_quotes_batch,
     get_realtime_worker,
 )
+from routers.risk import get_risk_cache, get_risk_of_listing, get_risk_service
 from routers.sec import check_statements_against_sec, get_sec_check, get_sec_statements
 from routers.specialized import (
     get_etf_details,
@@ -448,6 +450,29 @@ async def get_openbb_factor_exposure(
         exposure=exposure,
     )
     return format_factor_exposure_table(res)
+
+
+@router.get("/risk/{ticker}")
+async def get_openbb_risk(
+    ticker: str,
+    years: int = Query(3, ge=1, le=10),
+    confidence: float = Query(0.95, ge=0.5, le=0.999),
+    service=Depends(get_risk_service),
+    cache=Depends(get_risk_cache),
+) -> List[Dict[str, Any]]:
+    """Return the risk of a listing as an AgGrid table."""
+    res = await get_risk_of_listing(
+        ticker=ticker,
+        years=years,
+        confidence=confidence,
+        currency=None,
+        exchange=None,
+        isin=None,
+        force_refresh=False,
+        service=service,
+        cache=cache,
+    )
+    return format_risk_table(res)
 
 
 @router.get("/sec/{ticker}/check")

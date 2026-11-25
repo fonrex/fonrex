@@ -299,6 +299,22 @@ class TestRoute:
             "Database schema unavailable or outdated",
         )
 
+    def test_the_openbb_widget_shares_the_answer_of_the_route(self, client):
+        rows = client.get("/openbb/risk/AI?years=2&confidence=0.99").json()
+
+        by_metric = {row["Metric"]: row for row in rows}
+        assert by_metric["Period"]["Value"].endswith("→ 2026-11-20")
+        assert "Historical VaR (99.0%)" in by_metric
+        assert by_metric["Risk-free rate (EUR, mean)"]["Value"] == "3.00%"
+        # One measure for the route and the widget: the same cache key.
+        assert list(app.state.redis_client.entries) == ["risk:AI:2y:0.99:::"]
+        assert client.get("/risk/AI?years=2&confidence=0.99").json()["years"] == 2
+        assert len(app.state.redis_client.entries) == 1
+
+    def test_the_openbb_widget_without_risk_service(self, client):
+        app.state.risk_service = None
+        assert client.get("/openbb/risk/AI").status_code == 503
+
     def test_two_confidences_equal_to_six_digits_are_two_answers(self, client):
         first = client.get("/risk/AI?confidence=0.9500001").json()
         second = client.get("/risk/AI?confidence=0.9500002").json()

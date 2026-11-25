@@ -121,6 +121,7 @@ You can also use formulas directly in any cell:
 | `=FONREX_DIVIDEND_YIELD("AIR.PA")` | Dividend yield (decimal) |
 | `=FONREX_INTRINSIC_VALUE("AIR.PA")` | DCF consensus value |
 | `=FONREX_RSI("AAPL")` | 14-period RSI |
+| `=FONREX_RISK("AIR.PA", "sharpe", 3)` | One risk metric over the last 3 years of daily prices stored (1 to 10): `volatility` (default), `return`, `max_drawdown`, `calmar`, `var`, `cvar` (historical, 95 %), `sharpe`, `sortino` or `risk_free_rate`. A ratio (0.2 = 20 %), losses negative; `N/A` and the reason when Sharpe or Sortino has no rate |
 
 > ⚠️ **30-minute cache**: Custom formulas are cached by Google for 30 minutes. For fresh data, use the **Refresh** buttons in the menu instead of these formulas.
 

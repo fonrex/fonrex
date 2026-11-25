@@ -456,6 +456,60 @@ function FONREX_RSI(ticker) {
   }
 }
 
+// The metrics of FONREX_RISK and the field of the answer of /risk/{ticker} each reads.
+const FONREX_RISK_FIELDS = {
+  return: 'annualized_return',
+  volatility: 'annualized_volatility',
+  max_drawdown: 'max_drawdown',
+  calmar: 'calmar_ratio',
+  var: 'historical_var',
+  cvar: 'historical_cvar',
+  sharpe: 'sharpe_ratio',
+  sortino: 'sortino_ratio',
+  risk_free_rate: 'risk_free_rate',
+};
+
+/**
+ * =FONREX_RISK("AIR.PA", "sharpe", 3) — Returns one risk metric of a ticker,
+ * measured on its daily prices stored in your instance.
+ *
+ * Every figure is a ratio (0.2 = 20 %); losses (drawdown, VaR, CVaR) are
+ * negative. VaR and CVaR are historical, at 95 % confidence. Sharpe and Sortino
+ * use the short-term rate of the currency of the ticker; without one the cell
+ * says why.
+ *
+ * @param {string} ticker The stock symbol (e.g. AIR.PA, AAPL)
+ * @param {string} metric volatility (default), return, max_drawdown, calmar, var, cvar, sharpe, sortino or risk_free_rate
+ * @param {number} years Years of daily prices measured, 1 to 10 (default 3)
+ * @return {number|string} The metric or a message
+ * @customfunction
+ */
+function FONREX_RISK(ticker, metric, years) {
+  const apiKey = PropertiesService.getUserProperties().getProperty('FONREX_API_KEY');
+  if (!apiKey) return 'Configure API key first';
+  const name = String(metric || 'volatility').trim().toLowerCase();
+  const field = FONREX_RISK_FIELDS[name];
+  if (!field) {
+    return 'Unknown metric: use ' + Object.keys(FONREX_RISK_FIELDS).join(', ');
+  }
+  const span = years ? Math.round(Number(years)) : 3;
+  if (!(span >= 1 && span <= 10)) return 'Years must be between 1 and 10';
+  try {
+    const data = fetchFonrexEndpoint(
+      `/risk/${encodeURIComponent(ticker)}?years=${span}`, apiKey
+    );
+    let value = data[field];
+    if (field === 'max_drawdown') value = value ? value.value : null;
+    if (field === 'risk_free_rate') value = value ? value.mean : null;
+    if (value !== null && value !== undefined) return value;
+    const rate = data.risk_free_rate;
+    const needsRate = ['sharpe', 'sortino', 'risk_free_rate'].indexOf(name) >= 0;
+    return needsRate && rate && rate.reason ? 'N/A: ' + rate.reason : 'N/A';
+  } catch (e) {
+    return 'Error: ' + e.message;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 6. UTILITIES
 // ---------------------------------------------------------------------------

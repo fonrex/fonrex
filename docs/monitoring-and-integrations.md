@@ -133,7 +133,7 @@ flowchart LR
 `fonrex-sheets-connector/` is a Google Apps Script (`Code.gs`) bound to a spreadsheet template; it is not part of the Python application and is not deployed with it.
 
 - Google runs the script on its own servers, which cannot reach `localhost`: the user exposes the instance through a tunnel of their choice (zrok, Cloudflare Tunnel, Tailscale Funnel…) and gives the script that HTTPS URL and a key. Both are stored in the Apps Script *user properties* of the Google account, never in a cell.
-- The script only sends `GET` requests, with `Authorization: Bearer <key>`, to three routes: `/fundamental/deep?ticker=…`, `/dcf/{ticker}` and `/technical/{ticker}/multi?indicators=…` (menu refreshes), plus `/fundamental?ticker=…` for two of the four custom formulas. A key of `FONREX_READ_ONLY_API_KEYS` is what it should be given: it cannot clear the cache, clean the database, ingest or subscribe.
+- The script only sends `GET` requests, with `Authorization: Bearer <key>`, to these routes: `/fundamental/deep?ticker=…`, `/dcf/{ticker}` and `/technical/{ticker}/multi?indicators=…` (menu refreshes), plus `/fundamental?ticker=…` for two of the five custom formulas and `/risk/{ticker}?years=…` for `FONREX_RISK`. A key of `FONREX_READ_ONLY_API_KEYS` is what it should be given: it cannot clear the cache, clean the database, ingest or subscribe.
 - The manifest (`appsscript.json`) has no fixed list of callable hosts, since the URL is the user's; `tests/test_docs_consistency.py` fails if a hosted API host comes back in the script or the documents.
 - User documentation: [fonrex-sheets-connector/README.md](../fonrex-sheets-connector/README.md).
 

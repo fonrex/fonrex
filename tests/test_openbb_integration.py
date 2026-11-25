@@ -115,6 +115,7 @@ DOCUMENTED_ENDPOINTS = [
     "openbb/cot/signals/chart",
     "openbb/cot/extremes",
     "openbb/factors/exposure/{ticker}",
+    "openbb/risk/{ticker}",
     "openbb/factors/{dataset}/chart",
     "openbb/sec/{ticker}/check",
     "openbb/esef/{ticker}/check",

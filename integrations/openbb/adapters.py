@@ -172,6 +172,90 @@ def _rounded(value: Any, digits: int = 4) -> Any:
     return round(value, digits) if isinstance(value, (int, float)) else value
 
 
+def _percent_or_none(ratio: Any) -> Optional[str]:
+    ratio = _to_num(ratio)
+    return _percent(ratio) if isinstance(ratio, (int, float)) else None
+
+
+def format_risk_table(risk_obj: Any) -> List[Dict[str, Any]]:
+    """Risk of a listing (``GET /risk/{ticker}``) as AgGrid rows: the metric, its value
+    (returns, losses and rates as percentages, the ratios as numbers) and what it rests on.
+    A figure that cannot be measured is empty, with the reason in the detail."""
+    data = _to_dict(risk_obj)
+    rates = _to_dict(data.get("risk_free_rate"))
+    drawdown = _to_dict(data.get("max_drawdown"))
+    confidence = _to_num(data.get("confidence"))
+    level = f"{confidence:.1%}" if isinstance(confidence, (int, float)) else "?"
+    no_rate = rates.get("reason") or "no risk-free rate"
+
+    def row(metric: str, value: Any, detail: Any = None) -> Dict[str, Any]:
+        return {"Metric": metric, "Value": value, "Detail": detail}
+
+    if rates.get("mean") is not None:
+        source = rates.get("source") or ""
+        span = f"{rates.get('first_observation')} → {rates.get('last_observation')}"
+        rate_detail = f"{source}, {span}" if source else span
+    else:
+        rate_detail = no_rate
+    rows: List[Dict[str, Any]] = [
+        row(
+            "Period",
+            f"{data.get('start')} → {data.get('end')}",
+            f"{data.get('returns')} daily returns over {data.get('years')} years",
+        ),
+        row("Annualised return", _percent_or_none(data.get("annualized_return")), "Geometric"),
+        row(
+            "Annualised volatility",
+            _percent_or_none(data.get("annualized_volatility")),
+            "Daily returns × √252",
+        ),
+        row(
+            "Maximum drawdown",
+            _percent_or_none(drawdown.get("value")),
+            (
+                f"Peak {drawdown.get('peak')}, trough {drawdown.get('trough')}, "
+                + (
+                    f"recovered {drawdown['recovery']}"
+                    if drawdown.get("recovery")
+                    else "not recovered"
+                )
+            )
+            if drawdown
+            else None,
+        ),
+        row("Calmar ratio", _rounded(data.get("calmar_ratio"), 2), "Return / maximum drawdown"),
+        row(
+            f"Historical VaR ({level})",
+            _percent_or_none(data.get("historical_var")),
+            "Daily return quantile",
+        ),
+        row(
+            f"Historical CVaR ({level})",
+            _percent_or_none(data.get("historical_cvar")),
+            "Mean daily return beyond the VaR",
+        ),
+        row(f"Gaussian VaR ({level})", _percent_or_none(data.get("gaussian_var")), None),
+        row(f"Gaussian CVaR ({level})", _percent_or_none(data.get("gaussian_cvar")), None),
+        row(
+            "Sharpe ratio",
+            _rounded(data.get("sharpe_ratio"), 2),
+            None if data.get("sharpe_ratio") is not None else no_rate,
+        ),
+        row(
+            "Sortino ratio",
+            _rounded(data.get("sortino_ratio"), 2),
+            None if data.get("sortino_ratio") is not None else no_rate,
+        ),
+        row(
+            f"Risk-free rate ({rates.get('currency') or '?'}, mean)",
+            _percent_or_none(rates.get("mean")),
+            rate_detail,
+        ),
+    ]
+    rows += [row("Warning", warning) for warning in data.get("warnings") or []]
+    return rows
+
+
 def format_factor_exposure_table(exposure_obj: Any) -> List[Dict[str, Any]]:
     """Factor exposure of a listing as AgGrid rows: alpha, one row per beta, then the fit."""
     data = _to_dict(exposure_obj)

@@ -3,7 +3,7 @@
 ## Current State
 
 - **Verification**: `make fast` (rapid static & guard loop) and `make ci` (full quality gate after any harness or code change)
-- **Active focus**: Risk metrics, phase 1 (see Active / Multi-Session Work below)
+- **Active focus**: Risk metrics, follow-ups of phase 1 (see Active / Multi-Session Work below)
 
 ## Active / Multi-Session Work
 
@@ -14,7 +14,12 @@
   3. Done: `macro/risk_free_rates.py` — USD from the Treasury `3M` (a rate carried 7 days at most), other currencies from the OECD area of the currency (a month carried 3 months at most), `GBX` read as `GBP`; no rate and the reason for a currency without source or a day beyond the bounds (never `DCF_RISK_FREE_RATE`). GBP has no rate after May 2026 until another source is added.
   4. Done: `GET /risk/{ticker}` (`risk/service.py`, `routers/risk.py`, `schemas/risk.py`; OECD registered in `SPECIALIZED_PROVIDER_SPECS`). Phase 1 complete: open the pull request of the branch.
   Review fixes: the OECD rows are inserted 3,000 at a time (9 columns: under the 32,767 parameters asyncpg takes; 5,000 failed on the first reading of the whole history); an answer without the rate of a currency that has a source is not cached; an ingestion drops the `risk:` entries of the ticker. Copilot review: one price basis per window (`adj_close` only when every bar has one, else `close` and a warning); the OECD is not asked again for `OECD_RETRY_MINUTES` after a failure; `/risk` answers 503 when `db_available` is false; the confidence is written in full in the cache key.
-  Later: a GBP rate source (SONIA of the Bank of England); `/risk` in the OpenBB widgets and the Sheets connector; the pages of the documentation site (EN/FR/ZH).
+  Follow-ups of phase 1, branch `feat/risk-phase-1-follow-ups` (one pull request, one commit per step):
+  1. Done: the FinanceToolkit reference figures matched within 1e-15 in absolute terms (`tests/test_risk_metrics.py`; one unit of the last place on a drawdown of -0.038 is already a relative gap above 1e-15).
+  2. Done: the series of the OECD across the end of the LIBOR, checked on 2026-11-25: `EA20` is the monthly mean of the 3-month Euribor (so the ECB is not read), `CHE` follows the SARON with no break.
+  3. Done: GBP from the monthly SONIA of the Bank of England (`financials/providers/boe.py`, series `IUMASOIA`, since 1997), kept by `ShortRates` with `SONIA_SERIES` (source `boe`, indicator `rate_on`, `geo` `GBR`; `BOE_REFRESH_HOURS`, `BOE_RETRY_MINUTES`); `scripts/load_short_rates.py` reads both sources (`--source` for one).
+  4. Done: the `fonrex_risk` OpenBB widget (`GET /openbb/risk/{ticker}`, in the Factors tab of the EU Markets app) and the `FONREX_RISK` formula of the Sheets connector.
+  Later: the pages of the documentation site (EN/FR/ZH) for `/risk`, its widget, its formula and the new settings (separate repository); phase 2 of issue #70 (10-year rates of the OECD for the DCF).
 - **Module quality & coverage**: See the health summary in [docs/testing-and-quality.md](docs/testing-and-quality.md#module-quality-and-health-scores) and exact per-module floors in `scripts/check_coverage_distribution.py`.
 
 ## Next Steps

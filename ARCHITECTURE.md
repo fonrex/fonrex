@@ -442,6 +442,7 @@ OpenBB Workspace routes (`routers/openbb.py`). Each one calls the route function
 | GET | `/openbb/cot/signals/chart` | `/cot/signals` | chart |
 | GET | `/openbb/cot/extremes` | `/cot/extremes` | table |
 | GET | `/openbb/factors/exposure/{ticker}` | `/factors/exposure/{ticker}` | table |
+| GET | `/openbb/risk/{ticker}` | `/risk/{ticker}` | table |
 | GET | `/openbb/sec/{ticker}/check` | `/sec/{ticker}/check` | table |
 | GET | `/openbb/esef/{ticker}/check` | `/esef/{ticker}/check` | table |
 | GET | `/openbb/factors/{dataset}/chart` | `/factors/{dataset}` | chart |

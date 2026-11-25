@@ -17,6 +17,7 @@ from integrations.openbb.adapters import (
     format_indicator_chart,
     format_macro_rates_metric,
     format_quote_metric,
+    format_risk_table,
     format_technical_chart_overlay,
     format_technical_multi_chart,
 )
@@ -435,6 +436,135 @@ def test_format_factor_exposure_table_daily_with_conversion_and_warnings():
     ]
     daily = format_factor_exposure_table(_exposure("daily"))
     assert daily[0]["Std error"] == 0.504  # 0.002 × 252
+
+
+def _risk(**extra):
+    return {
+        "ticker": "VOD.L",
+        "years": 3,
+        "start": "2023-11-21",
+        "end": "2026-11-20",
+        "returns": 756,
+        "confidence": 0.95,
+        "annualized_return": 0.0812,
+        "annualized_volatility": 0.2215,
+        "max_drawdown": {
+            "value": -0.3104,
+            "peak": "2024-02-01",
+            "trough": "2024-10-15",
+            "recovery": None,
+        },
+        "calmar_ratio": 0.26159,
+        "historical_var": -0.02134,
+        "historical_cvar": -0.0312,
+        "gaussian_var": -0.0225,
+        "gaussian_cvar": -0.0283,
+        "sharpe_ratio": 0.18734,
+        "sortino_ratio": 0.2561,
+        "risk_free_rate": {
+            "currency": "GBP",
+            "source": "Bank of England, SONIA, monthly mean",
+            "mean": 0.04512,
+            "first_observation": "2023-11-01",
+            "last_observation": "2026-10-01",
+            "reason": None,
+        },
+        "warnings": [],
+        **extra,
+    }
+
+
+def test_format_risk_table():
+    rows = format_risk_table(_risk())
+
+    assert {row["Metric"]: row["Value"] for row in rows} == {
+        "Period": "2023-11-21 → 2026-11-20",
+        "Annualised return": "8.12%",
+        "Annualised volatility": "22.15%",
+        "Maximum drawdown": "-31.04%",
+        "Calmar ratio": 0.26,
+        "Historical VaR (95.0%)": "-2.13%",
+        "Historical CVaR (95.0%)": "-3.12%",
+        "Gaussian VaR (95.0%)": "-2.25%",
+        "Gaussian CVaR (95.0%)": "-2.83%",
+        "Sharpe ratio": 0.19,
+        "Sortino ratio": 0.26,
+        "Risk-free rate (GBP, mean)": "4.51%",
+    }
+    details = {row["Metric"]: row["Detail"] for row in rows}
+    assert details["Period"] == "756 daily returns over 3 years"
+    assert details["Maximum drawdown"] == "Peak 2024-02-01, trough 2024-10-15, not recovered"
+    assert details["Sharpe ratio"] is None
+    assert details["Risk-free rate (GBP, mean)"] == (
+        "Bank of England, SONIA, monthly mean, 2023-11-01 → 2026-10-01"
+    )
+
+
+def test_format_risk_table_without_rate_nor_drawdown_and_with_warnings():
+    reason = "no short-term rate source for HKD"
+    rows = format_risk_table(
+        _risk(
+            confidence=0.99,
+            annualized_volatility=None,
+            max_drawdown=None,
+            calmar_ratio=None,
+            gaussian_var=None,
+            sharpe_ratio=None,
+            sortino_ratio=None,
+            risk_free_rate={"currency": "HKD", "source": None, "mean": None, "reason": reason},
+            warnings=["Sharpe and Sortino not computed: " + reason],
+        )
+    )
+    by_metric = {row["Metric"]: row for row in rows}
+
+    assert by_metric["Annualised volatility"]["Value"] is None
+    assert by_metric["Maximum drawdown"] == {
+        "Metric": "Maximum drawdown",
+        "Value": None,
+        "Detail": None,
+    }
+    assert by_metric["Gaussian VaR (99.0%)"]["Value"] is None
+    assert (by_metric["Sharpe ratio"]["Value"], by_metric["Sharpe ratio"]["Detail"]) == (
+        None,
+        reason,
+    )
+    assert by_metric["Risk-free rate (HKD, mean)"] == {
+        "Metric": "Risk-free rate (HKD, mean)",
+        "Value": None,
+        "Detail": reason,
+    }
+    assert rows[-1] == {
+        "Metric": "Warning",
+        "Value": "Sharpe and Sortino not computed: " + reason,
+        "Detail": None,
+    }
+
+
+def test_format_risk_table_recovered_and_a_rate_without_source_name():
+    drawdown = {
+        "value": -0.1,
+        "peak": "2024-02-01",
+        "trough": "2024-03-01",
+        "recovery": "2024-06-03",
+    }
+    rates = {
+        "currency": "EUR",
+        "source": None,
+        "mean": 0.02,
+        "first_observation": "2023-11-01",
+        "last_observation": "2026-10-01",
+        "reason": None,
+    }
+    by_metric = {
+        row["Metric"]: row
+        for row in format_risk_table(
+            _risk(max_drawdown=drawdown, risk_free_rate=rates, confidence=None)
+        )
+    }
+
+    assert by_metric["Maximum drawdown"]["Detail"].endswith("recovered 2024-06-03")
+    assert by_metric["Risk-free rate (EUR, mean)"]["Detail"] == "2023-11-01 → 2026-10-01"
+    assert "Historical VaR (?)" in by_metric
 
 
 def test_format_factor_returns_chart():

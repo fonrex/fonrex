@@ -119,6 +119,12 @@ class TestModelsCreateAll(unittest.TestCase):
             "sga_expense",
             "dividends_paid",
             "depreciation_amortization",
+            # Migration 030: the lines the ratios and scores need (issue #70, phase 3).
+            "total_current_assets",
+            "total_current_liabilities",
+            "ppe_net",
+            "accounts_payable",
+            "income_before_tax",
         ):
             self.assertIn(col, cols, f"Missing new field: {col}")
 

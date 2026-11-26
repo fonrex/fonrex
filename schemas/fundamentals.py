@@ -112,6 +112,7 @@ class FinancialStatementSchema(BaseModel):
     sga_expense: Optional[Decimal] = None
     interest_expense: Optional[Decimal] = None
     tax_provision: Optional[Decimal] = None
+    income_before_tax: Optional[Decimal] = None
 
     # Balance sheet
     total_assets: Optional[Decimal] = None
@@ -127,6 +128,10 @@ class FinancialStatementSchema(BaseModel):
     intangible_assets: Optional[Decimal] = None
     long_term_debt: Optional[Decimal] = None
     retained_earnings: Optional[Decimal] = None
+    total_current_assets: Optional[Decimal] = None
+    total_current_liabilities: Optional[Decimal] = None
+    ppe_net: Optional[Decimal] = None
+    accounts_payable: Optional[Decimal] = None
 
     # Cash Flow
     operating_cashflow: Optional[Decimal] = None

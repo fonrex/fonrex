@@ -561,6 +561,7 @@ Every file of `alembic/versions/` is listed here (`tests/test_docs_consistency.p
 | 027 | `027_esef_long_prefixes.py` | `esef_facts.taxonomy` and `esef_facts.unit` take 255 characters (40 before): the prefix of the extension of a company can be longer (`ecclesiasticalinsuranceofficepubliclimitedcompany`). The downgrade gives them back 40 characters. |
 | 028 | `028_esef_text_keys.py` | `esef_facts.taxonomy`, `concept` and `unit` become `text`: a company names the concepts and units of its extension as it wishes, and a catalogue of 3 000 European companies held names longer than 255 characters. The downgrade gives them back 255 characters. |
 | 029 | `029_single_primary_listing.py` | Data correction then guard: an instrument keeps a single primary listing, an active one before an inactive one, then the oldest (lowest `id`), and its other listings marked primary by the CSV importer are unmarked; the partial unique index `uq_asset_listings_one_primary` on `asset_listings (asset_id) WHERE is_primary` then refuses a second one. The downgrade drops the index and leaves the data alone. |
+| 030 | `030_statements_missing_lines.py` | `financial_statements` gains five nullable columns the ratios and scores need: `total_current_assets`, `total_current_liabilities`, `ppe_net` (net of depreciation, right-of-use assets included when the filing tags only that total), `accounts_payable` and `income_before_tax`. No row is rewritten; a bank or an insurer keeps no current assets nor liabilities (`NULL`). The downgrade drops the five columns. |
 
 ## Vigilance Points
 

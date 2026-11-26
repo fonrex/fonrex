@@ -438,6 +438,8 @@ class FinancialStatement(Base):
     sga_expense = Column(Numeric(20, 2))
     interest_expense = Column(Numeric(20, 2))
     tax_provision = Column(Numeric(20, 2))
+    # Income before income tax, of the continuing operations.
+    income_before_tax = Column(Numeric(20, 2))
 
     # Balance sheet
     total_assets = Column(Numeric(20, 2))
@@ -453,6 +455,12 @@ class FinancialStatement(Base):
     intangible_assets = Column(Numeric(20, 2))
     long_term_debt = Column(Numeric(20, 2))
     retained_earnings = Column(Numeric(20, 2))
+    # Classified balance sheets only: NULL for a bank or an insurer, never zero.
+    total_current_assets = Column(Numeric(20, 2))
+    total_current_liabilities = Column(Numeric(20, 2))
+    # Net of depreciation; may include the right-of-use assets (IFRS 16, finance leases).
+    ppe_net = Column(Numeric(20, 2))
+    accounts_payable = Column(Numeric(20, 2))
 
     # Cash Flow
     operating_cashflow = Column(Numeric(20, 2))

@@ -3,7 +3,7 @@
 ## Current State
 
 - **Verification**: `make fast` (rapid static & guard loop) and `make ci` (full quality gate after any harness or code change)
-- **Active focus**: DCF risk-free rate by currency, phase 2 of issue #70 (see Active / Multi-Session Work below)
+- **Active focus**: Statements: the missing lines, phase 3 of issue #70, pull request #78 (see Active / Multi-Session Work below)
 
 ## Active / Multi-Session Work
 
@@ -20,12 +20,14 @@
   3. Done: GBP from the monthly SONIA of the Bank of England (`financials/providers/boe.py`, series `IUMASOIA`, since 1997), kept by `ShortRates` with `SONIA_SERIES` (source `boe`, indicator `rate_on`, `geo` `GBR`; `BOE_REFRESH_HOURS`, `BOE_RETRY_MINUTES`); `scripts/load_short_rates.py` reads both sources (`--source` for one).
   4. Done: the `fonrex_risk` OpenBB widget (`GET /openbb/risk/{ticker}`, in the Factors tab of the EU Markets app) and the `FONREX_RISK` formula of the Sheets connector.
   Later: the pages of the documentation site (EN/FR/ZH) for `/risk`, its widget, its formula and the new settings (separate repository).
-- **DCF risk-free rate by currency, phase 2 of issue #70**: branch `feat/dcf-long-rates`, one commit per step, one pull request after step 4. Decisions (to write on the issue): D1 EUR from the ECB, then the OECD `DEU` (not `EA20`, a mean of the whole euro area); D2 USD from FRED, then the Treasury curve, then the OECD `USA`; D3 one request a measure at the OECD; D4 a monthly rate at most 3 months old; D5 a DCF on `DCF_RISK_FREE_RATE` is not cached when its currency has a source.
-  1. Done: the OECD 10-year yields (`IRLT`) read by `OECDProvider.long_rates` (fixture `tests/fixtures/oecd/irlt_monthly.csv`, captured on 2026-11-25: 44 areas, `GBR` goes on, no `ISL` nor `IDN`).
-  2. Done: stored in `macro_observations` (source `oecd`, indicator `rate_10y`) by `ShortRates` with `OECD_LONG_SERIES`; `scripts/load_short_rates.py --source oecd_10y`.
-  3. Done: `macro/long_rates.py` (`LongRateRepository`): the latest 10-year rate of a currency, `oecd_live` / `oecd_cached` / `oecd_stale`, or no rate with the reason.
-  4. Done: the DCF discounts with the 10-year rate of its currency (`valuation/dcf_service.py`), `DCF_RISK_FREE_RATE` only without source, with a warning saying why; the routes `/dcf` do not cache such a valuation when the currency has a source. Phase 2 complete: open the pull request of the branch, tick 2.1 and 2.2 on issue #70.
-  Later: phase 3 of issue #70 (the missing lines of the financial statements); the pages of the documentation site (EN/FR/ZH) for the DCF rate sources, the new source codes and the warning (separate repository).
+- **DCF risk-free rate by currency, phase 2 of issue #70**: merged in #76 (the DCF discounts with the 10-year rate of its currency: ECB, FRED, Treasury curve, then the OECD `IRLT`; `DCF_RISK_FREE_RATE` only without source). Tick 2.1 and 2.2 on issue #70 if not done.
+  Later: the pages of the documentation site (EN/FR/ZH) for the DCF rate sources, the new source codes and the warning (separate repository).
+- **Statements: the missing lines, phase 3 of issue #70**: branch `feat/statements-missing-lines` (from `main`), one commit per step, one pull request after step 3.4. Decisions (to write on the issue): D1 IFRS current assets and liabilities other than held for sale when the total is not tagged (Airbus, Pernod Ricard); D2 net PPE, else the total with the right-of-use assets (IFRS 16) or the finance leases (US GAAP); D3 payables to suppliers first, never with the accrued liabilities; D4 only published facts: an income before tax not tagged (Airbus, TotalEnergies, Pernod Ricard) stays `null`, a computed one is a decision of phase 4; D5 Yahoo's signs kept (repurchases negative, like the capex); D6 the short-term investments left out when Yahoo's cash already holds them.
+  1. Done: migration 030 (`total_current_assets`, `total_current_liabilities`, `ppe_net`, `accounts_payable`, `income_before_tax`), `models.py`, `FinancialStatementSchema`.
+  2. Done: the concepts in `financials/xbrl_mapping.py`, tested on the real ESEF filings of the fixtures and on one-fact SEC answers (the reduced SEC fixtures hold only the concepts read before).
+  3. Done: the Yahoo lines of the ratios in `financials/enrichment/yfinance_enricher.py`, each checked against the line names of yfinance.
+  4. Done: `scripts/load_sec.py` (`--force` reads the SEC again: `xbrl_facts` keeps only the mapped concepts) and `scripts/statements_coverage.py`. Backfill run on an instance and coverage report pasted on pull request #78 (rebased on `main` after #76). Next: review and merge #78, then phase 4 (the ratios and scores).
+  Later: capture the SEC fixtures again with the new concepts (facts filed up to 2026-10-16, so that the figures tested stay the same) and test them; add the new lines to `COMPARED` / `ESEF_NOT_COMPARED` of `financials/sec_check.py` as the coverage report shows their agreement; detect the banks and insurers without Yahoo's sector; run the full Yahoo enrichment; open separate issues for the 24 enrichments of 1,324 whose statements were not written (a numeric overflow, `uq_financial_statement` conflicts); in phase 4, watch a line read from another concept from one year to the next (`Figure.concept`) and the sign of `stock_repurchases` (negative from Yahoo, positive from the SEC); the pages of the documentation site (EN/FR/ZH) for the new fields.
 - **Module quality & coverage**: See the health summary in [docs/testing-and-quality.md](docs/testing-and-quality.md#module-quality-and-health-scores) and exact per-module floors in `scripts/check_coverage_distribution.py`.
 
 ## Next Steps

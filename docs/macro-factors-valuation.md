@@ -165,6 +165,13 @@ docker compose exec fonrex-api python scripts/load_esef.py
 docker compose exec fonrex-api python scripts/load_esef.py --ticker AIR.PA TTE.PA --force
 ```
 
+The SEC keeps only the concepts the mapping reads (`xbrl_facts`): after the mapping reads a new concept, as the lines of migration 030, the companies are read again with `--force` (the ESEF filings keep every total, so the stored values already hold the new concepts). `scripts/statements_coverage.py` then reports, for Yahoo, the SEC and the ESEF filings, the share of the instruments whose latest fiscal year holds each line the ratios and scores read, with and without the banks and insurers, which publish no current assets nor liabilities. It reads the database only.
+
+```bash
+docker compose exec fonrex-api python scripts/load_sec.py --force
+docker compose exec fonrex-api python scripts/statements_coverage.py
+```
+
 ### Weighting and Consensus
 
 The final intrinsic value (consensus) is calculated by combining active models according to default or custom weights in the request:

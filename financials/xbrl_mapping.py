@@ -20,7 +20,10 @@ is not one concept:
 
 Values are kept as the SEC publishes them: payments (capex, dividends,
 repurchases) are positive amounts, flows may be negative. A figure the company
-does not publish (a bank has no operating income) stays ``None``.
+does not publish (a bank has no operating income) stays ``None``: a bank or an
+insurer has an unclassified balance sheet, so its current assets and liabilities
+stay ``None`` too, never zero. Only published facts are read: a figure the
+company does not tag (the income before tax of Airbus) is never computed here.
 """
 
 from __future__ import annotations
@@ -152,6 +155,18 @@ COLUMNS: tuple[Column, ...] = (
         ("IncomeTaxExpenseBenefit",),
         ("IncomeTaxExpenseContinuingOperations",),
     ),
+    # Continuing operations, before tax. US GAAP has two totals: with the share of
+    # the profit of the equity-method investees (first), then without it.
+    _column(
+        "income_before_tax",
+        "income",
+        (
+            "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+            "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFrom"
+            "EquityMethodInvestments",
+        ),
+        ("ProfitLossBeforeTax",),
+    ),
     # Balance sheet
     _column("total_assets", "balance", ("Assets",), ("Assets",)),
     _column("total_liabilities", "balance", ("Liabilities",), ("Liabilities",)),
@@ -198,6 +213,47 @@ COLUMNS: tuple[Column, ...] = (
         "balance",
         ("RetainedEarningsAccumulatedDeficit",),
         ("RetainedEarnings",),
+    ),
+    # Some IFRS filers (Airbus, Pernod Ricard) tag only the current assets and
+    # liabilities other than those held for sale: read when the total is not given.
+    _column(
+        "total_current_assets",
+        "balance",
+        ("AssetsCurrent",),
+        (
+            "CurrentAssets",
+            "CurrentAssetsOtherThanAssetsOrDisposalGroupsClassifiedAsHeldForSaleOr"
+            "AsHeldForDistributionToOwners",
+        ),
+    ),
+    _column(
+        "total_current_liabilities",
+        "balance",
+        ("LiabilitiesCurrent",),
+        (
+            "CurrentLiabilities",
+            "CurrentLiabilitiesOtherThanLiabilitiesIncludedInDisposalGroupsClassifiedAsHeldForSale",
+        ),
+    ),
+    # Net of depreciation. Without that total, the one including the right-of-use
+    # assets (IFRS 16, finance leases of US GAAP): Airbus and Pernod Ricard since 2024.
+    _column(
+        "ppe_net",
+        "balance",
+        (
+            "PropertyPlantAndEquipmentNet",
+            "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulated"
+            "DepreciationAndAmortization",
+        ),
+        ("PropertyPlantAndEquipment", "PropertyPlantAndEquipmentIncludingRightofuseAssets"),
+    ),
+    # The payables to the suppliers first (days payable); the wider trade and other
+    # payables only without them. US GAAP: never the accrued liabilities added.
+    _column(
+        "accounts_payable",
+        "balance",
+        ("AccountsPayableCurrent",),
+        ("TradeAndOtherCurrentPayablesToTradeSuppliers", "TradeAndOtherCurrentPayables"),
     ),
     # Cash flow statement
     _column(

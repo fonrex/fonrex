@@ -23,3 +23,7 @@ How they were reduced, nothing else changed (key order, numbers and text are as 
 
 The full answers are large: 3.8 MB for Apple, 4.9 MB for Microsoft, 8 MB for
 JPMorgan. `expected.json` gives what a reading must find.
+
+The concepts added later to the mapping (the lines of the ratios, migration 030) are
+not in these files: `tests/test_xbrl_mapping.py` tests them on answers of one fact per
+concept, until the files are captured again with them.

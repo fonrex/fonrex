@@ -250,6 +250,108 @@ class TestAnnualStatements:
         assert annual_statements([]) == []
 
 
+def us_gaap_answer(**facts: tuple[str | None, int]) -> dict:
+    """An answer of the SEC holding one 10-K fact per concept: (start or None, value)."""
+    concepts = {}
+    for concept, (start, value) in facts.items():
+        fact = {"end": "2025-12-31", "val": value, "accn": "0000000001-26-000001"}
+        fact |= {"form": "10-K", "filed": "2026-02-20", "fy": 2025, "fp": "FY"}
+        if start:
+            fact["start"] = start
+        concepts[concept] = {"units": {"USD": [fact]}}
+    return {"facts": {"us-gaap": concepts}}
+
+
+class TestLinesOfTheRatios:
+    """The lines added for the ratios and scores (issue #70, phase 3), US GAAP side.
+
+    The reduced answers of ``tests/fixtures/sec/`` hold only the concepts read before;
+    these answers carry one fact per concept.
+    """
+
+    YEAR = "2025-01-01"
+
+    def year(self, **facts):
+        rows = facts_to_rows("1", us_gaap_answer(Revenues=(self.YEAR, 1000), **facts))
+        (year,) = annual_statements(rows)
+        return year
+
+    def test_the_five_lines(self):
+        year = self.year(
+            AssetsCurrent=(None, 500),
+            LiabilitiesCurrent=(None, 300),
+            PropertyPlantAndEquipmentNet=(None, 200),
+            AccountsPayableCurrent=(None, 90),
+            IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest=(
+                self.YEAR,
+                120,
+            ),
+        )
+        assert [
+            year.value(column)
+            for column in (
+                "total_current_assets",
+                "total_current_liabilities",
+                "ppe_net",
+                "accounts_payable",
+                "income_before_tax",
+            )
+        ] == [Decimal(500), Decimal(300), Decimal(200), Decimal(90), Decimal(120)]
+        assert COLUMNS_BY_NAME["income_before_tax"].statement == "income"
+        assert all(
+            COLUMNS_BY_NAME[name].instant
+            for name in ("total_current_assets", "total_current_liabilities", "ppe_net")
+        )
+
+    def test_income_before_tax_with_the_equity_method_share_first(self):
+        year = self.year(
+            IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest=(
+                self.YEAR,
+                120,
+            ),
+            IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments=(
+                self.YEAR,
+                110,
+            ),
+        )
+        assert year.value("income_before_tax") == Decimal(120)
+
+    def test_income_before_tax_without_the_equity_method_share(self):
+        year = self.year(
+            IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments=(
+                self.YEAR,
+                110,
+            ),
+        )
+        assert year.value("income_before_tax") == Decimal(110)
+
+    def test_ppe_with_the_finance_leases_only_without_the_net_total(self):
+        both = self.year(
+            PropertyPlantAndEquipmentNet=(None, 200),
+            PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization=(
+                None,
+                260,
+            ),
+        )
+        leases = self.year(
+            PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization=(
+                None,
+                260,
+            ),
+        )
+        assert (both.value("ppe_net"), leases.value("ppe_net")) == (Decimal(200), Decimal(260))
+
+    def test_payables_never_with_the_accrued_liabilities(self):
+        year = self.year(AccountsPayableAndAccruedLiabilitiesCurrent=(None, 150))
+        assert year.value("accounts_payable") is None
+
+    def test_a_bank_has_no_current_assets_nor_liabilities(self):
+        year = years("companyfacts_jpm.json")[date(2025, 12, 31)]
+        assert year.value("total_assets") == Decimal("4424900000000")
+        assert year.value("total_current_assets") is None  # never zero
+        assert year.value("total_current_liabilities") is None
+
+
 class TestCompanyFacts:
     async def test_read_by_cik_with_the_user_agent_of_the_instance(self, fake_network, monkeypatch):
         monkeypatch.setenv("SEC_EDGAR_EMAIL", "pierre@example.org")

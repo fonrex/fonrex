@@ -27,9 +27,10 @@ from financials.esef_statements import (
     fact_row,
     filings_to_read,
     is_annual,
+    report_end_of,
 )
-from financials.providers.esef import parse_filings
-from financials.xbrl_mapping import COLUMNS_BY_NAME, IFRS
+from financials.providers.esef import parse_filings, parse_xbrl_json
+from financials.xbrl_mapping import COLUMNS_BY_NAME, IFRS, FactRow, annual_statements
 
 FIXTURES = Path(__file__).parent / "fixtures" / "esef"
 TOTAL = "529900S21EQ1BO4ESM68"
@@ -151,6 +152,129 @@ class TestMapping:
         ifrs = tuple(c for t, c in COLUMNS_BY_NAME[column].concepts if t == IFRS)
         # The share of the owners of the parent first: the group total only without it.
         assert ifrs == concepts
+
+
+def years_of_real_filings(lei: str) -> dict:
+    """The fiscal years of the two real filings of a company kept in the fixtures.
+
+    The facts are read as ``EsefStatements`` stores them: the true period of the
+    filing (``report_end``) stands for its date of filing.
+    """
+    rows = []
+    for path in sorted(FIXTURES.glob(f"{lei}-*-ESEF-*.json")):
+        report = parse_xbrl_json(path.read_text(encoding="utf-8"), lei, path.stem)
+        end = report_end_of(report)
+        rows += [
+            FactRow(
+                lei,
+                fact.prefix,
+                fact.name,
+                fact.unit,
+                fact.period_end,
+                fact.duration_days,
+                fact.period_start,
+                fact.value,
+                path.stem,
+                ESEF_FORM,
+                None,
+                None,
+                end,
+                None,
+            )
+            for fact in report.facts
+        ]
+    return {year.period_end: year for year in annual_statements(rows)}
+
+
+AIRBUS = "MINO79WLOO247M1IL051"
+PERNOD = "52990097YFPX9J0H5D87"
+NOVO = "549300DAQ1CVT6CXN342"
+NEW_LINES = (
+    "total_current_assets",
+    "total_current_liabilities",
+    "ppe_net",
+    "accounts_payable",
+    "income_before_tax",
+)
+
+
+class TestNewLinesOfRealFilings:
+    """The lines added for the ratios and scores (issue #70, phase 3), read from real filings."""
+
+    @pytest.mark.parametrize(
+        ("lei", "end", "expected"),
+        [
+            (
+                TOTAL,
+                date(2025, 12, 31),
+                ("89469000000", "92563000000", "114694000000", "38065000000", None),
+            ),
+            (
+                NOVO,
+                date(2020, 12, 31),
+                ("65809000000", "70273000000", "50269000000", "5717000000", "53130000000"),
+            ),
+            (
+                AIRBUS,
+                date(2025, 12, 31),
+                ("73584000000", "63429000000", "20893000000", "15878000000", None),
+            ),
+        ],
+    )
+    def test_the_lines_of_each_company(self, lei, end, expected):
+        year = years_of_real_filings(lei)[end]
+        wanted = tuple(None if value is None else Decimal(value) for value in expected)
+        assert tuple(year.value(column) for column in NEW_LINES) == wanted
+
+    def test_the_total_of_the_current_assets_first(self):
+        year = years_of_real_filings(TOTAL)[date(2025, 12, 31)]
+        assert year.figures["total_current_assets"].concept == "CurrentAssets"
+        assert year.figures["total_current_liabilities"].concept == "CurrentLiabilities"
+
+    def test_without_total_the_current_assets_other_than_held_for_sale(self):
+        # Airbus tags only the current assets and liabilities not held for sale.
+        figures = years_of_real_filings(AIRBUS)[date(2025, 12, 31)].figures
+        assert figures["total_current_assets"].concept.startswith("CurrentAssetsOtherThan")
+        assert figures["total_current_liabilities"].concept.startswith(
+            "CurrentLiabilitiesOtherThan"
+        )
+
+    def test_ppe_with_the_right_of_use_assets_only_without_the_net_total(self):
+        years = years_of_real_filings(AIRBUS)
+        assert years[date(2021, 12, 31)].figures["ppe_net"].concept == "PropertyPlantAndEquipment"
+        assert years[date(2025, 12, 31)].figures["ppe_net"].concept == (
+            "PropertyPlantAndEquipmentIncludingRightofuseAssets"
+        )
+
+    def test_payables_to_suppliers_first_then_trade_and_other_payables(self):
+        years = years_of_real_filings(PERNOD)
+        # Pernod Ricard tagged its trade and other payables until 2021, its payables to
+        # suppliers since.
+        old, new = years[date(2021, 6, 30)], years[date(2025, 6, 30)]
+        assert (old.figures["accounts_payable"].concept, old.value("accounts_payable")) == (
+            "TradeAndOtherCurrentPayables",
+            Decimal("2337000000"),
+        )
+        assert (new.figures["accounts_payable"].concept, new.value("accounts_payable")) == (
+            "TradeAndOtherCurrentPayablesToTradeSuppliers",
+            Decimal("2711000000"),
+        )
+
+    def test_a_bank_has_no_current_assets_nor_liabilities(self):
+        year = years_of_real_filings(BNP)[date(2025, 12, 31)]
+        assert year.value("total_assets") == Decimal("2792981000000")
+        for column in ("total_current_assets", "total_current_liabilities", "accounts_payable"):
+            assert year.value(column) is None, column  # never zero
+        assert year.value("income_before_tax") == Decimal("17065000000")
+
+    def test_an_income_before_tax_not_tagged_is_not_computed(self):
+        # Airbus, TotalEnergies and Pernod Ricard tag the profit and the tax, not
+        # their sum: the mapping reads published facts only.
+        for lei, end in ((AIRBUS, date(2025, 12, 31)), (PERNOD, date(2025, 6, 30))):
+            year = years_of_real_filings(lei)[end]
+            assert year.value("net_income") is not None
+            assert year.value("tax_provision") is not None
+            assert year.value("income_before_tax") is None
 
 
 class TestWithoutLei:

@@ -481,6 +481,10 @@ class YFinanceEnricher:
         "Tax Provision": "tax_provision",
         "Basic Average Shares": "shares_basic",
         "Diluted Average Shares": "shares_diluted",
+        # Read by the ratios and scores (issue #70).
+        "Pretax Income": "income_before_tax",
+        "Selling General And Administration": "sga_expense",
+        "Research And Development": "rd_expense",
     }
 
     BALANCE_MAPPING = {
@@ -490,6 +494,21 @@ class YFinanceEnricher:
         "Total Debt": "total_debt",
         "Cash And Cash Equivalents": "cash_and_equivalents",
         "Cash Cash Equivalents And Short Term Investments": "cash_and_equivalents",
+        # Read by the ratios and scores (issue #70). The narrow line of each figure,
+        # never a wider one: "Payables", "Receivables", "Long Term Debt And Capital
+        # Lease Obligation" and "Goodwill And Other Intangible Assets" are left out.
+        # A bank publishes no current assets nor liabilities: they stay None.
+        "Current Assets": "total_current_assets",
+        "Current Liabilities": "total_current_liabilities",
+        "Net PPE": "ppe_net",
+        "Accounts Payable": "accounts_payable",
+        "Accounts Receivable": "accounts_receivable",
+        "Inventory": "inventory",
+        "Retained Earnings": "retained_earnings",
+        "Long Term Debt": "long_term_debt",
+        "Goodwill": "goodwill",
+        "Other Intangible Assets": "intangible_assets",
+        "Other Short Term Investments": "short_term_investments",
     }
 
     CASHFLOW_MAPPING = {
@@ -501,7 +520,17 @@ class YFinanceEnricher:
         # Dividends of the year, for the dividend model (first line that has a value).
         "Cash Dividends Paid": "dividends_paid",
         "Common Stock Dividend Paid": "dividends_paid",
+        # Read by the ratios and scores (issue #70), first line that has a value. Yahoo's
+        # signs are kept: repurchases are negative cash flows, like the capex.
+        "Depreciation And Amortization": "depreciation_amortization",
+        "Depreciation Amortization Depletion": "depreciation_amortization",
+        "Repurchase Of Capital Stock": "stock_repurchases",
+        "Common Stock Payments": "stock_repurchases",
     }
+
+    # Cash read from the line that adds the short-term investments: those investments
+    # are then left out, so that a ratio adding both never counts them twice.
+    CASH_WITH_INVESTMENTS = "Cash Cash Equivalents And Short Term Investments"
 
     def _fetch_statements(self, asset_id: int, t: yf.Ticker, info: dict) -> None:
         """Read the 3 financial statements × 2 frequencies."""
@@ -573,6 +602,13 @@ class YFinanceEnricher:
                         # Share counts are stored in integer columns.
                         val = int(val)
                     values[model_col] = val
+
+                if (
+                    statement_type == "balance"
+                    and _to_decimal(column_data.get("Cash And Cash Equivalents")) is None
+                    and _to_decimal(column_data.get(self.CASH_WITH_INVESTMENTS)) is not None
+                ):
+                    values["short_term_investments"] = None
 
                 # Upsert
                 existing = (

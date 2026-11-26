@@ -441,6 +441,176 @@ class TestFetchStatements(_DatabaseTestCase):
         session.close()
 
 
+class TestStatementLinesOfTheRatios(_DatabaseTestCase):
+    """The lines the ratios and scores read (issue #70, phase 3)."""
+
+    YEAR = pd.Timestamp("2025-12-31")
+
+    def setUp(self):
+        self.engine = _make_engine()
+        self.db_service, self.Session = _make_db_service(self.engine)
+        session = self.Session()
+        _make_test_asset(session)
+        session.close()
+        self.enricher = YFinanceEnricher(self.db_service)
+
+    def store(self, income=None, balance=None, cashflow=None):
+        ticker = MagicMock()
+        ticker.income_stmt = pd.DataFrame({self.YEAR: income} if income else {})
+        ticker.balance_sheet = pd.DataFrame({self.YEAR: balance} if balance else {})
+        ticker.cashflow = pd.DataFrame({self.YEAR: cashflow} if cashflow else {})
+        for name in ("quarterly_income_stmt", "quarterly_balance_sheet", "quarterly_cashflow"):
+            setattr(ticker, name, pd.DataFrame())
+        self.enricher._fetch_statements(1, ticker, {"financialCurrency": "USD"})
+
+    def row(self, statement_type):
+        session = self.Session()
+        try:
+            return (
+                session.query(FinancialStatement)
+                .filter_by(asset_id=1, statement_type=statement_type, period_type="annual")
+                .one()
+            )
+        finally:
+            session.close()
+
+    def test_every_line_read_is_a_line_of_yfinance(self):
+        # The names of yfinance (its keys, split as it splits them): a typo in a
+        # mapping would leave a column empty without any error.
+        from yfinance.const import fundamentals_keys
+        from yfinance.utils import camel2title
+
+        for key, mapping, acronyms in (
+            ("financials", YFinanceEnricher.INCOME_MAPPING, ["EBIT", "EBITDA", "EPS", "NI"]),
+            ("balance-sheet", YFinanceEnricher.BALANCE_MAPPING, ["PPE"]),
+            ("cash-flow", YFinanceEnricher.CASHFLOW_MAPPING, ["PPE"]),
+        ):
+            lines = set(camel2title(fundamentals_keys[key], sep=" ", acronyms=acronyms))
+            self.assertEqual(set(mapping) - lines, set(), key)
+
+    def test_the_lines_are_stored(self):
+        self.store(
+            income={
+                "Total Revenue": 1000,
+                "Pretax Income": 150,
+                "Selling General And Administration": 120,
+                "Research And Development": 80,
+            },
+            balance={
+                "Total Assets": 5000,
+                "Current Assets": 1800,
+                "Current Liabilities": 1200,
+                "Net PPE": 900,
+                "Accounts Payable": 400,
+                "Accounts Receivable": 350,
+                "Inventory": 300,
+                "Retained Earnings": 700,
+                "Long Term Debt": 1100,
+                "Goodwill": 600,
+                "Other Intangible Assets": 250,
+                "Cash And Cash Equivalents": 500,
+                "Other Short Term Investments": 200,
+            },
+            cashflow={
+                "Operating Cash Flow": 260,
+                "Depreciation And Amortization": 90,
+                "Repurchase Of Capital Stock": -60,
+            },
+        )
+        income, balance, cashflow = self.row("income"), self.row("balance"), self.row("cashflow")
+        self.assertEqual(
+            (income.income_before_tax, income.sga_expense, income.rd_expense),
+            (Decimal(150), Decimal(120), Decimal(80)),
+        )
+        self.assertEqual(
+            {
+                column: getattr(balance, column)
+                for column in (
+                    "total_current_assets",
+                    "total_current_liabilities",
+                    "ppe_net",
+                    "accounts_payable",
+                    "accounts_receivable",
+                    "inventory",
+                    "retained_earnings",
+                    "long_term_debt",
+                    "goodwill",
+                    "intangible_assets",
+                    "cash_and_equivalents",
+                    "short_term_investments",
+                )
+            },
+            {
+                "total_current_assets": Decimal(1800),
+                "total_current_liabilities": Decimal(1200),
+                "ppe_net": Decimal(900),
+                "accounts_payable": Decimal(400),
+                "accounts_receivable": Decimal(350),
+                "inventory": Decimal(300),
+                "retained_earnings": Decimal(700),
+                "long_term_debt": Decimal(1100),
+                "goodwill": Decimal(600),
+                "intangible_assets": Decimal(250),
+                "cash_and_equivalents": Decimal(500),
+                "short_term_investments": Decimal(200),
+            },
+        )
+        # Yahoo's signs are kept: a repurchase is a negative cash flow, like the capex.
+        self.assertEqual(
+            (cashflow.depreciation_amortization, cashflow.stock_repurchases),
+            (Decimal(90), Decimal(-60)),
+        )
+
+    def test_a_wider_line_is_never_read(self):
+        self.store(
+            balance={
+                "Total Assets": 5000,
+                "Payables": 650,
+                "Receivables": 500,
+                "Long Term Debt And Capital Lease Obligation": 1400,
+                "Goodwill And Other Intangible Assets": 850,
+            }
+        )
+        balance = self.row("balance")
+        for column in ("accounts_payable", "accounts_receivable", "long_term_debt", "goodwill"):
+            self.assertIsNone(getattr(balance, column), column)
+        self.assertIsNone(balance.intangible_assets)
+
+    def test_the_first_line_that_has_a_value(self):
+        self.store(
+            cashflow={
+                "Operating Cash Flow": 260,
+                "Depreciation And Amortization": np.nan,
+                "Depreciation Amortization Depletion": 95,
+                "Common Stock Payments": -40,
+            }
+        )
+        cashflow = self.row("cashflow")
+        self.assertEqual(
+            (cashflow.depreciation_amortization, cashflow.stock_repurchases),
+            (Decimal(95), Decimal(-40)),
+        )
+
+    def test_investments_left_out_when_the_cash_already_holds_them(self):
+        self.store(
+            balance={
+                "Total Assets": 5000,
+                "Cash Cash Equivalents And Short Term Investments": 700,
+                "Other Short Term Investments": 200,
+            }
+        )
+        balance = self.row("balance")
+        self.assertEqual(balance.cash_and_equivalents, Decimal(700))
+        self.assertIsNone(balance.short_term_investments)
+
+    def test_a_bank_has_no_current_assets_nor_liabilities(self):
+        # An unclassified balance sheet: the columns stay empty, never zero.
+        self.store(balance={"Total Assets": 4_000_000, "Cash And Cash Equivalents": 300_000})
+        balance = self.row("balance")
+        self.assertIsNone(balance.total_current_assets)
+        self.assertIsNone(balance.total_current_liabilities)
+
+
 # ---------------------------------------------------------------------------
 # Test _fetch_earnings
 # ---------------------------------------------------------------------------

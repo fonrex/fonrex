@@ -32,10 +32,11 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from financials.enrichment.statement_store import upsert_rows
+from financials.numbers import parse_number
 from financials.providers.base import BaseFinancialProvider
 from settings import env_int
 
@@ -140,18 +141,18 @@ def multiplier_and_currency(page: str) -> tuple[Decimal, str | None]:
     return SCALES[match.group(1)], match.group(2)
 
 
-def number(text: str) -> Decimal | None:
-    """A table cell as a number: separators dropped, a dash means no figure, brackets negative."""
-    cleaned = html_module.unescape(text or "").replace("\u2212", "-").strip()
-    if cleaned in ("", "-", "--", "—", "N/A"):
+def figure(text: str) -> Decimal | None:
+    """A table cell as a figure, read by the one number reader of the project.
+
+    ``parse_number`` knows what a cell can carry - a thousands separator, brackets meaning a
+    negative, a dash meaning no figure, a currency code that is not a scale - and its rules are
+    written once for every page this project scrapes. A second reader here would drift from it.
+    """
+    value = parse_number(text, decimal=".")
+    if value is None:
         return None
-    negative = cleaned.startswith("(") and cleaned.endswith(")")
-    cleaned = cleaned.strip("()").replace(",", "").replace(" ", "").rstrip("%")
-    try:
-        value = Decimal(cleaned)
-    except (InvalidOperation, ValueError, TypeError):
-        return None
-    return -value if negative else value
+    # The reader answers with a float; the column expects the exact figure the page displays.
+    return Decimal(str(value))
 
 
 def period_end_of(cell: str) -> date | None:
@@ -212,14 +213,14 @@ def parse(page: str) -> Page:
         values: dict[str, Any] = {}
         for label, text in seen[end].items():
             column, scale = FIELDS[label]
-            figure = number(text)
-            if figure is None:
+            value = figure(text)
+            if value is None:
                 continue
             if scale == "scaled":
-                figure *= multiplier
+                value *= multiplier
             if column in WHOLE_NUMBER_COLUMNS:
-                figure = Decimal(int(figure))
-            values[column] = figure
+                value = Decimal(int(value))
+            values[column] = value
         if "revenue" not in values and "eps_diluted" not in values:
             continue
         periods.append({"period_end": end, **values})

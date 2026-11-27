@@ -1,6 +1,6 @@
 """The quarters stockanalysis.com keeps: read, scaled, and written only where empty.
 
-The fixture is a real page, captured on the date in ``fixtures/providers/stockanalysis_sap.json``
+The fixture is a real page, captured on the date in ``fixtures/stockanalysis/sap_income_quarterly.json``
 and reduced to the rows this module reads. ``expected`` holds the figures the page displays, so a
 parser that drifts from them fails here instead of in an analysis three months later.
 """
@@ -16,9 +16,12 @@ import pytest
 
 from financials.enrichment import stockanalysis_quarters as quarters
 
-FIXTURES = Path(__file__).parent / "fixtures" / "providers"
-PAGE = FIXTURES / "stockanalysis_sap.html"
-EXPECTED = json.loads((FIXTURES / "stockanalysis_sap.json").read_text(encoding="utf-8"))
+#: Not under ``fixtures/providers``: that folder is read by ``test_provider_real_pages``, which
+#: expects every fixture there to belong to a registered provider. This page belongs to none -
+#: it feeds a statement table, not ``/fundamental``.
+FIXTURES = Path(__file__).parent / "fixtures" / "stockanalysis"
+PAGE = FIXTURES / "sap_income_quarterly.html"
+EXPECTED = json.loads((FIXTURES / "sap_income_quarterly.json").read_text(encoding="utf-8"))
 
 
 def page_text() -> str:

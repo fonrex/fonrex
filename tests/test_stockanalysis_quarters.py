@@ -6,6 +6,7 @@ parser that drifts from them fails here instead of in an analysis three months l
 """
 
 import json
+import threading
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -81,6 +82,7 @@ class TestTheParsedPage:
         # One cell short: matching the figures by position would put this quarter's revenue under
         # the previous quarter's date, which reads as a growth figure and is not one.
         page = (
+            "<div>Financials in millions EUR.</div>"
             "<table>"
             "<tr><td>Period Ending</td><td>Mar '26 Mar 31, 2026</td><td>Dec '25 Dec 31, 2025</td></tr>"
             "<tr><td>Revenue</td><td>1,500</td></tr>"
@@ -96,12 +98,26 @@ class TestTheParsedPage:
         assert quarters.period_end_of("Feb 30, 2026") is None
 
     def test_a_page_without_dates_carries_no_quarter(self):
-        assert (
-            quarters.parse("<table><tr><td>Revenue</td><td>1,500</td></tr></table>").periods == []
+        page = "<div>Financials in millions EUR.</div><table><tr><td>Revenue</td><td>1,500</td></tr></table>"
+        assert quarters.parse(page).periods == []
+
+    def test_a_page_that_states_no_scale_is_refused(self):
+        # Millions are a guess the site does not always make: a table in thousands read as
+        # millions is a thousand times too large, and a written period is never revisited.
+        page = (
+            "<table>"
+            "<tr><td>Period Ending</td><td>Mar '26 Mar 31, 2026</td></tr>"
+            "<tr><td>Revenue</td><td>1,500</td></tr>"
+            "</table>"
         )
+        parsed = quarters.parse(page)
+        assert parsed.multiplier is None
+        assert parsed.periods == []
+        assert not parsed
 
     def test_a_bank_quarter_without_revenue_stays_readable_through_its_earnings(self):
         page = (
+            "<div>Financials in millions EUR.</div>"
             "<table>"
             "<tr><td>Period Ending</td><td>Sep '26 Sep 30, 2026</td></tr>"
             "<tr><td>Revenue</td><td>-</td></tr>"
@@ -222,7 +238,7 @@ def written(monkeypatch):
         state["provider"] = provider
         monkeypatch.setattr(quarters, "StockAnalysisQuarters", lambda: provider)
         monkeypatch.setattr(
-            quarters, "upsert_rows", lambda _db, rows: state["rows"].extend(rows) or len(rows)
+            quarters, "insert_rows", lambda _db, rows: state["rows"].extend(rows) or len(rows)
         )
         return provider
 
@@ -230,8 +246,92 @@ def written(monkeypatch):
 
 
 #: The backfill takes a database service it never opens in these tests: the periods and the write
-#: are stubbed, because what is under test is the decision, not SQLAlchemy.
+#: are stubbed, because what is under test is the decision, not SQLAlchemy. ``TestTheStoredTable``
+#: runs against a real database, where the write itself is the question.
 DB: Any = object()
+
+
+@pytest.fixture
+def database(tmp_path):
+    """A real SQLite file with the two tables these tests write and read back.
+
+    Only those tables are created: the whole schema takes half a minute and none of it is
+    what is under test here.
+    """
+    from database.service import DatabaseService
+    from models import Asset, Base, FinancialStatement
+
+    service = DatabaseService(f"sqlite:///{tmp_path / 'quarters.db'}")
+    Base.metadata.create_all(service.engine, tables=[Asset.__table__, FinancialStatement.__table__])
+    yield service
+    service.engine.dispose()
+
+
+def stored(database, period_end: date) -> Any:
+    """The row of one quarter, read back from the table."""
+    from models import FinancialStatement
+
+    session = database.get_session()
+    try:
+        return (
+            session.query(FinancialStatement)
+            .filter_by(
+                asset_id=1, statement_type="income", period_type="quarterly", period_end=period_end
+            )
+            .one_or_none()
+        )
+    finally:
+        session.close()
+
+
+def row(period_end: date, revenue: int) -> dict[str, Any]:
+    return {
+        "asset_id": 1,
+        "statement_type": "income",
+        "period_type": "quarterly",
+        "period_end": period_end,
+        "revenue": Decimal(revenue),
+    }
+
+
+class TestTheStoredTable:
+    """A written period stays as the source that wrote it - checked on the database, not on a stub."""
+
+    def test_an_existing_row_is_not_touched_by_the_insert(self, database):
+        assert statement_store.insert_rows(database, [row(date(2026, 9, 30), 100)]) == 1
+        # The same quarter again, other figures: the store says no and the row keeps its source.
+        assert statement_store.insert_rows(database, [row(date(2026, 9, 30), 999)]) == 0
+        assert stored(database, date(2026, 9, 30)).revenue == Decimal("100.00")
+
+    def test_the_upsert_still_replaces_what_the_enrichment_asked_for(self, database):
+        statement_store.insert_rows(database, [row(date(2026, 9, 30), 100)])
+        statement_store.upsert_rows(database, [row(date(2026, 9, 30), 555)])
+        assert stored(database, date(2026, 9, 30)).revenue == Decimal("555.00")
+
+    async def test_the_backfill_adds_the_missing_quarter_and_leaves_the_stored_one(
+        self, database, written, monkeypatch
+    ):
+        # Yahoo wrote Q3 while this page was already on its way: the backfill must add only Q2.
+        statement_store.insert_rows(database, [row(date(2026, 9, 30), 100)])
+        monkeypatch.setenv("STOCKANALYSIS_MIN_QUARTERS", "20")
+        _, install = written
+        install(
+            quarters.Page(
+                Decimal(1_000_000),
+                "EUR",
+                [
+                    {"period_end": date(2026, 9, 30), "revenue": Decimal(200)},
+                    {"period_end": date(2026, 6, 30), "revenue": Decimal(300)},
+                ],
+            )
+        )
+        monkeypatch.setattr(
+            quarters, "insert_rows", lambda db, rows: statement_store.insert_rows(db, rows)
+        )
+
+        assert await quarters.backfill(database, 1, "SAP.DE") == 1
+        assert stored(database, date(2026, 9, 30)).revenue == Decimal("100.00")
+        assert stored(database, date(2026, 6, 30)).revenue == Decimal("300.00")
 
 
 class TestTheRequest:
@@ -263,6 +363,24 @@ class TestTheRequest:
         # A redirect to a notice or to another document must not read as an empty statement.
         fake_network.get(
             "stockanalysis.com", httpx.Response(200, text="<html><body>Just a moment</body></html>")
+        )
+
+        assert await quarters.StockAnalysisQuarters().quarters("SAP.DE") is None
+
+    async def test_a_page_that_states_no_scale_is_not_a_page(self, fake_network):
+        # Without the scale line the figures could be millions or thousands; a written period is
+        # never revisited, so the page is refused instead of read on a guess.
+        fake_network.get(
+            "stockanalysis.com",
+            httpx.Response(
+                200,
+                text=(
+                    "<table>"
+                    "<tr><td>Period Ending</td><td>Sep '26 Sep 30, 2026</td></tr>"
+                    "<tr><td>Revenue</td><td>10,270</td></tr>"
+                    "</table>"
+                ),
+            ),
         )
 
         assert await quarters.StockAnalysisQuarters().quarters("SAP.DE") is None
@@ -329,6 +447,37 @@ class TestTheBackfill:
 
         assert await quarters.backfill(DB, 1, "SAP.DE") == 0
         assert state["rows"] == []
+
+    async def test_the_database_work_leaves_the_event_loop(self, written, monkeypatch):
+        # A query that waits for a connection on the loop thread stalls every other request of
+        # the worker; the read and the write belong in the pool (AGENTS.md rule 22).
+        state, install = written
+        monkeypatch.setenv("STOCKANALYSIS_MIN_QUARTERS", "20")
+        seen: list[tuple[str, int]] = []
+
+        def read(_db, _asset):
+            seen.append(("read", threading.get_ident()))
+            return set()
+
+        def write(_db, rows):
+            seen.append(("write", threading.get_ident()))
+            return len(rows)
+
+        install(
+            quarters.Page(
+                Decimal(1_000_000),
+                "EUR",
+                [{"period_end": date(2026, 9, 30), "revenue": Decimal(1)}],
+            )
+        )
+        # After install(): it replaces the store itself, and this test asks where the store runs.
+        monkeypatch.setattr(quarters, "quarters_present", read)
+        monkeypatch.setattr(quarters, "insert_rows", write)
+        loop_thread = threading.get_ident()
+
+        assert await quarters.backfill(DB, 1, "SAP.DE") == 1
+        assert [name for name, _ in seen] == ["read", "write"]
+        assert all(identity != loop_thread for _, identity in seen)
 
     async def test_a_page_without_a_quarter_writes_nothing(self, written, monkeypatch):
         state, install = written

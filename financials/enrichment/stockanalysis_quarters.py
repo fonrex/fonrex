@@ -35,7 +35,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from financials.enrichment.statement_store import upsert_rows
+from concurrency import run_sync
+from financials.enrichment.statement_store import insert_rows
 from financials.numbers import parse_number
 from financials.providers.base import BaseFinancialProvider
 from settings import env_int
@@ -95,8 +96,11 @@ FIELDS: dict[str, tuple[str, str]] = {
 #: Columns that hold whole share counts, published in the same millions as the figures.
 WHOLE_NUMBER_COLUMNS = frozenset({"shares_basic", "shares_diluted"})
 
-#: "Financials in millions EUR." - the scale and the currency of the table, in one line.
-SCALE_TEXT = re.compile(r"Financials in (millions|thousands)\s+([A-Z]{3})")
+#: "Financials in millions EUR." - the scale of the table, and the currency where the page
+#: names one. A page without the scale line is refused: the figures would be written a
+#: thousand times too large or too small, and a backfill never revisits them.
+SCALE_TEXT = re.compile(r"Financials in (millions|thousands)\b")
+CURRENCY_TEXT = re.compile(r"Financials in (?:millions|thousands)\s+([A-Z]{3})\b")
 SCALES = {"millions": Decimal(1_000_000), "thousands": Decimal(1_000)}
 #: "Sep '26 Sep 30, 2026" - the cell carries the short and the long date; the long one counts.
 PERIOD_TEXT = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})")
@@ -124,21 +128,26 @@ MAX_BYTES = 2_000_000
 class Page:
     """One income statement page: its scale, its currency and its quarters."""
 
-    multiplier: Decimal
+    multiplier: Decimal | None
     currency: str | None
     periods: list[dict[str, Any]] = field(default_factory=list)
 
+    def __bool__(self) -> bool:
+        return bool(self.periods)
 
-def multiplier_and_currency(page: str) -> tuple[Decimal, str | None]:
-    """The scale and the currency the page announces, or the millions of a page that does not.
 
-    Every income statement on the site carries the line; a page without it is read as
-    millions, which is what the tables were in every capture taken so far.
+def multiplier_and_currency(page: str) -> tuple[Decimal | None, str | None]:
+    """The scale the page announces and the currency it names, if any.
+
+    ``(None, None)`` when the page does not state its scale. There is no default: a table
+    published in thousands, read as millions, makes the revenue a thousand times too large,
+    and a backfill never revisits a period it has written.
     """
     match = SCALE_TEXT.search(page)
     if match is None:
-        return SCALES["millions"], None
-    return SCALES[match.group(1)], match.group(2)
+        return None, None
+    currency = CURRENCY_TEXT.search(page)
+    return SCALES[match.group(1)], currency.group(1) if currency else None
 
 
 def figure(text: str) -> Decimal | None:
@@ -183,7 +192,7 @@ def parse(page: str) -> Page:
     rows = [_cells(row) for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S)]
     rows = [row for row in rows if row]
     multiplier, currency = multiplier_and_currency(page)
-    if not rows:
+    if multiplier is None or not rows:
         return Page(multiplier, currency)
 
     ends: list[date | None] = []
@@ -267,6 +276,11 @@ class StockAnalysisQuarters(BaseFinancialProvider):
             )
             return None
         page = parse(body)
+        if page.multiplier is None:
+            # The page does not say whether the table is in millions or thousands. Writing its
+            # figures on a guess would persist a wrong scale that no later run corrects.
+            logger.warning("[%s] %s: the page states no scale, refused", self.name, ticker)
+            return None
         if not page.periods:
             logger.warning("[%s] %s: the table carries no readable quarter", self.name, ticker)
             return None
@@ -300,7 +314,10 @@ def as_rows(
     currency: str | None,
     known: set[date],
 ) -> list[dict[str, Any]]:
-    """The rows to write: only the periods the database does not have yet.
+    """The rows to hand to the insert: only the periods the database does not have yet.
+
+    This saves rows, it is not the guarantee - ``insert_rows`` decides, so a period another
+    enrichment added while the page was in flight is not overwritten by these values.
 
     A period it already holds keeps the figures it was given: Yahoo and this source may
     round differently, and one row from one source is worth more than a mixture.
@@ -333,7 +350,9 @@ async def backfill(db_service: DatabaseService, asset_id: int, ticker: str) -> i
     wanted = minimum_quarters()
     if wanted <= 0:
         return 0
-    known = quarters_present(db_service, asset_id)
+    # Synchronous database work goes through the worker pool: a query that waits for a
+    # connection would otherwise stall every other request on this event loop.
+    known = await run_sync(quarters_present, db_service, asset_id)
     if len(known) >= wanted:
         return 0
     page = await StockAnalysisQuarters().quarters(ticker)
@@ -343,7 +362,9 @@ async def backfill(db_service: DatabaseService, asset_id: int, ticker: str) -> i
     if not rows:
         logger.debug("[%s] %s: no quarter left to add", PROVIDER_NAME, ticker)
         return 0
-    added = upsert_rows(db_service, rows)
+    # The list above only saves rows; the insert is what keeps a stored period untouched when
+    # another enrichment added it while this page was in flight.
+    added = await run_sync(insert_rows, db_service, rows)
     logger.info(
         "[%s] %s: %d quarter(s) added (the table held %d)",
         PROVIDER_NAME,

@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 import pytest
 
+from financials.enrichment import statement_store
 from financials.enrichment import stockanalysis_quarters as quarters
 
 #: Not under ``fixtures/providers``: that folder is read by ``test_provider_real_pages``, which
@@ -87,6 +88,13 @@ class TestTheParsedPage:
         )
         assert quarters.parse(page).periods == []
 
+    def test_a_cell_without_a_full_date_is_no_period_end(self):
+        # The short form ("Sep '26") appears on the page too; a month with no such day is not
+        # a date either, and both must stay None rather than become the first of the month.
+        assert quarters.period_end_of("Sep '26 Sep 30, 2026") == date(2026, 9, 30)
+        assert quarters.period_end_of("Sep '26") is None
+        assert quarters.period_end_of("Feb 30, 2026") is None
+
     def test_a_page_without_dates_carries_no_quarter(self):
         assert (
             quarters.parse("<table><tr><td>Revenue</td><td>1,500</td></tr></table>").periods == []
@@ -141,6 +149,55 @@ class TestWhatGetsWritten:
         assert rows[0]["period_type"] == "quarterly"
         assert rows[0]["currency"] == "EUR"
         assert rows[0]["revenue"] == Decimal(2)
+
+
+class TestTheStore:
+    """The write both producers share: the table must not gain a second interpretation."""
+
+    def test_an_empty_batch_opens_nothing(self):
+        class Untouchable:
+            def get_session(self):
+                raise AssertionError("a batch of no row must not touch the database")
+
+        #: The store takes a database service; these fakes stand in for it on purpose.
+        database: Any = Untouchable()
+
+        assert statement_store.upsert_rows(database, []) == 0
+
+    def test_a_failed_write_is_rolled_back_and_the_error_kept(self):
+        # A half-written period is worse than none: the caller must see the failure.
+        class BrokenSession:
+            rolled_back = False
+            closed = False
+
+            def query(self, *args, **kwargs):
+                raise RuntimeError("the connection is gone")
+
+            def rollback(self):
+                BrokenSession.rolled_back = True
+
+            def close(self):
+                BrokenSession.closed = True
+
+        class BrokenDatabase:
+            def get_session(self):
+                return BrokenSession()
+
+        database: Any = BrokenDatabase()
+        with pytest.raises(RuntimeError, match="the connection is gone"):
+            statement_store.upsert_rows(
+                database,
+                [
+                    {
+                        "asset_id": 1,
+                        "statement_type": "income",
+                        "period_type": "quarterly",
+                        "period_end": date(2026, 9, 30),
+                    }
+                ],
+            )
+        assert BrokenSession.rolled_back is True
+        assert BrokenSession.closed is True
 
 
 class Recorder:
@@ -255,6 +312,23 @@ class TestTheBackfill:
 
         assert await quarters.backfill(DB, 1, "SAP.DE") == 0
         assert provider.asked == []
+
+    async def test_a_page_of_known_periods_writes_nothing(self, written, monkeypatch):
+        # The source may answer with periods the table already holds - the first run of an
+        # asset, or a page that has not moved since. Nothing is written and nothing is lost.
+        state, install = written
+        monkeypatch.setenv("STOCKANALYSIS_MIN_QUARTERS", "20")
+        monkeypatch.setattr(quarters, "quarters_present", lambda _db, _asset: {date(2026, 9, 30)})
+        install(
+            quarters.Page(
+                Decimal(1_000_000),
+                "EUR",
+                [{"period_end": date(2026, 9, 30), "revenue": Decimal(1)}],
+            )
+        )
+
+        assert await quarters.backfill(DB, 1, "SAP.DE") == 0
+        assert state["rows"] == []
 
     async def test_a_page_without_a_quarter_writes_nothing(self, written, monkeypatch):
         state, install = written

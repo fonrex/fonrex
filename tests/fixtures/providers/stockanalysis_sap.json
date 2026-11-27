@@ -1,0 +1,84 @@
+{
+  "captured": "2026-11-26",
+  "url": "https://stockanalysis.com/quote/etr/SAP/financials/income-statement/?p=quarterly",
+  "page_says": {
+    "scale": "millions",
+    "currency": "EUR",
+    "columns": 6
+  },
+  "expected": {
+    "2026-09-30": {
+      "ebit": 3030000000,
+      "ebitda": 3363000000,
+      "eps_basic": 1.96,
+      "eps_diluted": 1.94,
+      "gross_profit": 7543000000,
+      "net_income": 2249000000,
+      "operating_income": 3030000000,
+      "revenue": 10270000000,
+      "shares_basic": 1150000000,
+      "shares_diluted": 1157000000
+    },
+    "2026-06-30": {
+      "ebit": 2740000000,
+      "ebitda": 3056000000,
+      "eps_basic": 1.89,
+      "eps_diluted": 1.89,
+      "gross_profit": 7248000000,
+      "net_income": 2180000000,
+      "operating_income": 2740000000,
+      "revenue": 9877000000,
+      "shares_basic": 1153000000,
+      "shares_diluted": 1158000000
+    },
+    "2026-03-31": {
+      "ebit": 2869000000,
+      "ebitda": 3174000000,
+      "eps_basic": 1.66,
+      "eps_diluted": 1.65,
+      "gross_profit": 7015000000,
+      "net_income": 1932000000,
+      "operating_income": 2869000000,
+      "revenue": 9555000000,
+      "shares_basic": 1163000000,
+      "shares_diluted": 1168000000
+    },
+    "2025-12-31": {
+      "ebit": 2829000000,
+      "ebitda": 3154000000,
+      "eps_basic": 1.44,
+      "eps_diluted": 1.43,
+      "gross_profit": 7175000000,
+      "net_income": 1680000000,
+      "operating_income": 2829000000,
+      "revenue": 9684000000,
+      "shares_basic": 1166000000,
+      "shares_diluted": 1172000000
+    },
+    "2025-09-30": {
+      "ebit": 2566000000,
+      "ebitda": 2884000000,
+      "eps_basic": 1.72,
+      "eps_diluted": 1.71,
+      "gross_profit": 6695000000,
+      "net_income": 2004000000,
+      "operating_income": 2566000000,
+      "revenue": 9076000000,
+      "shares_basic": 1164000000,
+      "shares_diluted": 1172000000
+    },
+    "2025-06-30": {
+      "ebit": 2569000000,
+      "ebitda": 2888000000,
+      "eps_basic": 1.46,
+      "eps_diluted": 1.45,
+      "gross_profit": 6644000000,
+      "net_income": 1697000000,
+      "operating_income": 2569000000,
+      "revenue": 9027000000,
+      "shares_basic": 1166000000,
+      "shares_diluted": 1175000000
+    }
+  },
+  "known_gaps": {}
+}

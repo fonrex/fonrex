@@ -12,7 +12,7 @@ import logging
 import math
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -21,6 +21,8 @@ import yfinance as yf
 from concurrency import run_sync
 from database.assets import ProfileMetadataRefused
 from database.isin import clean_yahoo_isin
+from financials.enrichment.statement_store import upsert_rows
+from financials.enrichment.stockanalysis_quarters import backfill as backfill_quarters
 
 if TYPE_CHECKING:
     from database.service import DatabaseService
@@ -282,7 +284,7 @@ class YFinanceEnricher:
         skipped.update(
             {name: str(r) for name, r in outcomes.items() if isinstance(r, _StepSkipped)}
         )
-        summary = {
+        summary: dict[str, Any] = {
             name: name in outcomes and not isinstance(outcomes[name], Exception) for name in steps
         }
         summary["errors"] = [
@@ -300,6 +302,18 @@ class YFinanceEnricher:
                 summary["errors"].append(str(e))
         else:
             summary["solvency"] = False
+
+        # The quarters Yahoo does not keep. It reads the table the step above wrote, so it
+        # runs after it and never in the gather: a count is only trustworthy once the
+        # statements are in. It adds periods, it never replaces one.
+        if summary["statements"]:
+            try:
+                summary["quarters"] = await backfill_quarters(self.db_service, asset_id, ticker)
+            except Exception as e:
+                summary["quarters"] = 0
+                summary["errors"].append(f"quarters: {e}")
+        else:
+            summary["quarters"] = 0
 
         if summary["errors"]:
             logger.warning(
@@ -539,71 +553,44 @@ class YFinanceEnricher:
         mapping: dict,
         currency: str | None = None,
     ) -> int:
-        """Process a financial statement DataFrame and upsert its data."""
-        from models import FinancialStatement
+        """Read the figures of a statement DataFrame and hand the rows to the store.
 
-        session = self.db_service.get_session()
-        count = 0
-        try:
-            # The DataFrame columns are the period end dates
-            for period_date in df.columns:
-                period_end = _safe_date(period_date)
-                if not period_end:
-                    continue
+        The write itself lives in ``statement_store.upsert_rows``: the stockanalysis
+        backfill fills the same table, and both must agree on what a row is.
+        """
+        rows = []
+        # The DataFrame columns are the period end dates
+        for period_date in df.columns:
+            period_end = _safe_date(period_date)
+            if not period_end:
+                continue
 
-                values = {
-                    "asset_id": asset_id,
-                    "statement_type": statement_type,
-                    "period_type": period_type,
-                    "period_end": period_end,
-                    "fetched_at": datetime.now(timezone.utc),
-                    # Currency of the figures (Yahoo's financialCurrency); None when unknown.
-                    "currency": currency,
-                }
+            values = {
+                "asset_id": asset_id,
+                "statement_type": statement_type,
+                "period_type": period_type,
+                "period_end": period_end,
+                "fetched_at": datetime.now(timezone.utc),
+                # Currency of the figures (Yahoo's financialCurrency); None when unknown.
+                "currency": currency,
+            }
 
-                # Read the metrics from the DataFrame index
-                column_data = df[period_date]
-                for yf_key, model_col in mapping.items():
-                    if model_col in values:
-                        # Do not overwrite a value already set (e.g. cash_and_equivalents with its fallback)
-                        if values[model_col] is not None:
-                            continue
-                    val = _to_decimal(column_data.get(yf_key))
-                    if val is not None and model_col in _WHOLE_NUMBER_COLUMNS:
-                        # Share counts are stored in integer columns.
-                        val = int(val)
-                    values[model_col] = val
+            # Read the metrics from the DataFrame index
+            column_data = df[period_date]
+            for yf_key, model_col in mapping.items():
+                if model_col in values:
+                    # Do not overwrite a value already set (e.g. cash_and_equivalents with its fallback)
+                    if values[model_col] is not None:
+                        continue
+                val = _to_decimal(column_data.get(yf_key))
+                if val is not None and model_col in _WHOLE_NUMBER_COLUMNS:
+                    # Share counts are stored in integer columns.
+                    val = int(val)
+                values[model_col] = val
 
-                # Upsert
-                existing = (
-                    session.query(FinancialStatement)
-                    .filter_by(
-                        asset_id=asset_id,
-                        statement_type=statement_type,
-                        period_type=period_type,
-                        period_end=period_end,
-                    )
-                    .first()
-                )
+            rows.append(values)
 
-                if existing:
-                    for key, value in values.items():
-                        if key not in ("asset_id", "statement_type", "period_type", "period_end"):
-                            setattr(existing, key, value)
-                else:
-                    obj = FinancialStatement(**values)
-                    session.add(obj)
-
-                count += 1
-
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-        return count
+        return upsert_rows(self.db_service, rows)
 
     # ------------------------------------------------------------------
     # Earnings History

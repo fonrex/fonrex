@@ -486,9 +486,7 @@ class TestFetchEarnings(_DatabaseTestCase):
     def test_earnings_updated_on_a_second_fetch(self):
         mock_ticker = _make_mock_ticker()
         self.enricher._fetch_earnings(1, mock_ticker)
-        mock_ticker.earnings_history = mock_ticker.earnings_history.assign(
-            epsActual=[0.99, 1.25]
-        )
+        mock_ticker.earnings_history = mock_ticker.earnings_history.assign(epsActual=[0.99, 1.25])
         self.enricher._fetch_earnings(1, mock_ticker)
 
         session = self.Session()
@@ -798,6 +796,17 @@ class TestEnrich(_DatabaseTestCase):
         _make_test_asset(session)
         session.close()
         self.enricher = YFinanceEnricher(self.db_service)
+        # The quarter backfill asks stockanalysis.com. These tests are about the Yahoo steps, and
+        # a test never talks to a real source (AGENTS.md rule 10): the step is stubbed here and
+        # has its own tests in tests/test_stockanalysis_quarters.py.
+        self._quarters = patch("financials.enrichment.yfinance_enricher.backfill_quarters")
+        self.backfill = self._quarters.start()
+        self.addCleanup(self._quarters.stop)
+
+        async def no_quarters(*args, **kwargs):
+            return 0
+
+        self.backfill.side_effect = no_quarters
 
     @patch("financials.enrichment.yfinance_enricher.yf.Ticker")
     def test_enrich_full(self, mock_yf_ticker_class):
@@ -811,6 +820,30 @@ class TestEnrich(_DatabaseTestCase):
         self.assertTrue(result["earnings"])
         self.assertTrue(result["ratings"])
         self.assertEqual(len(result["errors"]), 0)
+
+    def test_the_quarter_backfill_runs_once_the_statements_are_stored(self):
+        with patch(
+            "financials.enrichment.yfinance_enricher.yf.Ticker", return_value=_make_mock_ticker()
+        ):
+            asyncio.run(self.enricher.enrich(1, "AIR.PA"))
+
+        self.assertEqual(self.backfill.call_count, 1)
+        self.assertEqual(self.backfill.call_args.args[1:], (1, "AIR.PA"))
+
+    def test_the_quarter_backfill_is_skipped_when_the_statements_failed(self):
+        # A failed statement load leaves nothing to complete; the backfill would only add a
+        # second error to the summary.
+        def failing_fetch_statements(asset_id, t, info):
+            raise RuntimeError("Simulated statement failure")
+
+        self.enricher._fetch_statements = failing_fetch_statements
+        with patch(
+            "financials.enrichment.yfinance_enricher.yf.Ticker", return_value=_make_mock_ticker()
+        ):
+            result = asyncio.run(self.enricher.enrich(1, "AIR.PA"))
+
+        self.assertFalse(result["statements"])
+        self.assertEqual(self.backfill.call_count, 0)
 
     @patch("financials.enrichment.yfinance_enricher.yf.Ticker")
     def test_enrich_partial_failure(self, mock_yf_ticker_class):

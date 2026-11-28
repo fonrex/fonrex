@@ -45,8 +45,8 @@ one site and a fraction on another. Fonrex fixes this on your own machine.
 - **Every figure says where it comes from.** Fundamentals are cross-checked between sources;
   values that disagree with the others are rejected, and each answer names its sources.
 - **Valuation and research built in.** DCF with the risk-free rate of the right currency
-  (FRED for USD, ECB for EUR, the OECD 10-year yields for the other currencies of its
-  members), Fama/French factor exposure, technical indicators.
+  (FRED for USD, ECB for EUR, the OECD 10-year yields for the other currencies it covers),
+  Fama/French factor exposure, technical indicators.
 - **Works with your tools.** OpenBB Workspace, Google Sheets, Python and Jupyter, Zipline backtests.
 - **Yours.** Self-hosted, no subscription, no vendor lock-in: the data lives in your PostgreSQL.
 
@@ -128,7 +128,7 @@ Volume    : OBV, A/D Line, MFI
 `GET /dcf/{ticker}` values a company with the FCF model; `POST /dcf/{ticker}` chooses the
 models (FCF, EPS, DDM), the horizon, the growth and the WACC inputs. Cash flows are discounted
 with the 10-year rate of their currency (ECB for the euro, FRED or the Treasury for the dollar,
-the OECD for the other currencies of its members); without one, `DCF_RISK_FREE_RATE` is used
+the OECD for the other currencies it covers); without one, `DCF_RISK_FREE_RATE` is used
 and the answer says why. With `wacc_params.cost_of_equity_model` set to
 `ff3`, `ff5` or `carhart`, the cost of equity comes from the betas of the listing and the
 long-run premia of the Fama/French factors of its region. `GET /factors/exposure/{ticker}`
